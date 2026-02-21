@@ -1,10 +1,15 @@
 [package]
 name        = "layer-crypto"
-description = "Cryptographic primitives for Telegram MTProto (AES-IGE, RSA, SHA, auth key)"
+description = "Cryptographic primitives for Telegram MTProto: AES-IGE, RSA, SHA-1/256, auth key derivation"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
+authors.workspace    = true
 repository.workspace = true
+homepage.workspace   = true
+readme               = "../../README.md"
+keywords             = ["telegram", "mtproto", "crypto", "aes", "rsa"]
+categories           = ["cryptography", "api-bindings"]
 
 [dependencies]
 aes        = "0.8.4"

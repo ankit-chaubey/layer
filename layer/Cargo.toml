@@ -1,10 +1,15 @@
 [package]
 name        = "layer"
-description = "Ergonomic Telegram MTProto library — auto-generated types, raw API, session management"
+description = "Ergonomic Telegram MTProto library — auto-generated TL types, raw API access, session management"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
+authors.workspace    = true
 repository.workspace = true
+homepage.workspace   = true
+readme               = "README.md"
+keywords             = ["telegram", "mtproto", "api", "client", "bot"]
+categories           = ["api-bindings", "network-programming"]
 
 [dependencies]
 layer-tl-types  = { path = "../layer-tl-types"  }

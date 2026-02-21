@@ -1,10 +1,15 @@
 [package]
 name        = "layer-mtproto"
-description = "MTProto session and transport abstractions"
+description = "MTProto 2.0 session management, message framing, DH key exchange and transport abstractions"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
+authors.workspace    = true
 repository.workspace = true
+homepage.workspace   = true
+readme               = "../../README.md"
+keywords             = ["telegram", "mtproto", "session", "transport", "crypto"]
+categories           = ["network-programming", "api-bindings"]
 
 [dependencies]
 layer-tl-types = { path = "../layer-tl-types", features = ["tl-mtproto"] }

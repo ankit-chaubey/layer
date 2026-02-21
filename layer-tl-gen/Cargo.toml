@@ -1,10 +1,15 @@
 [package]
 name        = "layer-tl-gen"
-description = "Build-time code generator: TL schema → Rust source"
+description = "Build-time code generator: Telegram TL schema → Rust source"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
+authors.workspace    = true
 repository.workspace = true
+homepage.workspace   = true
+readme               = "../../README.md"
+keywords             = ["telegram", "mtproto", "tl", "codegen", "build"]
+categories           = ["development-tools::build-utils", "development-tools"]
 
 [dependencies]
 layer-tl-parser = { path = "../layer-tl-parser" }

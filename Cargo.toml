@@ -9,12 +9,14 @@ members = [
     "layer-mtproto",
     "layer",
     "layer-connect",
-    "layer-client-core",   # ← new: high-level Client lives here
-    "layer-client",
+    "layer-client",   # high-level Client library
+    "layer-app",      # binary: login + send message
 ]
 
 [workspace.package]
 version     = "0.1.0"
-edition     = "2021"
+edition     = "2024"
 license     = "MIT OR Apache-2.0"
-repository  = "https://github.com/yourname/layer"
+authors     = ["Ankit Chaubey <ankit@ankit-chaubey.com>"]
+repository  = "https://github.com/ankit-chaubey/layer"
+homepage    = "https://github.com/ankit-chaubey/layer"

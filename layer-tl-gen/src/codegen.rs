@@ -370,7 +370,7 @@ fn write_param_serialization<W: Write>(
                 if ty.name == "true" {
                     // bool flag — nothing to serialize, it's in the flags word
                 } else {
-                    writeln!(out, "{indent}        if let Some(ref v) = self.{attr} {{ v.serialize(buf); }}")?;
+                    writeln!(out, "{indent}        if let Some(v) = &self.{attr} {{ v.serialize(buf); }}")?;
                 }
             } else {
                 writeln!(out, "{indent}        self.{attr}.serialize(buf);")?;
