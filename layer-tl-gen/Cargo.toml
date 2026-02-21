@@ -7,9 +7,8 @@ license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
-readme               = "../../README.md"
 keywords             = ["telegram", "mtproto", "tl", "codegen", "build"]
 categories           = ["development-tools::build-utils", "development-tools"]
 
 [dependencies]
-layer-tl-parser = { path = "../layer-tl-parser", version = "0.1.0" }
+layer-tl-parser = { path = "../layer-tl-parser", version = "0.1.1" }

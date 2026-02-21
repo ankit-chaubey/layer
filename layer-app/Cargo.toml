@@ -14,4 +14,4 @@ name = "layer-app"
 path = "src/main.rs"
 
 [dependencies]
-layer-client = { path = "../layer-client", version = "0.1.0" }
+layer-client = { path = "../layer-client", version = "0.1.1" }

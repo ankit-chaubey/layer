@@ -7,6 +7,5 @@ license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
-readme               = "../../README.md"
 keywords             = ["telegram", "mtproto", "tl", "parser", "codegen"]
 categories           = ["parser-implementations", "development-tools"]
