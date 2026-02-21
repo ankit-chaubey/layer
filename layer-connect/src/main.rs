@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     send_plain(&mut transport, &mut session, &req1)?;
 
     let res_pq: layer_tl_types::enums::ResPq = recv_plain(&mut transport)?;
-    let layer_tl_types::enums::ResPq::ResPq(ref pq) = res_pq;
+    let layer_tl_types::enums::ResPq::ResPq(pq) = &res_pq;
     println!("  ✓ ResPQ: pq={:02x?}", pq.pq);
 
     // ── 3. Auth key — Step 2: req_DH_params ──────────────────────────────────

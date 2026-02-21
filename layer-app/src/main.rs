@@ -1,9 +1,9 @@
 //! Telegram client — mirrors the grammers dialogs.rs example flow exactly.
 //!
 //! Fill in the three constants below, then:
-//!   cargo run -p layer-client
+//!   cargo run -p layer-app
 
-use layer_client_core::{Client, SignInError};
+use layer_client::{Client, SignInError};
 
 // ── Fill these in ──────────────────────────────────────────────────────────────
 const API_ID:   i32  = 0;               // https://my.telegram.org

@@ -1,0 +1,17 @@
+[package]
+name        = "layer-app"
+description = "Telegram client binary: phone login, 2FA, send messages — powered by layer-client"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+homepage.workspace   = true
+publish = false
+
+[[bin]]
+name = "layer-app"
+path = "src/main.rs"
+
+[dependencies]
+layer-client = { path = "../layer-client" }

@@ -145,7 +145,7 @@ impl FromStr for Definition {
                         // Validate generic ref is declared
                         Parameter {
                             ty: ParameterType::Normal {
-                                ty: Type { name: ref tn, generic_ref: true, .. }, ..
+                                ty: Type { name: tn, generic_ref: true, .. }, ..
                             }, ..
                         } if !type_defs.contains(tn) => {
                             return Some(Err(ParseError::InvalidParam(ParamParseError::MissingDef)));
@@ -153,7 +153,7 @@ impl FromStr for Definition {
                         // Validate flag field is declared
                         Parameter {
                             ty: ParameterType::Normal {
-                                flag: Some(Flag { name: ref fn_, .. }), ..
+                                flag: Some(Flag { name: fn_, .. }), ..
                             }, ..
                         } if !flag_defs.contains(fn_) => {
                             return Some(Err(ParseError::InvalidParam(ParamParseError::MissingDef)));

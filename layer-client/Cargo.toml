@@ -1,13 +1,24 @@
 [package]
 name        = "layer-client"
-description = "Telegram client: login and send messages — built on layer-client-core"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[[bin]]
-name = "layer-client"
-path = "src/main.rs"
+description = "High-level synchronous Telegram client — connect, auth, 2FA/SRP, send messages"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+homepage.workspace   = true
+readme               = "../../README.md"
+keywords             = ["telegram", "mtproto", "client", "2fa", "bot"]
+categories           = ["api-bindings", "network-programming"]
 
 [dependencies]
-layer-client-core = { path = "../layer-client-core" }
+layer-tl-types = { path = "../layer-tl-types", features = ["tl-api", "tl-mtproto"] }
+layer-mtproto  = { path = "../layer-mtproto" }
+getrandom      = "0.2"
+flate2         = "1"
+# 2FA (SRP) — same deps as grammers-crypto
+num-bigint     = "0.4"
+num-traits     = "0.2"
+sha2           = "0.10"
+hmac           = "0.12"
+pbkdf2         = "0.12"

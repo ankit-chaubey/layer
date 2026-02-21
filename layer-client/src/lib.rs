@@ -3,7 +3,7 @@
 //! # Full flow
 //!
 //! ```rust,no_run
-//! use layer_client_core::{Client, SignInError};
+//! use layer_client::{Client, SignInError};
 //!
 //! // Reuse session if it exists, otherwise fresh DH + initConnection(GetConfig)
 //! let mut client = Client::load_or_connect("session.bin", API_ID, API_HASH)?;
