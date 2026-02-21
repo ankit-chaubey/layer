@@ -388,6 +388,10 @@ fn write_struct_deserializable<W: Write>(
     let gl_decl = generic_list(def, ": crate::Deserializable");
     let gl_use  = generic_list(def, "");
 
+    // Empty structs never read from `buf`. Name it `_buf` to suppress the
+    // unused-variable warning in the generated output.
+    let buf_name = if def.params.is_empty() { "_buf" } else { "buf" };
+
     writeln!(
         out,
         "{indent}impl{gl_decl} crate::Deserializable for {}{gl_use} {{",
@@ -395,7 +399,7 @@ fn write_struct_deserializable<W: Write>(
     )?;
     writeln!(
         out,
-        "{indent}    fn deserialize(buf: crate::deserialize::Buffer) -> crate::deserialize::Result<Self> {{"
+        "{indent}    fn deserialize({buf_name}: crate::deserialize::Buffer) -> crate::deserialize::Result<Self> {{"
     )?;
 
     // Read flags first so optional params can check them
@@ -406,7 +410,7 @@ fn write_struct_deserializable<W: Write>(
     for fp in &flag_params {
         writeln!(
             out,
-            "{indent}        let {} = u32::deserialize(buf)?;",
+            "{indent}        let _{} = u32::deserialize(buf)?;",
             n::param_attr_name(fp)
         )?;
     }
@@ -422,13 +426,13 @@ fn write_struct_deserializable<W: Write>(
                 if ty.name == "true" {
                     writeln!(
                         out,
-                        "{indent}        let {attr} = ({} & (1 << {})) != 0;",
+                        "{indent}        let {attr} = (_{} & (1 << {})) != 0;",
                         fl.name, fl.index
                     )?;
                 } else {
                     writeln!(
                         out,
-                        "{indent}        let {attr} = if ({} & (1 << {})) != 0 {{ Some({}::deserialize(buf)?) }} else {{ None }};",
+                        "{indent}        let {attr} = if (_{} & (1 << {})) != 0 {{ Some({}::deserialize(buf)?) }} else {{ None }};",
                         fl.name, fl.index, n::type_item_path(ty)
                     )?;
                 }
@@ -455,9 +459,13 @@ fn write_struct_deserializable<W: Write>(
 }
 
 fn write_remote_call<W: Write>(out: &mut W, indent: &str, def: &Definition) -> io::Result<()> {
+    // Generic functions (e.g. invokeWithLayer<X>) need the type parameter on
+    // the impl header and on the struct name, just like every other write_* helper.
+    let gl_decl = generic_list(def, ": crate::Serializable + crate::Deserializable");
+    let gl_use  = generic_list(def, "");
     writeln!(
         out,
-        "{indent}impl crate::RemoteCall for {} {{",
+        "{indent}impl{gl_decl} crate::RemoteCall for {}{gl_use} {{",
         n::def_type_name(def)
     )?;
     writeln!(
@@ -659,6 +667,7 @@ fn write_impl_try_from<W: Write>(
 
         writeln!(out, "{indent}impl TryFrom<{enum_name}> for {qual} {{")?;
         writeln!(out, "{indent}    type Error = {enum_name};")?;
+        writeln!(out, "{indent}    #[allow(unreachable_patterns)]")?;
         writeln!(out, "{indent}    fn try_from(v: {enum_name}) -> Result<Self, Self::Error> {{")?;
         writeln!(out, "{indent}        match v {{")?;
         if meta.is_recursive(def) {

@@ -1,6 +1,6 @@
 //! MTProto client session state.
 
-use layer_tl_types::{RemoteCall, Serializable};
+use layer_tl_types::RemoteCall;
 
 use crate::message::{Message, MessageId};
 

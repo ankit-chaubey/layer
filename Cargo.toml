@@ -5,8 +5,12 @@ members = [
     "layer-tl-parser",
     "layer-tl-gen",
     "layer-tl-types",
+    "layer-crypto",
     "layer-mtproto",
     "layer",
+    "layer-connect",
+    "layer-client-core",   # ← new: high-level Client lives here
+    "layer-client",
 ]
 
 [workspace.package]

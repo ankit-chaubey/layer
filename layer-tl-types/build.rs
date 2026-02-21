@@ -5,7 +5,7 @@
 
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::PathBuf;
 
 use layer_tl_gen::{Config, Outputs, generate};
