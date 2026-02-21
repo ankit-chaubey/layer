@@ -7,13 +7,12 @@ license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
-readme               = "../../README.md"
 keywords             = ["telegram", "mtproto", "client", "2fa", "bot"]
 categories           = ["api-bindings", "network-programming"]
 
 [dependencies]
-layer-tl-types = { path = "../layer-tl-types", version = "0.1.0", features = ["tl-api", "tl-mtproto"] }
-layer-mtproto  = { path = "../layer-mtproto",  version = "0.1.0" }
+layer-tl-types = { path = "../layer-tl-types", version = "0.1.1", features = ["tl-api", "tl-mtproto"] }
+layer-mtproto  = { path = "../layer-mtproto",  version = "0.1.1" }
 getrandom      = "0.2"
 flate2         = "1"
 num-bigint     = "0.4"
