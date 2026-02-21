@@ -1,0 +1,33 @@
+[package]
+name        = "layer-tl-types"
+description = "Generated Telegram TL types — constructors, functions, enums"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+build = "build.rs"
+
+[build-dependencies]
+layer-tl-parser = { path = "../layer-tl-parser" }
+layer-tl-gen    = { path = "../layer-tl-gen"    }
+
+[features]
+default = ["impl-debug", "impl-from-type", "impl-from-enum", "tl-api"]
+
+## Derive `Debug` for all generated types.
+impl-debug      = []
+## Implement `From<types::T> for enums::E`.
+impl-from-type  = []
+## Implement `TryFrom<enums::E> for types::T`.
+impl-from-enum  = []
+## Also implement `Deserializable` for function types (server-side use).
+deserializable-functions = []
+## Generate `name_for_id()` lookup function.
+name-for-id     = []
+## Include the high-level API TL schema (api.tl).
+tl-api          = []
+## Include the low-level MTProto TL schema (mtproto.tl).
+tl-mtproto      = []
+## Derive serde support.
+impl-serde      = []

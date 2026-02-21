@@ -1,0 +1,10 @@
+[package]
+name        = "layer-tl-gen"
+description = "Build-time code generator: TL schema → Rust source"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+layer-tl-parser = { path = "../layer-tl-parser" }

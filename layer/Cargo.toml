@@ -1,0 +1,21 @@
+[package]
+name        = "layer"
+description = "Ergonomic Telegram MTProto library — auto-generated types, raw API, session management"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+layer-tl-types  = { path = "../layer-tl-types"  }
+layer-mtproto   = { path = "../layer-mtproto"   }
+layer-tl-parser = { path = "../layer-tl-parser", optional = true }
+layer-tl-gen    = { path = "../layer-tl-gen",    optional = true }
+
+[features]
+default = []
+
+## Re-export the TL parser for custom tooling.
+parser  = ["dep:layer-tl-parser"]
+## Re-export the code generator for custom tooling.
+codegen = ["dep:layer-tl-gen"]
