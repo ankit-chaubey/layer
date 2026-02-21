@@ -1,0 +1,10 @@
+[package]
+name        = "layer-mtproto"
+description = "MTProto session and transport abstractions"
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+layer-tl-types = { path = "../layer-tl-types" }
