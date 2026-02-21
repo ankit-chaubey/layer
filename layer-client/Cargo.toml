@@ -12,11 +12,10 @@ keywords             = ["telegram", "mtproto", "client", "2fa", "bot"]
 categories           = ["api-bindings", "network-programming"]
 
 [dependencies]
-layer-tl-types = { path = "../layer-tl-types", features = ["tl-api", "tl-mtproto"] }
-layer-mtproto  = { path = "../layer-mtproto" }
+layer-tl-types = { path = "../layer-tl-types", version = "0.1.0", features = ["tl-api", "tl-mtproto"] }
+layer-mtproto  = { path = "../layer-mtproto",  version = "0.1.0" }
 getrandom      = "0.2"
 flate2         = "1"
-# 2FA (SRP) — same deps as grammers-crypto
 num-bigint     = "0.4"
 num-traits     = "0.2"
 sha2           = "0.10"

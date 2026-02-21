@@ -12,4 +12,4 @@ keywords             = ["telegram", "mtproto", "tl", "codegen", "build"]
 categories           = ["development-tools::build-utils", "development-tools"]
 
 [dependencies]
-layer-tl-parser = { path = "../layer-tl-parser" }
+layer-tl-parser = { path = "../layer-tl-parser", version = "0.1.0" }

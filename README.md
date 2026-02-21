@@ -304,14 +304,19 @@ layer-tl-parser  →  layer-tl-gen  →  layer-tl-types  →  layer-crypto
 **One-time setup:**
 
 ```bash
-# Login with your crates.io API token
+# 1. Init git (crates.io requires a clean git repo)
+git init
+git add .
+git commit -m "initial release v0.1.0"
+
+# 2. Login with your crates.io API token
 cargo login
 ```
 
-**Publish in this exact order** (each crate must be live on crates.io before the next):
+**Publish in this exact order** — each crate must finish uploading before the next:
 
 ```bash
-# 1. No dependencies on other layer crates
+# 1. No layer deps
 cargo publish -p layer-tl-parser
 
 # 2. Depends on layer-tl-parser
@@ -333,22 +338,22 @@ cargo publish -p layer-client
 cargo publish -p layer
 ```
 
-> `layer-app` and `layer-connect` are binaries/demos and are marked `publish = false` —
-> they will be skipped automatically.
+> `layer-app` and `layer-connect` are marked `publish = false` — they are skipped automatically.
 
-**Before publishing each crate**, do a dry run to catch any issues:
+**Dry run first** to catch issues without uploading:
 
 ```bash
 cargo publish -p layer-tl-parser --dry-run
 # repeat for each crate
 ```
 
-**Bump the version** (all crates share the workspace version):
+**Bump the version** for future releases (all crates share the workspace version):
 
 ```bash
-# Edit version in the root Cargo.toml, then:
-cargo publish -p layer-tl-parser
-# ... follow the order above
+# 1. Edit `version = "0.1.0"` → `"0.2.0"` in the root Cargo.toml
+# 2. Commit the change
+git add Cargo.toml && git commit -m "bump to v0.2.0"
+# 3. Publish in the same order above
 ```
 
 ---
