@@ -1,0 +1,23 @@
+/// Calculate the SHA-1 hash of one or more byte slices concatenated.
+#[macro_export]
+macro_rules! sha1 {
+    ( $( $x:expr ),+ ) => {{
+        use sha1::{Digest, Sha1};
+        let mut h = Sha1::new();
+        $( h.update($x); )+
+        let out: [u8; 20] = h.finalize().into();
+        out
+    }};
+}
+
+/// Calculate the SHA-256 hash of one or more byte slices concatenated.
+#[macro_export]
+macro_rules! sha256 {
+    ( $( $x:expr ),+ ) => {{
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        $( h.update($x); )+
+        let out: [u8; 32] = h.finalize().into();
+        out
+    }};
+}

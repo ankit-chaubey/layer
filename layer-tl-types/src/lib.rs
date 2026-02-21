@@ -42,7 +42,6 @@ mod generated;
 pub use deserialize::{Cursor, Deserializable};
 pub use generated::{LAYER, enums, functions, types};
 #[cfg(feature = "name-for-id")]
-#[cfg(feature = "name-for-id")]
 pub use generated::name_for_id;
 pub use serialize::Serializable;
 

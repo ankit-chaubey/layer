@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 layer-tl-types  = { path = "../layer-tl-types"  }
 layer-mtproto   = { path = "../layer-mtproto"   }
+layer-crypto    = { path = "../layer-crypto"    }
 layer-tl-parser = { path = "../layer-tl-parser", optional = true }
 layer-tl-gen    = { path = "../layer-tl-gen",    optional = true }
 

@@ -7,4 +7,9 @@ license.workspace    = true
 repository.workspace = true
 
 [dependencies]
-layer-tl-types = { path = "../layer-tl-types" }
+layer-tl-types = { path = "../layer-tl-types", features = ["tl-mtproto"] }
+layer-crypto   = { path = "../layer-crypto" }
+getrandom      = "0.2"
+num-bigint     = "0.4.6"
+num-traits     = "0.2.19"
+sha1           = "0.10.6"

@@ -39,8 +39,11 @@
 /// Re-export of [`layer_tl_types`] — generated constructors, functions and enums.
 pub use layer_tl_types as tl;
 
-/// Re-export of [`layer_mtproto`] — session and transport.
+/// Re-export of [`layer_mtproto`] — session, encrypted session, transport, and authentication.
 pub use layer_mtproto as mtproto;
+
+/// Re-export of [`layer_crypto`] — AES-IGE, SHA, RSA, factorize, AuthKey.
+pub use layer_crypto as crypto;
 
 /// Re-export of [`layer_tl_parser`] (requires `feature = "parser"`).
 #[cfg(feature = "parser")]
@@ -60,4 +63,6 @@ pub use layer_tl_types::{
     LAYER,
 };
 
-pub use layer_mtproto::Session;
+pub use layer_mtproto::{Session, EncryptedSession};
+pub use layer_mtproto::authentication::{self, Finished, step1, step2, step3, finish};
+pub use layer_crypto::AuthKey;

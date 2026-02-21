@@ -19,6 +19,7 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+/// Parse error types for TL schema parsing.
 pub mod errors;
 pub mod tl;
 mod iterator;

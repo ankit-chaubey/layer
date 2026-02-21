@@ -44,16 +44,28 @@ pub(crate) fn to_pascal(name: &str) -> String {
             continue;
         }
         if next_upper {
+            // Forced capitalisation (start of string or after `_`).
             out.push(ch.to_ascii_uppercase());
             next_upper = false;
+            // If the source char was already uppercase we are entering a
+            // cap-run (e.g. the 'O' in `some_OK_name`); set prev_upper so
+            // subsequent caps get lowercased.  If it was lowercase we just
+            // started a normal word, so prev_upper stays false.
             prev_upper = ch.is_ascii_uppercase();
-        } else if ch.is_ascii_uppercase() && !prev_upper {
-            // transition from lower → upper: preserve
-            out.push(ch.to_ascii_lowercase());
+        } else if ch.is_ascii_uppercase() {
+            if prev_upper {
+                // Continuation of a cap-run (e.g. 'K' in "OK") → lowercase
+                // so "someOKName" → "SomeOkName" not "SomeOKName".
+                out.push(ch.to_ascii_lowercase());
+            } else {
+                // camelCase word boundary (e.g. 'P' in "inputPeer") → keep
+                // uppercase: "inputPeerSelf" → "InputPeerSelf".
+                out.push(ch);
+            }
             prev_upper = true;
         } else {
             out.push(ch);
-            prev_upper = ch.is_ascii_uppercase();
+            prev_upper = false;
         }
     }
     out
@@ -134,7 +146,32 @@ fn type_path(ty: &Type, turbofish: bool) -> String {
     }
 
     let mut s = if let Some(b) = builtin_type(&ty.name) {
-        b.to_owned()
+        // When emitting a turbofish path (for method calls like `Vec::<u8>::deserialize`),
+        // two classes of builtin need special treatment:
+        //
+        // 1. Builtins that already carry a generic arg baked into the string
+        //    (e.g. `"Vec<u8>"`): insert `::` before the `<`.
+        //    Without it rustc parses `Vec<u8>::` as a comparison expression.
+        //
+        // 2. Array builtins (`"[u8; 16]"`, `"[u8; 32]"`): the type is not a
+        //    named path, so `[u8; 16]::deserialize` is a hard syntax error.
+        //    Wrap in `<…>` to get `<[u8; 16]>::deserialize`.
+        if turbofish {
+            if b.starts_with('[') {
+                // Array type — wrap in angle brackets for path syntax.
+                format!("<{b}>")
+            } else if let Some(pos) = b.find('<') {
+                // Generic builtin — insert `::` before the `<`.
+                let mut out = b[..pos].to_owned();
+                out.push_str("::");
+                out.push_str(&b[pos..]);
+                out
+            } else {
+                b.to_owned()
+            }
+        } else {
+            b.to_owned()
+        }
     } else if ty.bare {
         let mut p = String::from("crate::types::");
         for ns in &ty.namespace {

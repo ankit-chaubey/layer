@@ -7,7 +7,10 @@ pub enum ParamParseError {
     /// An empty string was encountered where a name/type was expected.
     Empty,
     /// A `{X:Type}` generic type definition (not a real error; used as a signal).
-    TypeDef { name: String },
+    TypeDef {
+        /// The name of the generic type parameter (e.g. `"X"` from `{X:Type}`).
+        name: String,
+    },
     /// A `{…}` block that isn't a valid type definition.
     MissingDef,
     /// A flag expression (`name.N?Type`) was malformed.

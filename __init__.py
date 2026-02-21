@@ -1,1 +1,0 @@
-# layer — Telegram MTProto library
