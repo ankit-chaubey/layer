@@ -161,6 +161,45 @@ impl IncomingMessage {
         }
     }
 
+    /// Fetch the message that this one is replying to.
+    ///
+    /// Returns `None` if this message is not a reply or if the peer is unknown.
+    /// Unlike [`reply_to_message_id`] this actually performs an API call to
+    /// retrieve the full message object.
+    ///
+    /// [`reply_to_message_id`]: IncomingMessage::reply_to_message_id
+    pub async fn reply_to_message(
+        &self,
+        client: &Client,
+    ) -> Result<Option<IncomingMessage>, Error> {
+        let reply_id = match self.reply_to_message_id() {
+            Some(id) => id,
+            None     => return Ok(None),
+        };
+        let peer = match self.peer_id() {
+            Some(p) => p.clone(),
+            None    => return Ok(None),
+        };
+        let msgs = client.get_messages_by_id(peer, &[reply_id]).await?;
+        Ok(msgs.into_iter().next())
+    }
+
+    /// The message's send time as a [`chrono::DateTime<chrono::Utc>`].
+    ///
+    /// This is a typed wrapper around the raw `date()` Unix timestamp.
+    pub fn date_utc(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        use chrono::TimeZone;
+        let ts = self.date();
+        if ts == 0 { return None; }
+        chrono::Utc.timestamp_opt(ts as i64, 0).single()
+    }
+
+    /// The last edit time as a [`chrono::DateTime<chrono::Utc>`], if edited.
+    pub fn edit_date_utc(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        use chrono::TimeZone;
+        self.edit_date().and_then(|ts| chrono::Utc.timestamp_opt(ts as i64, 0).single())
+    }
+
     /// The media attached to this message, if any.
     pub fn media(&self) -> Option<&tl::enums::MessageMedia> {
         match &self.raw {

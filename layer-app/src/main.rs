@@ -39,7 +39,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let client = Client::connect(Config {
-        session_path: "layer.session".into(),
         api_id:       API_ID,
         api_hash:     API_HASH.to_string(),
         ..Default::default()
