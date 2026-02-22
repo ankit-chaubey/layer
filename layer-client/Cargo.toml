@@ -12,8 +12,8 @@ keywords             = ["telegram", "mtproto", "client", "bot", "async"]
 categories           = ["api-bindings", "network-programming", "asynchronous"]
 
 [dependencies]
-layer-tl-types = { path = "../layer-tl-types", version = "0.1.2", features = ["tl-api", "tl-mtproto"] }
-layer-mtproto  = { path = "../layer-mtproto",  version = "0.1.2" }
+layer-tl-types = { workspace = true, features = ["tl-api", "tl-mtproto"] }
+layer-mtproto  = { workspace = true }
 tokio          = { version = "1",  features = ["net", "io-util", "sync", "time", "rt", "rt-multi-thread", "macros"] }
 getrandom      = "0.2"
 flate2         = "1"

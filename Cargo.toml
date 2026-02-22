@@ -14,10 +14,18 @@ members = [
 ]
 
 [workspace.package]
-version     = "0.1.2"
+version     = "0.2.0"
 edition     = "2024"
 license     = "MIT OR Apache-2.0"
 readme      = "README.md"
 authors     = ["Ankit Chaubey <ankitchaubey.dev@gmail.com>"]
 repository  = "https://github.com/ankit-chaubey/layer"
 homepage    = "https://github.com/ankit-chaubey/layer"
+
+[workspace.dependencies]
+layer-tl-parser = { path = "layer-tl-parser", version = "0.2.0" }
+layer-tl-gen    = { path = "layer-tl-gen",    version = "0.2.0" }
+layer-tl-types  = { path = "layer-tl-types",  version = "0.2.0" }
+layer-crypto    = { path = "layer-crypto",     version = "0.2.0" }
+layer-mtproto   = { path = "layer-mtproto",    version = "0.2.0" }
+layer-client    = { path = "layer-client",     version = "0.2.0" }

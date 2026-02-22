@@ -14,5 +14,5 @@ name = "connect"
 path = "src/main.rs"
 
 [dependencies]
-layer-tl-types = { path = "../layer-tl-types", version = "0.1.1", features = ["tl-mtproto"] }
-layer-mtproto  = { path = "../layer-mtproto",  version = "0.1.1" }
+layer-tl-types = { workspace = true, features = ["tl-mtproto"] }
+layer-mtproto  = { workspace = true }

@@ -12,8 +12,8 @@ keywords             = ["telegram", "mtproto", "session", "transport", "crypto"]
 categories           = ["network-programming", "api-bindings"]
 
 [dependencies]
-layer-tl-types = { path = "../layer-tl-types", version = "0.1.2", features = ["tl-mtproto"] }
-layer-crypto   = { path = "../layer-crypto",   version = "0.1.2" }
+layer-tl-types = { workspace = true, features = ["tl-mtproto"] }
+layer-crypto   = { workspace = true }
 getrandom      = "0.2"
 num-bigint     = "0.4.6"
 num-traits     = "0.2.19"

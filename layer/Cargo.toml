@@ -12,11 +12,11 @@ keywords             = ["telegram", "mtproto", "api", "client", "bot"]
 categories           = ["api-bindings", "network-programming"]
 
 [dependencies]
-layer-tl-types  = { path = "../layer-tl-types",  version = "0.1.1" }
-layer-mtproto   = { path = "../layer-mtproto",   version = "0.1.1" }
-layer-crypto    = { path = "../layer-crypto",    version = "0.1.1" }
-layer-tl-parser = { path = "../layer-tl-parser", version = "0.1.1", optional = true }
-layer-tl-gen    = { path = "../layer-tl-gen",    version = "0.1.1", optional = true }
+layer-tl-types  = { workspace = true }
+layer-mtproto   = { workspace = true }
+layer-crypto    = { workspace = true }
+layer-tl-parser = { workspace = true, optional = true }
+layer-tl-gen    = { workspace = true, optional = true }
 
 [features]
 default = []
