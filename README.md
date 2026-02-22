@@ -241,9 +241,15 @@ Licensed under either of, at your option:
 
 ## 🙏 Acknowledgements
 
-- [**Telegram**](https://core.telegram.org/mtproto) — for the detailed MTProto specification.
-- The Rust async ecosystem — `tokio`, `getrandom`, `flate2`, and friends.
+- [**Lonami**](https://codeberg.org/Lonami) — for [grammers](https://codeberg.org/Lonami/grammers).
+  The architecture, design decisions, SRP math, and session handling in this project
+  are all directly inspired by grammers. It's a fantastic library and an even better
+  learning resource. Thank you for making it open source! 🎉
 
+- [**Telegram**](https://core.telegram.org/mtproto) — for the detailed MTProto specification.
+
+- The Rust async ecosystem — `tokio`, `getrandom`, `flate2`, and friends.
+  
 ---
 
 <div align="center">
