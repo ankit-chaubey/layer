@@ -397,7 +397,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
         }
 
         ID_UPDATE_SHORT_MESSAGE => {
-            let mut cur = Cursor::from_slice(bytes);
+            let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShortMessage::deserialize(&mut cur) {
                 Ok(m)  => vec![Update::NewMessage(make_short_dm(m))],
                 Err(e) => { log::warn!("[layer] updateShortMessage parse error: {e}"); vec![] }
@@ -405,7 +405,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
         }
 
         ID_UPDATE_SHORT_CHAT_MSG => {
-            let mut cur = Cursor::from_slice(bytes);
+            let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShortChatMessage::deserialize(&mut cur) {
                 Ok(m)  => vec![Update::NewMessage(make_short_chat(m))],
                 Err(e) => { log::warn!("[layer] updateShortChatMessage parse error: {e}"); vec![] }
@@ -413,7 +413,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
         }
 
         ID_UPDATE_SHORT => {
-            let mut cur = Cursor::from_slice(bytes);
+            let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShort::deserialize(&mut cur) {
                 Ok(m)  => from_single_update(m.update),
                 Err(e) => { log::warn!("[layer] updateShort parse error: {e}"); vec![] }

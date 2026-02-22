@@ -76,9 +76,11 @@ const ID_BAD_SERVER_SALT:  u32 = 0xedab447b;
 const ID_NEW_SESSION:      u32 = 0x9ec20908;
 const ID_BAD_MSG_NOTIFY:   u32 = 0xa7eff811;
 const ID_UPDATES:          u32 = 0x74ae4240;
-const ID_UPDATE_SHORT:     u32 = 0x2114be86;
+const ID_UPDATE_SHORT:     u32 = 0x78d4dec1;
 const ID_UPDATES_COMBINED: u32 = 0x725b04c3;
-const ID_UPDATE_SHORT_MSG: u32 = 0x313bc7f8;
+const ID_UPDATE_SHORT_MSG:      u32 = 0x313bc7f8;
+const ID_UPDATE_SHORT_CHAT_MSG: u32 = 0x4d6deea5;
+const ID_UPDATES_TOO_LONG:      u32 = 0xe317af7e;
 
 // ─── PeerCache ────────────────────────────────────────────────────────────────
 
@@ -755,17 +757,40 @@ impl Client {
                     log::warn!("[layer] Update loop error: {e} — reconnecting …");
                     sleep(Duration::from_secs(1)).await;
                     let home_dc_id = *self.inner.home_dc_id.lock().await;
-                    let addr = {
+                    let (addr, saved_key, first_salt, time_offset) = {
                         let opts = self.inner.dc_options.lock().await;
-                        opts.get(&home_dc_id).map(|e| e.addr.clone())
-                            .unwrap_or_else(|| "149.154.167.51:443".to_string())
+                        match opts.get(&home_dc_id) {
+                            Some(e) => (e.addr.clone(), e.auth_key, e.first_salt, e.time_offset),
+                            None    => ("149.154.167.51:443".to_string(), None, 0, 0),
+                        }
                     };
-                    let socks5 = self.inner.socks5.clone();
+                    let socks5    = self.inner.socks5.clone();
                     let transport = self.inner.transport.clone();
-                    match Connection::connect_raw(&addr, socks5.as_ref(), &transport).await {
+
+                    // Prefer reconnecting with the existing auth key (user is already
+                    // authorised on it).  Only fall back to a fresh DH if that fails.
+                    let new_conn_result = if let Some(key) = saved_key {
+                        log::info!("[layer] Reconnecting to DC{home_dc_id} with saved key …");
+                        match Connection::connect_with_key(
+                            &addr, key, first_salt, time_offset,
+                            socks5.as_ref(), &transport,
+                        ).await {
+                            Ok(c)  => Ok(c),
+                            Err(e2) => {
+                                log::warn!("[layer] connect_with_key failed ({e2}), falling back to fresh DH …");
+                                Connection::connect_raw(&addr, socks5.as_ref(), &transport).await
+                            }
+                        }
+                    } else {
+                        Connection::connect_raw(&addr, socks5.as_ref(), &transport).await
+                    };
+
+                    match new_conn_result {
                         Ok(new_conn) => {
                             *self.inner.conn.lock().await = new_conn;
-                            let _ = self.init_connection().await;
+                            if let Err(e2) = self.init_connection().await {
+                                log::warn!("[layer] init_connection after reconnect failed: {e2}");
+                            }
                             // Fetch any updates missed during disconnect
                             match self.get_difference().await {
                                 Ok(missed) => {
@@ -831,8 +856,7 @@ impl Client {
             allow_paid_stars:         None,
             suggested_post:           None,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     /// Send directly to Saved Messages.
@@ -860,8 +884,7 @@ impl Client {
             allow_paid_stars:         None,
             suggested_post:           None,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     /// Edit an existing message.
@@ -885,8 +908,7 @@ impl Client {
             schedule_repeat_period: None,
             quick_reply_shortcut_id: None,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     /// Forward messages from `source` to `destination`.
@@ -924,15 +946,13 @@ impl Client {
             allow_paid_floodskip: false,
             suggested_post:    None,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     /// Delete messages by ID.
     pub async fn delete_messages(&self, message_ids: Vec<i32>, revoke: bool) -> Result<(), InvocationError> {
         let req = tl::functions::messages::DeleteMessages { revoke, id: message_ids };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     /// Get messages by their IDs from a peer.
@@ -1034,8 +1054,7 @@ impl Client {
             peer: input_peer,
             id:   message_id,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     /// Unpin a specific message.
@@ -1055,8 +1074,7 @@ impl Client {
             top_msg_id: None,
             saved_peer_id: None,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     // ── Message search ─────────────────────────────────────────────────────
@@ -1175,8 +1193,7 @@ impl Client {
             peer: input_peer,
             id:   ids,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     // ── Callback / Inline Queries ──────────────────────────────────────────
@@ -1388,8 +1405,7 @@ impl Client {
             min_date:    None,
             max_date:    None,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     /// Mark all messages in a chat as read.
@@ -1417,8 +1433,7 @@ impl Client {
     pub async fn clear_mentions(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
         let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
         let req = tl::functions::messages::ReadMentions { peer: input_peer, top_msg_id: None };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     // ── Chat actions (typing, etc) ─────────────────────────────────────────
@@ -1437,8 +1452,7 @@ impl Client {
             top_msg_id: None,
             action,
         };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     // ── Join / invite links ────────────────────────────────────────────────
@@ -1473,8 +1487,7 @@ impl Client {
         let hash = Self::parse_invite_hash(link)
             .ok_or_else(|| InvocationError::Deserialize(format!("invalid invite link: {link}")))?;
         let req = tl::functions::messages::ImportChatInvite { hash: hash.to_string() };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.rpc_write(&req).await
     }
 
     /// Extract hash from `https://t.me/+HASH` or `https://t.me/joinchat/HASH`.
@@ -1582,6 +1595,34 @@ impl Client {
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let mut conn = self.inner.conn.lock().await;
         conn.rpc_call(req).await
+    }
+
+    /// Like `rpc_call_raw` but for write RPCs whose TL return type is `Updates`.
+    /// Accepts either a normal payload or an `Updates` frame as success, so we
+    /// don't hang when Telegram sends back an `updateShort` instead of a full result.
+    async fn rpc_write<S: tl::Serializable>(&self, req: &S) -> Result<(), InvocationError> {
+        let mut fail_count   = NonZeroU32::new(1).unwrap();
+        let mut slept_so_far = Duration::default();
+        loop {
+            let result = {
+                let mut conn = self.inner.conn.lock().await;
+                conn.rpc_call_ack(req).await
+            };
+            match result {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    let ctx = RetryContext { fail_count, slept_so_far, error: e };
+                    match self.inner.retry_policy.should_retry(&ctx) {
+                        ControlFlow::Continue(delay) => {
+                            sleep(delay).await;
+                            slept_so_far += delay;
+                            fail_count = fail_count.saturating_add(1);
+                        }
+                        ControlFlow::Break(()) => return Err(ctx.error),
+                    }
+                }
+            }
+        }
     }
 
     // ── initConnection ─────────────────────────────────────────────────────
@@ -2195,6 +2236,31 @@ impl Connection {
             .map_err(|_| InvocationError::Deserialize("rpc_call_serializable timed out after 10 s".into()))?
     }
 
+    /// Like `rpc_call_serializable` but accepts either a Payload OR an Updates
+    /// frame as a successful response.  Use this for write RPCs whose return
+    /// type in the TL schema is `Updates` — Telegram may respond with an
+    /// `updateShort` instead of a full serialized result.
+    async fn rpc_call_ack<S: tl::Serializable>(&mut self, req: &S) -> Result<(), InvocationError> {
+        let wire = self.enc.pack_serializable(req);
+        send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
+        tokio::time::timeout(Duration::from_secs(10), self.recv_ack())
+            .await
+            .map_err(|_| InvocationError::Deserialize("rpc_call_ack timed out after 10 s".into()))?
+    }
+
+    async fn recv_ack(&mut self) -> Result<(), InvocationError> {
+        loop {
+            let mut raw = recv_frame(&mut self.stream, &mut self.frame_kind).await?;
+            let msg = self.enc.unpack(&mut raw)
+                .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+            if msg.salt != 0 { self.enc.salt = msg.salt; }
+            match unwrap_envelope(msg.body)? {
+                EnvelopeResult::Payload(_) | EnvelopeResult::Updates(_) => return Ok(()),
+                EnvelopeResult::None => {}
+            }
+        }
+    }
+
     async fn recv_rpc(&mut self) -> Result<Vec<u8>, InvocationError> {
         loop {
             let mut raw = recv_frame(&mut self.stream, &mut self.frame_kind).await?;
@@ -2402,7 +2468,9 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
         ID_PONG | ID_MSGS_ACK | ID_NEW_SESSION | ID_BAD_SERVER_SALT | ID_BAD_MSG_NOTIFY => {
             Ok(EnvelopeResult::None)
         }
-        ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED | ID_UPDATE_SHORT_MSG => {
+        ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED
+        | ID_UPDATE_SHORT_MSG | ID_UPDATE_SHORT_CHAT_MSG
+        | ID_UPDATES_TOO_LONG => {
             Ok(EnvelopeResult::Updates(update::parse_updates(&body)))
         }
         _ => Ok(EnvelopeResult::Payload(body)),
