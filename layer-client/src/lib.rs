@@ -1,89 +1,21 @@
-//! # layer-client — Production-grade async Telegram client
+//! # layer-client
 //!
-//! A fully async, production-ready Telegram client built on top of the MTProto
-//! protocol. Inspired by and architecturally aligned with [`grammers`](https://codeberg.org/Lonami/grammers).
+//! Production-grade async Telegram client built on MTProto.
 //!
 //! ## Features
-//!
-//! - ✅ Full async/tokio I/O
-//! - ✅ User login (phone + code + 2FA SRP)
-//! - ✅ Bot token login (`bot_sign_in`)
-//! - ✅ `FLOOD_WAIT` auto-retry with configurable policy
-//! - ✅ Update stream (`stream_updates`) with typed events
-//! - ✅ Raw update access
-//! - ✅ `NewMessage`, `MessageEdited`, `MessageDeleted`, `CallbackQuery`, `InlineQuery`
-//! - ✅ Callback query answering
-//! - ✅ Inline query answering
-//! - ✅ Dialog iteration (`iter_dialogs`)
-//! - ✅ Message iteration (`iter_messages`)
-//! - ✅ Peer resolution (username, phone, ID)
-//! - ✅ Send / edit / delete messages
-//! - ✅ Forward messages
-//! - ✅ DC migration handling
-//! - ✅ Session persistence
-//! - ✅ Sign out
-//!
-//! ## Quick Start — User Account
-//!
-//! ```rust,no_run
-//! use layer_client::{Client, Config, SignInError};
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let mut client = Client::connect(Config {
-//!         session_path: "my.session".into(),
-//!         api_id:       12345,
-//!         api_hash:     "abc123".into(),
-//!         ..Default::default()
-//!     }).await?;
-//!
-//!     if !client.is_authorized().await? {
-//!         let token = client.request_login_code("+1234567890").await?;
-//!         let code  = "12345"; // read from stdin
-//!
-//!         match client.sign_in(&token, code).await {
-//!             Ok(_)                                 => {}
-//!             Err(SignInError::PasswordRequired(t)) => {
-//!                 client.check_password(t, "my_password").await?;
-//!             }
-//!             Err(e) => return Err(e.into()),
-//!         }
-//!         client.save_session().await?;
-//!     }
-//!
-//!     client.send_message("me", "Hello from layer!").await?;
-//!     Ok(())
-//! }
-//! ```
-//!
-//! ## Quick Start — Bot
-//!
-//! ```rust,no_run
-//! use layer_client::{Client, Config, update::Update};
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let mut client = Client::connect(Config {
-//!         session_path: "bot.session".into(),
-//!         api_id:       12345,
-//!         api_hash:     "abc123".into(),
-//!         ..Default::default()
-//!     }).await?;
-//!
-//!     client.bot_sign_in("1234567890:ABCdef...").await?;
-//!     client.save_session().await?;
-//!
-//!     let mut updates = client.stream_updates();
-//!     while let Ok(update) = updates.next().await {
-//!         if let Update::NewMessage(msg) = update {
-//!             if !msg.outgoing() {
-//!                 client.send_message_to_peer(msg.chat().unwrap().clone(), msg.text()).await?;
-//!             }
-//!         }
-//!     }
-//!     Ok(())
-//! }
-//! ```
+//! - User login (phone + code + 2FA SRP) and bot token login
+//! - Peer access-hash caching — API calls always carry correct access hashes
+//! - `FLOOD_WAIT` auto-retry with configurable policy
+//! - Typed async update stream: `NewMessage`, `MessageEdited`, `MessageDeleted`,
+//!   `CallbackQuery`, `InlineQuery`, `InlineSend`, `Raw`
+//! - Send / edit / delete / forward / pin messages
+//! - Search messages (per-chat and global)
+//! - Mark as read, delete dialogs, clear mentions
+//! - Join chat / accept invite links
+//! - Chat action (typing, uploading, …)
+//! - `get_me()` — fetch own User info
+//! - Paginated dialog and message iterators
+//! - DC migration, session persistence, reconnect
 
 #![deny(unsafe_code)]
 
@@ -105,6 +37,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use layer_tl_types as tl;
 use layer_mtproto::{EncryptedSession, Session, authentication as auth};
 use layer_tl_types::{Cursor, Deserializable, RemoteCall};
 use session::{DcEntry, PersistedSession};
@@ -115,34 +48,197 @@ use tokio::time::sleep;
 
 // ─── MTProto envelope constructor IDs ────────────────────────────────────────
 
-const ID_RPC_RESULT:      u32 = 0xf35c6d01;
-const ID_RPC_ERROR:       u32 = 0x2144ca19;
-const ID_MSG_CONTAINER:   u32 = 0x73f1f8dc;
-const ID_GZIP_PACKED:     u32 = 0x3072cfa1;
-const ID_PONG:            u32 = 0x347773c5;
-const ID_MSGS_ACK:        u32 = 0x62d6b459;
-const ID_BAD_SERVER_SALT: u32 = 0xedab447b;
-const ID_NEW_SESSION:     u32 = 0x9ec20908;
-const ID_BAD_MSG_NOTIFY:  u32 = 0xa7eff811;
-const ID_UPDATES:         u32 = 0x74ae4240;
-const ID_UPDATE_SHORT:    u32 = 0x2114be86;
+const ID_RPC_RESULT:       u32 = 0xf35c6d01;
+const ID_RPC_ERROR:        u32 = 0x2144ca19;
+const ID_MSG_CONTAINER:    u32 = 0x73f1f8dc;
+const ID_GZIP_PACKED:      u32 = 0x3072cfa1;
+const ID_PONG:             u32 = 0x347773c5;
+const ID_MSGS_ACK:         u32 = 0x62d6b459;
+const ID_BAD_SERVER_SALT:  u32 = 0xedab447b;
+const ID_NEW_SESSION:      u32 = 0x9ec20908;
+const ID_BAD_MSG_NOTIFY:   u32 = 0xa7eff811;
+const ID_UPDATES:          u32 = 0x74ae4240;
+const ID_UPDATE_SHORT:     u32 = 0x2114be86;
 const ID_UPDATES_COMBINED: u32 = 0x725b04c3;
 const ID_UPDATE_SHORT_MSG: u32 = 0x313bc7f8;
+
+// ─── PeerCache ────────────────────────────────────────────────────────────────
+
+/// Caches access hashes for users and channels so every API call carries the
+/// correct hash without re-resolving peers.
+#[derive(Default)]
+struct PeerCache {
+    /// user_id → access_hash
+    users:    HashMap<i64, i64>,
+    /// channel_id → access_hash
+    channels: HashMap<i64, i64>,
+}
+
+impl PeerCache {
+    fn cache_user(&mut self, user: &tl::enums::User) {
+        if let tl::enums::User::User(u) = user {
+            if let Some(hash) = u.access_hash {
+                self.users.insert(u.id, hash);
+            }
+        }
+    }
+
+    fn cache_chat(&mut self, chat: &tl::enums::Chat) {
+        match chat {
+            tl::enums::Chat::Channel(c) => {
+                if let Some(hash) = c.access_hash {
+                    self.channels.insert(c.id, hash);
+                }
+            }
+            tl::enums::Chat::ChannelForbidden(c) => {
+                self.channels.insert(c.id, c.access_hash);
+            }
+            _ => {}
+        }
+    }
+
+    fn cache_users(&mut self, users: &[tl::enums::User]) {
+        for u in users { self.cache_user(u); }
+    }
+
+    fn cache_chats(&mut self, chats: &[tl::enums::Chat]) {
+        for c in chats { self.cache_chat(c); }
+    }
+
+    fn user_input_peer(&self, user_id: i64) -> tl::enums::InputPeer {
+        if user_id == 0 {
+            return tl::enums::InputPeer::PeerSelf;
+        }
+        let hash = self.users.get(&user_id).copied().unwrap_or(0);
+        tl::enums::InputPeer::User(tl::types::InputPeerUser { user_id, access_hash: hash })
+    }
+
+    fn channel_input_peer(&self, channel_id: i64) -> tl::enums::InputPeer {
+        let hash = self.channels.get(&channel_id).copied().unwrap_or(0);
+        tl::enums::InputPeer::Channel(tl::types::InputPeerChannel { channel_id, access_hash: hash })
+    }
+
+    fn peer_to_input(&self, peer: &tl::enums::Peer) -> tl::enums::InputPeer {
+        match peer {
+            tl::enums::Peer::User(u) => self.user_input_peer(u.user_id),
+            tl::enums::Peer::Chat(c) => tl::enums::InputPeer::Chat(
+                tl::types::InputPeerChat { chat_id: c.chat_id }
+            ),
+            tl::enums::Peer::Channel(c) => self.channel_input_peer(c.channel_id),
+        }
+    }
+}
+
+// ─── InputMessage builder ─────────────────────────────────────────────────────
+
+/// Builder for composing outgoing messages.
+///
+/// ```rust,no_run
+/// use layer_client::InputMessage;
+///
+/// let msg = InputMessage::text("Hello, *world*!")
+///     .silent(true)
+///     .reply_to(Some(42));
+/// ```
+#[derive(Clone, Default)]
+pub struct InputMessage {
+    pub text:         String,
+    pub reply_to:     Option<i32>,
+    pub silent:       bool,
+    pub background:   bool,
+    pub clear_draft:  bool,
+    pub no_webpage:   bool,
+    pub entities:     Option<Vec<tl::enums::MessageEntity>>,
+    pub reply_markup: Option<tl::enums::ReplyMarkup>,
+    pub schedule_date: Option<i32>,
+}
+
+impl InputMessage {
+    /// Create a message with the given text.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self { text: text.into(), ..Default::default() }
+    }
+
+    /// Set the message text.
+    pub fn set_text(mut self, text: impl Into<String>) -> Self {
+        self.text = text.into(); self
+    }
+
+    /// Reply to a specific message ID.
+    pub fn reply_to(mut self, id: Option<i32>) -> Self {
+        self.reply_to = id; self
+    }
+
+    /// Send silently (no notification sound).
+    pub fn silent(mut self, v: bool) -> Self {
+        self.silent = v; self
+    }
+
+    /// Send in background.
+    pub fn background(mut self, v: bool) -> Self {
+        self.background = v; self
+    }
+
+    /// Clear the draft after sending.
+    pub fn clear_draft(mut self, v: bool) -> Self {
+        self.clear_draft = v; self
+    }
+
+    /// Disable link preview.
+    pub fn no_webpage(mut self, v: bool) -> Self {
+        self.no_webpage = v; self
+    }
+
+    /// Attach formatting entities (bold, italic, code, links, etc).
+    pub fn entities(mut self, e: Vec<tl::enums::MessageEntity>) -> Self {
+        self.entities = Some(e); self
+    }
+
+    /// Attach a reply markup (inline or reply keyboard).
+    pub fn reply_markup(mut self, rm: tl::enums::ReplyMarkup) -> Self {
+        self.reply_markup = Some(rm); self
+    }
+
+    /// Schedule the message for a future Unix timestamp.
+    pub fn schedule_date(mut self, ts: Option<i32>) -> Self {
+        self.schedule_date = ts; self
+    }
+
+    fn reply_header(&self) -> Option<tl::enums::InputReplyTo> {
+        self.reply_to.map(|id| {
+            tl::enums::InputReplyTo::Message(
+                tl::types::InputReplyToMessage {
+                    reply_to_msg_id: id,
+                    top_msg_id: None,
+                    reply_to_peer_id: None,
+                    quote_text: None,
+                    quote_entities: None,
+                    quote_offset: None,
+                    monoforum_peer_id: None,
+                    todo_item_id: None,
+                }
+            )
+        })
+    }
+}
+
+impl From<&str> for InputMessage {
+    fn from(s: &str) -> Self { Self::text(s) }
+}
+
+impl From<String> for InputMessage {
+    fn from(s: String) -> Self { Self::text(s) }
+}
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 /// Configuration for [`Client::connect`].
 #[derive(Clone)]
 pub struct Config {
-    /// Where to load/save the session file.
     pub session_path: PathBuf,
-    /// Telegram API ID from <https://my.telegram.org>.
     pub api_id:       i32,
-    /// Telegram API hash from <https://my.telegram.org>.
     pub api_hash:     String,
-    /// Initial DC address to connect to (default: DC2).
     pub dc_addr:      Option<String>,
-    /// Retry policy for flood-wait and I/O errors.
     pub retry_policy: Arc<dyn RetryPolicy>,
 }
 
@@ -158,35 +254,15 @@ impl Default for Config {
     }
 }
 
-// ─── UpdatesConfiguration ─────────────────────────────────────────────────────
-
-/// Configuration for [`Client::stream_updates`].
-#[derive(Debug, Clone)]
-pub struct UpdatesConfiguration {
-    /// Optional cap on the internal update queue.
-    /// Excess updates are dropped with a warning.
-    pub update_queue_limit: Option<usize>,
-}
-
-impl Default for UpdatesConfiguration {
-    fn default() -> Self {
-        Self { update_queue_limit: Some(500) }
-    }
-}
-
 // ─── UpdateStream ─────────────────────────────────────────────────────────────
 
 /// Asynchronous stream of [`Update`]s.
-///
-/// Obtain via [`Client::stream_updates`]. Call [`UpdateStream::next`] in a loop.
 pub struct UpdateStream {
     rx: mpsc::UnboundedReceiver<update::Update>,
 }
 
 impl UpdateStream {
-    /// Wait for the next update.
-    ///
-    /// Returns `None` when the client has disconnected.
+    /// Wait for the next update. Returns `None` when the client has disconnected.
     pub async fn next(&mut self) -> Option<update::Update> {
         self.rx.recv().await
     }
@@ -197,36 +273,70 @@ impl UpdateStream {
 /// A Telegram dialog (chat, user, channel).
 #[derive(Debug, Clone)]
 pub struct Dialog {
-    pub raw:    layer_tl_types::enums::Dialog,
-    /// The top message in the dialog, if available.
-    pub message: Option<layer_tl_types::enums::Message>,
-    /// Entity (user/chat/channel) that corresponds to this dialog's peer.
-    pub entity:  Option<layer_tl_types::enums::User>,
+    pub raw:     tl::enums::Dialog,
+    pub message: Option<tl::enums::Message>,
+    pub entity:  Option<tl::enums::User>,
+    pub chat:    Option<tl::enums::Chat>,
 }
 
 impl Dialog {
-    /// The dialog's display title (username/first name/channel name).
+    /// The dialog's display title.
     pub fn title(&self) -> String {
-        if let Some(layer_tl_types::enums::User::User(u)) = &self.entity {
+        if let Some(tl::enums::User::User(u)) = &self.entity {
             let first = u.first_name.as_deref().unwrap_or("");
             let last  = u.last_name.as_deref().unwrap_or("");
-            return format!("{first} {last}").trim().to_string();
+            let name  = format!("{first} {last}").trim().to_string();
+            if !name.is_empty() { return name; }
+        }
+        if let Some(chat) = &self.chat {
+            return match chat {
+                tl::enums::Chat::Chat(c)         => c.title.clone(),
+                tl::enums::Chat::Forbidden(c) => c.title.clone(),
+                tl::enums::Chat::Channel(c)      => c.title.clone(),
+                tl::enums::Chat::ChannelForbidden(c) => c.title.clone(),
+                tl::enums::Chat::Empty(_)        => "(empty)".into(),
+            };
         }
         "(Unknown)".to_string()
     }
+
+    /// Peer of this dialog.
+    pub fn peer(&self) -> Option<&tl::enums::Peer> {
+        match &self.raw {
+            tl::enums::Dialog::Dialog(d) => Some(&d.peer),
+            tl::enums::Dialog::Folder(_) => None,
+        }
+    }
+
+    /// Unread message count.
+    pub fn unread_count(&self) -> i32 {
+        match &self.raw {
+            tl::enums::Dialog::Dialog(d) => d.unread_count,
+            _ => 0,
+        }
+    }
+
+    /// ID of the top message.
+    pub fn top_message(&self) -> i32 {
+        match &self.raw {
+            tl::enums::Dialog::Dialog(d) => d.top_message,
+            _ => 0,
+        }
+    }
 }
 
-// ─── Client (Arc-wrapped) ─────────────────────────────────────────────────────
+// ─── ClientInner ─────────────────────────────────────────────────────────────
 
 struct ClientInner {
-    conn:           Mutex<Connection>,
-    home_dc_id:     Mutex<i32>,
-    dc_options:     Mutex<HashMap<i32, DcEntry>>,
-    api_id:         i32,
-    api_hash:       String,
-    session_path:   PathBuf,
-    retry_policy:   Arc<dyn RetryPolicy>,
-    _update_tx:     mpsc::UnboundedSender<update::Update>,
+    conn:         Mutex<Connection>,
+    home_dc_id:   Mutex<i32>,
+    dc_options:   Mutex<HashMap<i32, DcEntry>>,
+    peer_cache:   Mutex<PeerCache>,
+    api_id:       i32,
+    api_hash:     String,
+    session_path: PathBuf,
+    retry_policy: Arc<dyn RetryPolicy>,
+    _update_tx:   mpsc::UnboundedSender<update::Update>,
 }
 
 /// The main Telegram client. Cheap to clone — internally Arc-wrapped.
@@ -239,14 +349,9 @@ pub struct Client {
 impl Client {
     // ── Connect ────────────────────────────────────────────────────────────
 
-    /// Connect to Telegram and return a ready-to-use client.
-    ///
-    /// Loads an existing session if the file exists, otherwise performs
-    /// a full DH key exchange on DC2.
     pub async fn connect(config: Config) -> Result<Self, InvocationError> {
         let (update_tx, update_rx) = mpsc::unbounded_channel();
 
-        // Try loading session
         let (conn, home_dc_id, dc_opts) =
             if config.session_path.exists() {
                 match PersistedSession::load(&config.session_path) {
@@ -260,9 +365,7 @@ impl Client {
                                             .into_iter()
                                             .map(|(id, addr)| (id, DcEntry { dc_id: id, addr, auth_key: None, first_salt: 0, time_offset: 0 }))
                                             .collect::<HashMap<_, _>>();
-                                        for d in &s.dcs {
-                                            opts.insert(d.dc_id, d.clone());
-                                        }
+                                        for d in &s.dcs { opts.insert(d.dc_id, d.clone()); }
                                         (c, s.home_dc_id, opts)
                                     }
                                     Err(e) => {
@@ -270,12 +373,8 @@ impl Client {
                                         Self::fresh_connect().await?
                                     }
                                 }
-                            } else {
-                                Self::fresh_connect().await?
-                            }
-                        } else {
-                            Self::fresh_connect().await?
-                        }
+                            } else { Self::fresh_connect().await? }
+                        } else { Self::fresh_connect().await? }
                     }
                     Err(e) => {
                         log::warn!("[layer] Session load failed ({e}), fresh connect …");
@@ -287,14 +386,15 @@ impl Client {
             };
 
         let inner = Arc::new(ClientInner {
-            conn:        Mutex::new(conn),
-            home_dc_id:  Mutex::new(home_dc_id),
-            dc_options:  Mutex::new(dc_opts),
-            api_id:      config.api_id,
-            api_hash:    config.api_hash,
+            conn:         Mutex::new(conn),
+            home_dc_id:   Mutex::new(home_dc_id),
+            dc_options:   Mutex::new(dc_opts),
+            peer_cache:   Mutex::new(PeerCache::default()),
+            api_id:       config.api_id,
+            api_hash:     config.api_hash,
             session_path: config.session_path,
             retry_policy: config.retry_policy,
-            _update_tx: update_tx,
+            _update_tx:   update_tx,
         });
 
         let client = Self {
@@ -302,7 +402,6 @@ impl Client {
             _update_rx: Arc::new(Mutex::new(update_rx)),
         };
 
-        // Run initConnection to populate DC table
         client.init_connection().await?;
         Ok(client)
     }
@@ -319,25 +418,22 @@ impl Client {
 
     // ── Session ────────────────────────────────────────────────────────────
 
-    /// Save the current session to disk.
     pub async fn save_session(&self) -> Result<(), InvocationError> {
         let conn_guard = self.inner.conn.lock().await;
         let home_dc_id = *self.inner.home_dc_id.lock().await;
         let dc_options = self.inner.dc_options.lock().await;
 
-        let dcs = dc_options.values().map(|e| {
-            DcEntry {
-                dc_id:      e.dc_id,
-                addr:       e.addr.clone(),
-                auth_key:   if e.dc_id == home_dc_id { Some(conn_guard.auth_key_bytes()) } else { e.auth_key },
-                first_salt:  if e.dc_id == home_dc_id { conn_guard.first_salt() } else { e.first_salt },
-                time_offset: if e.dc_id == home_dc_id { conn_guard.time_offset() } else { e.time_offset },
-            }
+        let dcs = dc_options.values().map(|e| DcEntry {
+            dc_id:       e.dc_id,
+            addr:        e.addr.clone(),
+            auth_key:    if e.dc_id == home_dc_id { Some(conn_guard.auth_key_bytes()) } else { e.auth_key },
+            first_salt:  if e.dc_id == home_dc_id { conn_guard.first_salt() } else { e.first_salt },
+            time_offset: if e.dc_id == home_dc_id { conn_guard.time_offset() } else { e.time_offset },
         }).collect();
 
         PersistedSession { home_dc_id, dcs }
             .save(&self.inner.session_path)
-            .map_err(|e| InvocationError::Io(e))?;
+            .map_err(InvocationError::Io)?;
         log::info!("[layer] Session saved ✓");
         Ok(())
     }
@@ -346,25 +442,20 @@ impl Client {
 
     /// Returns `true` if the client is already authorized.
     pub async fn is_authorized(&self) -> Result<bool, InvocationError> {
-        match self.invoke(&layer_tl_types::functions::updates::GetState {}).await {
+        match self.invoke(&tl::functions::updates::GetState {}).await {
             Ok(_)  => Ok(true),
-            Err(e) if e.is("AUTH_KEY_UNREGISTERED") || matches!(&e, InvocationError::Rpc(r) if r.code == 401) => Ok(false),
+            Err(e) if e.is("AUTH_KEY_UNREGISTERED")
+                   || matches!(&e, InvocationError::Rpc(r) if r.code == 401) => Ok(false),
             Err(e) => Err(e),
         }
     }
 
-    /// Sign in as a bot using a bot token from [@BotFather](https://t.me/BotFather).
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// client.bot_sign_in("1234567890:ABCdef...").await?;
-    /// ```
+    /// Sign in as a bot.
     pub async fn bot_sign_in(&self, token: &str) -> Result<String, InvocationError> {
-        let req = layer_tl_types::functions::auth::ImportBotAuthorization {
-            flags:           0,
-            api_id:          self.inner.api_id,
-            api_hash:        self.inner.api_hash.clone(),
-            bot_auth_token:  token.to_string(),
+        let req = tl::functions::auth::ImportBotAuthorization {
+            flags: 0, api_id: self.inner.api_id,
+            api_hash: self.inner.api_hash.clone(),
+            bot_auth_token: token.to_string(),
         };
 
         let result = match self.invoke(&req).await {
@@ -378,10 +469,11 @@ impl Client {
         };
 
         let name = match result {
-            layer_tl_types::enums::auth::Authorization::Authorization(a) => {
+            tl::enums::auth::Authorization::Authorization(a) => {
+                self.cache_user(&a.user).await;
                 Self::extract_user_name(&a.user)
             }
-            layer_tl_types::enums::auth::Authorization::SignUpRequired(_) => {
+            tl::enums::auth::Authorization::SignUpRequired(_) => {
                 panic!("unexpected SignUpRequired during bot sign-in")
             }
         };
@@ -390,16 +482,12 @@ impl Client {
     }
 
     /// Request a login code for a user account.
-    ///
-    /// Returns a [`LoginToken`] to pass to [`sign_in`].
-    ///
-    /// [`sign_in`]: Self::sign_in
     pub async fn request_login_code(&self, phone: &str) -> Result<LoginToken, InvocationError> {
-        use layer_tl_types::enums::auth::SentCode;
+        use tl::enums::auth::SentCode;
 
         let req = self.make_send_code_req(phone);
         let body = match self.rpc_call_raw(&req).await {
-            Ok(b)  => b,
+            Ok(b) => b,
             Err(InvocationError::Rpc(ref r)) if r.code == 303 => {
                 let dc_id = r.value.unwrap_or(2) as i32;
                 self.migrate_to(dc_id).await?;
@@ -409,26 +497,21 @@ impl Client {
         };
 
         let mut cur = Cursor::from_slice(&body);
-        let hash = match layer_tl_types::enums::auth::SentCode::deserialize(&mut cur)? {
-            SentCode::SentCode(c)        => c.phone_code_hash,
-            SentCode::Success(_)         => return Err(InvocationError::Deserialize("unexpected SentCode::Success".into())),
-            SentCode::PaymentRequired(_) => return Err(InvocationError::Deserialize("payment required".into())),
+        let hash = match tl::enums::auth::SentCode::deserialize(&mut cur)? {
+            SentCode::SentCode(s) => s.phone_code_hash,
+            SentCode::Success(_)  => return Err(InvocationError::Deserialize("unexpected Success".into())),
+            SentCode::PaymentRequired(_) => return Err(InvocationError::Deserialize("payment required to send code".into())),
         };
         log::info!("[layer] Login code sent");
         Ok(LoginToken { phone: phone.to_string(), phone_code_hash: hash })
     }
 
     /// Complete sign-in with the code sent to the phone.
-    ///
-    /// On 2FA accounts, returns `Err(SignInError::PasswordRequired(token))`.
-    /// Pass the token to [`check_password`].
-    ///
-    /// [`check_password`]: Self::check_password
     pub async fn sign_in(&self, token: &LoginToken, code: &str) -> Result<String, SignInError> {
-        let req = layer_tl_types::functions::auth::SignIn {
-            phone_number:       token.phone.clone(),
-            phone_code_hash:    token.phone_code_hash.clone(),
-            phone_code:         Some(code.trim().to_string()),
+        let req = tl::functions::auth::SignIn {
+            phone_number:    token.phone.clone(),
+            phone_code_hash: token.phone_code_hash.clone(),
+            phone_code:      Some(code.trim().to_string()),
             email_verification: None,
         };
 
@@ -440,97 +523,95 @@ impl Client {
                 self.rpc_call_raw(&req).await.map_err(SignInError::Other)?
             }
             Err(e) if e.is("SESSION_PASSWORD_NEEDED") => {
-                let token = self.get_password_info().await.map_err(SignInError::Other)?;
-                return Err(SignInError::PasswordRequired(token));
+                let t = self.get_password_info().await.map_err(SignInError::Other)?;
+                return Err(SignInError::PasswordRequired(t));
             }
             Err(e) if e.is("PHONE_CODE_*") => return Err(SignInError::InvalidCode),
             Err(e) => return Err(SignInError::Other(e)),
         };
 
         let mut cur = Cursor::from_slice(&body);
-        match layer_tl_types::enums::auth::Authorization::deserialize(&mut cur)
+        match tl::enums::auth::Authorization::deserialize(&mut cur)
             .map_err(|e| SignInError::Other(e.into()))?
         {
-            layer_tl_types::enums::auth::Authorization::Authorization(a) => {
+            tl::enums::auth::Authorization::Authorization(a) => {
+                self.cache_user(&a.user).await;
                 let name = Self::extract_user_name(&a.user);
                 log::info!("[layer] Signed in ✓  Welcome, {name}!");
                 Ok(name)
             }
-            layer_tl_types::enums::auth::Authorization::SignUpRequired(_) => {
-                Err(SignInError::SignUpRequired)
-            }
+            tl::enums::auth::Authorization::SignUpRequired(_) => Err(SignInError::SignUpRequired),
         }
     }
 
     /// Complete 2FA login.
-    ///
-    /// `token` comes from `Err(SignInError::PasswordRequired(token))`.
     pub async fn check_password(
         &self,
-        token: PasswordToken,
+        token:    PasswordToken,
         password: impl AsRef<[u8]>,
     ) -> Result<String, InvocationError> {
         let pw   = token.password;
         let algo = pw.current_algo.ok_or_else(|| InvocationError::Deserialize("no current_algo".into()))?;
-
         let (salt1, salt2, p, g) = Self::extract_password_params(&algo)?;
         let g_b  = pw.srp_b.ok_or_else(|| InvocationError::Deserialize("no srp_b".into()))?;
         let a    = pw.secure_random;
         let srp_id = pw.srp_id.ok_or_else(|| InvocationError::Deserialize("no srp_id".into()))?;
 
         let (m1, g_a) = two_factor_auth::calculate_2fa(salt1, salt2, p, g, &g_b, &a, password.as_ref());
-
-        let req = layer_tl_types::functions::auth::CheckPassword {
-            password: layer_tl_types::enums::InputCheckPasswordSrp::InputCheckPasswordSrp(
-                layer_tl_types::types::InputCheckPasswordSrp {
-                    srp_id,
-                    a: g_a.to_vec(),
-                    m1: m1.to_vec(),
+        let req = tl::functions::auth::CheckPassword {
+            password: tl::enums::InputCheckPasswordSrp::InputCheckPasswordSrp(
+                tl::types::InputCheckPasswordSrp {
+                    srp_id, a: g_a.to_vec(), m1: m1.to_vec(),
                 },
             ),
         };
 
         let body = self.rpc_call_raw(&req).await?;
         let mut cur = Cursor::from_slice(&body);
-        match layer_tl_types::enums::auth::Authorization::deserialize(&mut cur)? {
-            layer_tl_types::enums::auth::Authorization::Authorization(a) => {
+        match tl::enums::auth::Authorization::deserialize(&mut cur)? {
+            tl::enums::auth::Authorization::Authorization(a) => {
+                self.cache_user(&a.user).await;
                 let name = Self::extract_user_name(&a.user);
                 log::info!("[layer] 2FA ✓  Welcome, {name}!");
                 Ok(name)
             }
-            layer_tl_types::enums::auth::Authorization::SignUpRequired(_) => {
-                Err(InvocationError::Deserialize("unexpected SignUpRequired after 2FA".into()))
-            }
+            tl::enums::auth::Authorization::SignUpRequired(_) =>
+                Err(InvocationError::Deserialize("unexpected SignUpRequired after 2FA".into())),
         }
     }
 
     /// Sign out and invalidate the current session.
     pub async fn sign_out(&self) -> Result<bool, InvocationError> {
-        let req = layer_tl_types::functions::auth::LogOut {};
+        let req = tl::functions::auth::LogOut {};
         match self.rpc_call_raw(&req).await {
-            Ok(_body) => {
-                // auth.loggedOut#c3a2835f flags:# future_auth_token:flags.0?bytes = auth.LoggedOut
-                log::info!("[layer] Signed out ✓");
-                Ok(true)
-            }
+            Ok(_) => { log::info!("[layer] Signed out ✓"); Ok(true) }
             Err(e) if e.is("AUTH_KEY_UNREGISTERED") => Ok(false),
             Err(e) => Err(e),
         }
     }
 
+    // ── Get self ───────────────────────────────────────────────────────────
+
+    /// Fetch information about the logged-in user.
+    pub async fn get_me(&self) -> Result<tl::types::User, InvocationError> {
+        let req = tl::functions::users::GetUsers {
+            id: vec![tl::enums::InputUser::UserSelf],
+        };
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let users   = Vec::<tl::enums::User>::deserialize(&mut cur)?;
+        self.cache_users_slice(&users).await;
+        users.into_iter().find_map(|u| match u {
+            tl::enums::User::User(u) => Some(u),
+            _ => None,
+        }).ok_or_else(|| InvocationError::Deserialize("getUsers returned no user".into()))
+    }
+
     // ── Updates ────────────────────────────────────────────────────────────
 
     /// Return an [`UpdateStream`] that yields incoming [`Update`]s.
-    ///
-    /// The stream must be polled regularly (e.g. in a `while let` loop) for
-    /// the client to stay connected and receive updates. Multiple streams
-    /// can be created but only one should be polled at a time.
     pub fn stream_updates(&self) -> UpdateStream {
         let (tx, rx) = mpsc::unbounded_channel();
-        // Subscribe this new channel to the inner broadcaster
-        // (we replace the stored sender so future updates go to this receiver)
-        // In a real production impl you'd use a broadcast channel; here we
-        // use a simple mpsc and pipe through a background task.
         let client = self.clone();
         tokio::spawn(async move {
             client.run_update_loop(tx).await;
@@ -538,25 +619,14 @@ impl Client {
         UpdateStream { rx }
     }
 
-    /// Internal update loop — polls the connection for incoming data and
-    /// dispatches updates to the given sender.
     async fn run_update_loop(&self, tx: mpsc::UnboundedSender<update::Update>) {
-        // Send periodic pings (every 60 s) while polling for updates.
-        // In this simplified model we just do a blocking recv call in a loop.
         loop {
-            // We need to recv from the socket while NOT holding the conn lock
-            // during await. Use a timeout approach.
             let result = {
                 let mut conn = self.inner.conn.lock().await;
-                // Set a short timeout and check for data
-                match tokio::time::timeout(
-                    Duration::from_secs(30),
-                    conn.recv_once()
-                ).await {
+                match tokio::time::timeout(Duration::from_secs(30), conn.recv_once()).await {
                     Ok(Ok(updates)) => Ok(updates),
                     Ok(Err(e))      => Err(e),
                     Err(_timeout)   => {
-                        // Send a ping to keep connection alive
                         let _ = conn.send_ping().await;
                         continue;
                     }
@@ -565,18 +635,16 @@ impl Client {
 
             match result {
                 Ok(updates) => {
-                    for u in updates {
-                        let _ = tx.send(u);
-                    }
+                    for u in updates { let _ = tx.send(u); }
                 }
                 Err(e) => {
                     log::warn!("[layer] Update loop error: {e} — reconnecting …");
                     sleep(Duration::from_secs(1)).await;
-                    // Attempt reconnect
                     let home_dc_id = *self.inner.home_dc_id.lock().await;
                     let addr = {
                         let opts = self.inner.dc_options.lock().await;
-                        opts.get(&home_dc_id).map(|e| e.addr.clone()).unwrap_or_else(|| "149.154.167.51:443".to_string())
+                        opts.get(&home_dc_id).map(|e| e.addr.clone())
+                            .unwrap_or_else(|| "149.154.167.51:443".to_string())
                     };
                     match Connection::connect_raw(&addr).await {
                         Ok(new_conn) => {
@@ -597,130 +665,381 @@ impl Client {
 
     /// Send a text message. Use `"me"` for Saved Messages.
     pub async fn send_message(&self, peer: &str, text: &str) -> Result<(), InvocationError> {
-        let input_peer = self.resolve_peer(peer).await?;
-        self.send_message_to_peer(input_peer, text).await
+        let p = self.resolve_peer(peer).await?;
+        self.send_message_to_peer(p, text).await
     }
 
-    /// Send a text message to an already-resolved [`layer_tl_types::enums::InputPeer`].
+    /// Send a message to an already-resolved peer (plain text shorthand).
     pub async fn send_message_to_peer(
         &self,
-        peer: layer_tl_types::enums::Peer,
+        peer: tl::enums::Peer,
         text: &str,
     ) -> Result<(), InvocationError> {
-        let input_peer = peer_to_input_peer(peer);
-        let req = layer_tl_types::functions::messages::SendMessage {
-            no_webpage:                 false,
-            silent:                     false,
-            background:                 false,
-            clear_draft:                false,
-            noforwards:                 false,
-            update_stickersets_order:   false,
-            invert_media:               false,
-            allow_paid_floodskip:       false,
-            peer:                       input_peer,
-            reply_to:                   None,
-            message:                    text.to_string(),
-            random_id:                  random_i64(),
-            reply_markup:               None,
-            entities:                   None,
-            schedule_date:              None,
-            schedule_repeat_period:     None,
-            send_as:                    None,
-            quick_reply_shortcut:       None,
-            effect:                     None,
-            allow_paid_stars:           None,
-            suggested_post:             None,
-        };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
+        self.send_message_to_peer_ex(peer, &InputMessage::text(text)).await
     }
 
-    /// Send a text message directly to "me" (Saved Messages).
-    pub async fn send_to_self(&self, text: &str) -> Result<(), InvocationError> {
-        let req = layer_tl_types::functions::messages::SendMessage {
-            no_webpage:                 false,
-            silent:                     false,
-            background:                 false,
-            clear_draft:                false,
-            noforwards:                 false,
-            update_stickersets_order:   false,
-            invert_media:               false,
-            allow_paid_floodskip:       false,
-            peer:                       layer_tl_types::enums::InputPeer::PeerSelf,
-            reply_to:                   None,
-            message:                    text.to_string(),
-            random_id:                  random_i64(),
-            reply_markup:               None,
-            entities:                   None,
-            schedule_date:              None,
-            schedule_repeat_period:     None,
-            send_as:                    None,
-            quick_reply_shortcut:       None,
-            effect:                     None,
-            allow_paid_stars:           None,
-            suggested_post:             None,
-        };
-        self.rpc_call_raw(&req).await?;
-        Ok(())
-    }
-
-    /// Delete messages by ID in a given peer.
-    pub async fn delete_messages(
+    /// Send a message with full [`InputMessage`] options.
+    pub async fn send_message_to_peer_ex(
         &self,
-        message_ids: Vec<i32>,
-        revoke: bool,
+        peer: tl::enums::Peer,
+        msg:  &InputMessage,
     ) -> Result<(), InvocationError> {
-        let req = layer_tl_types::functions::messages::DeleteMessages {
-            revoke,
-            id: message_ids,
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::SendMessage {
+            no_webpage:               msg.no_webpage,
+            silent:                   msg.silent,
+            background:               msg.background,
+            clear_draft:              msg.clear_draft,
+            noforwards:               false,
+            update_stickersets_order: false,
+            invert_media:             false,
+            allow_paid_floodskip:     false,
+            peer:                     input_peer,
+            reply_to:                 msg.reply_header(),
+            message:                  msg.text.clone(),
+            random_id:                random_i64(),
+            reply_markup:             msg.reply_markup.clone(),
+            entities:                 msg.entities.clone(),
+            schedule_date:            msg.schedule_date,
+            schedule_repeat_period:   None,
+            send_as:                  None,
+            quick_reply_shortcut:     None,
+            effect:                   None,
+            allow_paid_stars:         None,
+            suggested_post:           None,
         };
         self.rpc_call_raw(&req).await?;
         Ok(())
     }
 
-    // ── Callback Queries ───────────────────────────────────────────────────
+    /// Send directly to Saved Messages.
+    pub async fn send_to_self(&self, text: &str) -> Result<(), InvocationError> {
+        let req = tl::functions::messages::SendMessage {
+            no_webpage:               false,
+            silent:                   false,
+            background:               false,
+            clear_draft:              false,
+            noforwards:               false,
+            update_stickersets_order: false,
+            invert_media:             false,
+            allow_paid_floodskip:     false,
+            peer:                     tl::enums::InputPeer::PeerSelf,
+            reply_to:                 None,
+            message:                  text.to_string(),
+            random_id:                random_i64(),
+            reply_markup:             None,
+            entities:                 None,
+            schedule_date:            None,
+            schedule_repeat_period:   None,
+            send_as:                  None,
+            quick_reply_shortcut:     None,
+            effect:                   None,
+            allow_paid_stars:         None,
+            suggested_post:           None,
+        };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
 
-    /// Answer a callback query (from an inline button press).
-    ///
-    /// Pass the `query_id` from [`update::CallbackQuery::query_id`].
+    /// Edit an existing message.
+    pub async fn edit_message(
+        &self,
+        peer:       tl::enums::Peer,
+        message_id: i32,
+        new_text:   &str,
+    ) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::EditMessage {
+            no_webpage:    false,
+            invert_media:  false,
+            peer:          input_peer,
+            id:            message_id,
+            message:       Some(new_text.to_string()),
+            media:         None,
+            reply_markup:  None,
+            entities:      None,
+            schedule_date: None,
+            schedule_repeat_period: None,
+            quick_reply_shortcut_id: None,
+        };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
+
+    /// Forward messages from `source` to `destination`.
+    pub async fn forward_messages(
+        &self,
+        destination: tl::enums::Peer,
+        message_ids: &[i32],
+        source:      tl::enums::Peer,
+    ) -> Result<(), InvocationError> {
+        let cache = self.inner.peer_cache.lock().await;
+        let to_peer   = cache.peer_to_input(&destination);
+        let from_peer = cache.peer_to_input(&source);
+        drop(cache);
+
+        let req = tl::functions::messages::ForwardMessages {
+            silent:            false,
+            background:        false,
+            with_my_score:     false,
+            drop_author:       false,
+            drop_media_captions: false,
+            noforwards:        false,
+            from_peer:         from_peer,
+            id:                message_ids.to_vec(),
+            random_id:         (0..message_ids.len()).map(|_| random_i64()).collect(),
+            to_peer:           to_peer,
+            top_msg_id:        None,
+            reply_to:          None,
+            schedule_date:     None,
+            schedule_repeat_period: None,
+            send_as:           None,
+            quick_reply_shortcut: None,
+            effect:            None,
+            video_timestamp:   None,
+            allow_paid_stars:  None,
+            allow_paid_floodskip: false,
+            suggested_post:    None,
+        };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
+
+    /// Delete messages by ID.
+    pub async fn delete_messages(&self, message_ids: Vec<i32>, revoke: bool) -> Result<(), InvocationError> {
+        let req = tl::functions::messages::DeleteMessages { revoke, id: message_ids };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
+
+    /// Get messages by their IDs from a peer.
+    pub async fn get_messages_by_id(
+        &self,
+        peer: tl::enums::Peer,
+        ids:  &[i32],
+    ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let id_list: Vec<tl::enums::InputMessage> = ids.iter()
+            .map(|&id| tl::enums::InputMessage::Id(tl::types::InputMessageId { id }))
+            .collect();
+        let req  = tl::functions::channels::GetMessages {
+            channel: match &input_peer {
+                tl::enums::InputPeer::Channel(c) =>
+                    tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                        channel_id: c.channel_id, access_hash: c.access_hash
+                    }),
+                _ => return self.get_messages_user(input_peer, id_list).await,
+            },
+            id: id_list,
+        };
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(m)    => m.messages,
+            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
+            tl::enums::messages::Messages::NotModified(_) => vec![],
+        };
+        Ok(msgs.into_iter().map(update::IncomingMessage::from_raw).collect())
+    }
+
+    async fn get_messages_user(
+        &self,
+        _peer: tl::enums::InputPeer,
+        ids:   Vec<tl::enums::InputMessage>,
+    ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
+        let req = tl::functions::messages::GetMessages { id: ids };
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(m)    => m.messages,
+            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
+            tl::enums::messages::Messages::NotModified(_) => vec![],
+        };
+        Ok(msgs.into_iter().map(update::IncomingMessage::from_raw).collect())
+    }
+
+    /// Get the pinned message in a chat.
+    pub async fn get_pinned_message(
+        &self,
+        peer: tl::enums::Peer,
+    ) -> Result<Option<update::IncomingMessage>, InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::Search {
+            peer: input_peer,
+            q: String::new(),
+            from_id: None,
+            saved_peer_id: None,
+            saved_reaction: None,
+            top_msg_id: None,
+            filter: tl::enums::MessagesFilter::InputMessagesFilterPinned,
+            min_date: 0,
+            max_date: 0,
+            offset_id: 0,
+            add_offset: 0,
+            limit: 1,
+            max_id: 0,
+            min_id: 0,
+            hash: 0,
+        };
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(m)    => m.messages,
+            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
+            tl::enums::messages::Messages::NotModified(_) => vec![],
+        };
+        Ok(msgs.into_iter().next().map(update::IncomingMessage::from_raw))
+    }
+
+    /// Pin a message in a chat.
+    pub async fn pin_message(
+        &self,
+        peer:       tl::enums::Peer,
+        message_id: i32,
+        silent:     bool,
+        unpin:      bool,
+        pm_oneside: bool,
+    ) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::UpdatePinnedMessage {
+            silent,
+            unpin,
+            pm_oneside,
+            peer: input_peer,
+            id:   message_id,
+        };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
+
+    /// Unpin a specific message.
+    pub async fn unpin_message(
+        &self,
+        peer:       tl::enums::Peer,
+        message_id: i32,
+    ) -> Result<(), InvocationError> {
+        self.pin_message(peer, message_id, true, true, false).await
+    }
+
+    /// Unpin all messages in a chat.
+    pub async fn unpin_all_messages(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::UnpinAllMessages {
+            peer:      input_peer,
+            top_msg_id: None,
+            saved_peer_id: None,
+        };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
+
+    // ── Message search ─────────────────────────────────────────────────────
+
+    /// Search messages in a chat.
+    pub async fn search_messages(
+        &self,
+        peer:  tl::enums::Peer,
+        query: &str,
+        limit: i32,
+    ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::Search {
+            peer:         input_peer,
+            q:            query.to_string(),
+            from_id:      None,
+            saved_peer_id: None,
+            saved_reaction: None,
+            top_msg_id:   None,
+            filter:       tl::enums::MessagesFilter::InputMessagesFilterEmpty,
+            min_date:     0,
+            max_date:     0,
+            offset_id:    0,
+            add_offset:   0,
+            limit,
+            max_id:       0,
+            min_id:       0,
+            hash:         0,
+        };
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(m)    => m.messages,
+            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
+            tl::enums::messages::Messages::NotModified(_) => vec![],
+        };
+        Ok(msgs.into_iter().map(update::IncomingMessage::from_raw).collect())
+    }
+
+    /// Search messages globally across all chats.
+    pub async fn search_global(
+        &self,
+        query: &str,
+        limit: i32,
+    ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
+        let req = tl::functions::messages::SearchGlobal {
+            broadcasts_only: false,
+            groups_only:     false,
+            users_only:      false,
+            folder_id:       None,
+            q:               query.to_string(),
+            filter:          tl::enums::MessagesFilter::InputMessagesFilterEmpty,
+            min_date:        0,
+            max_date:        0,
+            offset_rate:     0,
+            offset_peer:     tl::enums::InputPeer::Empty,
+            offset_id:       0,
+            limit,
+        };
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(m)    => m.messages,
+            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
+            tl::enums::messages::Messages::NotModified(_) => vec![],
+        };
+        Ok(msgs.into_iter().map(update::IncomingMessage::from_raw).collect())
+    }
+
+    // ── Callback / Inline Queries ──────────────────────────────────────────
+
     pub async fn answer_callback_query(
         &self,
         query_id: i64,
-        text: Option<&str>,
-        alert: bool,
+        text:     Option<&str>,
+        alert:    bool,
     ) -> Result<bool, InvocationError> {
-        let req = layer_tl_types::functions::messages::SetBotCallbackAnswer {
+        let req = tl::functions::messages::SetBotCallbackAnswer {
             alert,
             query_id,
-            message: text.map(|s| s.to_string()),
-            url:     None,
+            message:    text.map(|s| s.to_string()),
+            url:        None,
             cache_time: 0,
         };
         let body = self.rpc_call_raw(&req).await?;
         Ok(!body.is_empty())
     }
 
-    // ── Inline Queries ─────────────────────────────────────────────────────
-
-    /// Answer an inline query.
-    ///
-    /// `results` should be a list of `tl::enums::InputBotInlineResult`.
     pub async fn answer_inline_query(
         &self,
-        query_id: i64,
-        results: Vec<layer_tl_types::enums::InputBotInlineResult>,
-        cache_time: i32,
+        query_id:    i64,
+        results:     Vec<tl::enums::InputBotInlineResult>,
+        cache_time:  i32,
         is_personal: bool,
         next_offset: Option<String>,
     ) -> Result<bool, InvocationError> {
-        let req = layer_tl_types::functions::messages::SetInlineBotResults {
-            gallery:     false,
-            private:     is_personal,
+        let req = tl::functions::messages::SetInlineBotResults {
+            gallery:        false,
+            private:        is_personal,
             query_id,
             results,
             cache_time,
             next_offset,
-            switch_pm:   None,
+            switch_pm:      None,
             switch_webview: None,
         };
         let body = self.rpc_call_raw(&req).await?;
@@ -729,95 +1048,240 @@ impl Client {
 
     // ── Dialogs ────────────────────────────────────────────────────────────
 
-    /// Fetch up to `limit` dialogs (conversations), most recent first.
-    ///
-    /// Returns a `Vec<Dialog>`. For paginated access, call repeatedly with
-    /// offset parameters derived from the last result.
+    /// Fetch up to `limit` dialogs, most recent first. Populates entity/message.
     pub async fn get_dialogs(&self, limit: i32) -> Result<Vec<Dialog>, InvocationError> {
-        let req = layer_tl_types::functions::messages::GetDialogs {
+        let req = tl::functions::messages::GetDialogs {
             exclude_pinned: false,
             folder_id:      None,
             offset_date:    0,
             offset_id:      0,
-            offset_peer:    layer_tl_types::enums::InputPeer::Empty,
+            offset_peer:    tl::enums::InputPeer::Empty,
             limit,
             hash:           0,
         };
 
         let body    = self.rpc_call_raw(&req).await?;
         let mut cur = Cursor::from_slice(&body);
-        let dialogs = match layer_tl_types::enums::messages::Dialogs::deserialize(&mut cur)? {
-            layer_tl_types::enums::messages::Dialogs::Dialogs(d) => d,
-            layer_tl_types::enums::messages::Dialogs::Slice(d)   => {
-                layer_tl_types::types::messages::Dialogs {
-                    dialogs: d.dialogs, messages: d.messages, chats: d.chats, users: d.users,
-                }
-            }
-            layer_tl_types::enums::messages::Dialogs::NotModified(_) => {
-                return Ok(vec![]);
-            }
+        let raw = match tl::enums::messages::Dialogs::deserialize(&mut cur)? {
+            tl::enums::messages::Dialogs::Dialogs(d) => d,
+            tl::enums::messages::Dialogs::Slice(d)   => tl::types::messages::Dialogs {
+                dialogs: d.dialogs, messages: d.messages, chats: d.chats, users: d.users,
+            },
+            tl::enums::messages::Dialogs::NotModified(_) => return Ok(vec![]),
         };
 
-        let result = dialogs.dialogs.into_iter().map(|d| Dialog {
-            raw:     d,
-            message: None,
-            entity:  None,
+        // Build message map
+        let msg_map: HashMap<i32, tl::enums::Message> = raw.messages.into_iter()
+            .filter_map(|m| {
+                let id = match &m {
+                    tl::enums::Message::Message(x) => x.id,
+                    tl::enums::Message::Service(x) => x.id,
+                    tl::enums::Message::Empty(x)   => x.id,
+                };
+                Some((id, m))
+            })
+            .collect();
+
+        // Build user map
+        let user_map: HashMap<i64, tl::enums::User> = raw.users.into_iter()
+            .filter_map(|u| {
+                if let tl::enums::User::User(ref uu) = u { Some((uu.id, u)) } else { None }
+            })
+            .collect();
+
+        // Build chat map
+        let chat_map: HashMap<i64, tl::enums::Chat> = raw.chats.into_iter()
+            .filter_map(|c| {
+                let id = match &c {
+                    tl::enums::Chat::Chat(x)             => x.id,
+                    tl::enums::Chat::Forbidden(x)    => x.id,
+                    tl::enums::Chat::Channel(x)          => x.id,
+                    tl::enums::Chat::ChannelForbidden(x) => x.id,
+                    tl::enums::Chat::Empty(x)            => x.id,
+                };
+                Some((id, c))
+            })
+            .collect();
+
+        // Cache peers for future access_hash lookups
+        {
+            let u_list: Vec<tl::enums::User> = user_map.values().cloned().collect();
+            let c_list: Vec<tl::enums::Chat> = chat_map.values().cloned().collect();
+            self.cache_users_slice(&u_list).await;
+            self.cache_chats_slice(&c_list).await;
+        }
+
+        let result = raw.dialogs.into_iter().map(|d| {
+            let top_id = match &d { tl::enums::Dialog::Dialog(x) => x.top_message, _ => 0 };
+            let peer   = match &d { tl::enums::Dialog::Dialog(x) => Some(&x.peer), _ => None };
+
+            let message = msg_map.get(&top_id).cloned();
+            let entity = peer.and_then(|p| match p {
+                tl::enums::Peer::User(u) => user_map.get(&u.user_id).cloned(),
+                _ => None,
+            });
+            let chat = peer.and_then(|p| match p {
+                tl::enums::Peer::Chat(c)    => chat_map.get(&c.chat_id).cloned(),
+                tl::enums::Peer::Channel(c) => chat_map.get(&c.channel_id).cloned(),
+                _ => None,
+            });
+
+            Dialog { raw: d, message, entity, chat }
         }).collect();
+
         Ok(result)
     }
 
-    // ── Messages ───────────────────────────────────────────────────────────
+    /// Delete a dialog (leave/delete the conversation).
+    pub async fn delete_dialog(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::DeleteHistory {
+            just_clear:  false,
+            revoke:      false,
+            peer:        input_peer,
+            max_id:      0,
+            min_date:    None,
+            max_date:    None,
+        };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
 
-    /// Fetch messages from a peer's history.
+    /// Mark all messages in a chat as read.
+    pub async fn mark_as_read(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        match &input_peer {
+            tl::enums::InputPeer::Channel(c) => {
+                let req = tl::functions::channels::ReadHistory {
+                    channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                        channel_id: c.channel_id, access_hash: c.access_hash,
+                    }),
+                    max_id: 0,
+                };
+                self.rpc_call_raw(&req).await?;
+            }
+            _ => {
+                let req = tl::functions::messages::ReadHistory { peer: input_peer, max_id: 0 };
+                self.rpc_call_raw(&req).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Clear unread mention markers.
+    pub async fn clear_mentions(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::ReadMentions { peer: input_peer, top_msg_id: None };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
+
+    // ── Chat actions (typing, etc) ─────────────────────────────────────────
+
+    /// Send a chat action (typing indicator, uploading photo, etc).
+    ///
+    /// For "typing" use `tl::enums::SendMessageAction::Typing`.
+    pub async fn send_chat_action(
+        &self,
+        peer:   tl::enums::Peer,
+        action: tl::enums::SendMessageAction,
+    ) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::SetTyping {
+            peer: input_peer,
+            top_msg_id: None,
+            action,
+        };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
+
+    // ── Join / invite links ────────────────────────────────────────────────
+
+    /// Join a public chat or channel by username/peer.
+    pub async fn join_chat(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        match input_peer {
+            tl::enums::InputPeer::Channel(c) => {
+                let req = tl::functions::channels::JoinChannel {
+                    channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                        channel_id: c.channel_id, access_hash: c.access_hash,
+                    }),
+                };
+                self.rpc_call_raw(&req).await?;
+            }
+            tl::enums::InputPeer::Chat(c) => {
+                let req = tl::functions::messages::AddChatUser {
+                    chat_id:  c.chat_id,
+                    user_id:  tl::enums::InputUser::UserSelf,
+                    fwd_limit: 0,
+                };
+                self.rpc_call_raw(&req).await?;
+            }
+            _ => return Err(InvocationError::Deserialize("cannot join this peer type".into())),
+        }
+        Ok(())
+    }
+
+    /// Accept and join via an invite link.
+    pub async fn accept_invite_link(&self, link: &str) -> Result<(), InvocationError> {
+        let hash = Self::parse_invite_hash(link)
+            .ok_or_else(|| InvocationError::Deserialize(format!("invalid invite link: {link}")))?;
+        let req = tl::functions::messages::ImportChatInvite { hash: hash.to_string() };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
+    }
+
+    /// Extract hash from `https://t.me/+HASH` or `https://t.me/joinchat/HASH`.
+    pub fn parse_invite_hash(link: &str) -> Option<&str> {
+        if let Some(pos) = link.find("/+") {
+            return Some(&link[pos + 2..]);
+        }
+        if let Some(pos) = link.find("/joinchat/") {
+            return Some(&link[pos + 10..]);
+        }
+        None
+    }
+
+    // ── Message history (paginated) ────────────────────────────────────────
+
+    /// Fetch a page of messages from a peer's history.
     pub async fn get_messages(
         &self,
-        peer: layer_tl_types::enums::InputPeer,
-        limit: i32,
+        peer:      tl::enums::InputPeer,
+        limit:     i32,
         offset_id: i32,
     ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
-        let req = layer_tl_types::functions::messages::GetHistory {
-            peer,
-            offset_id,
-            offset_date: 0,
-            add_offset:  0,
-            limit,
-            max_id:      0,
-            min_id:      0,
-            hash:        0,
+        let req = tl::functions::messages::GetHistory {
+            peer, offset_id, offset_date: 0, add_offset: 0,
+            limit, max_id: 0, min_id: 0, hash: 0,
         };
-
         let body    = self.rpc_call_raw(&req).await?;
         let mut cur = Cursor::from_slice(&body);
-        let messages = match layer_tl_types::enums::messages::Messages::deserialize(&mut cur)? {
-            layer_tl_types::enums::messages::Messages::Messages(m) => m.messages,
-            layer_tl_types::enums::messages::Messages::Slice(m)    => m.messages,
-            layer_tl_types::enums::messages::Messages::ChannelMessages(m) => m.messages,
-            layer_tl_types::enums::messages::Messages::NotModified(_)    => vec![],
+        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(m)    => m.messages,
+            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
+            tl::enums::messages::Messages::NotModified(_) => vec![],
         };
-
-        Ok(messages.into_iter().map(update::IncomingMessage::from_raw).collect())
+        Ok(msgs.into_iter().map(update::IncomingMessage::from_raw).collect())
     }
 
     // ── Peer resolution ────────────────────────────────────────────────────
 
-    /// Resolve a peer string (`"me"`, `"@username"`, phone, or numeric ID)
-    /// to an [`InputPeer`](layer_tl_types::enums::InputPeer).
+    /// Resolve a peer string to a [`tl::enums::Peer`].
     pub async fn resolve_peer(
         &self,
         peer: &str,
-    ) -> Result<layer_tl_types::enums::Peer, InvocationError> {
+    ) -> Result<tl::enums::Peer, InvocationError> {
         match peer.trim() {
-            "me" | "self" => Ok(layer_tl_types::enums::Peer::User(
-                layer_tl_types::types::PeerUser { user_id: 0 }
-            )),
+            "me" | "self" => Ok(tl::enums::Peer::User(tl::types::PeerUser { user_id: 0 })),
             username if username.starts_with('@') => {
                 self.resolve_username(&username[1..]).await
             }
             id_str => {
                 if let Ok(id) = id_str.parse::<i64>() {
-                    Ok(layer_tl_types::enums::Peer::User(
-                        layer_tl_types::types::PeerUser { user_id: id }
-                    ))
+                    Ok(tl::enums::Peer::User(tl::types::PeerUser { user_id: id }))
                 } else {
                     Err(InvocationError::Deserialize(format!("cannot resolve peer: {peer}")))
                 }
@@ -825,33 +1289,33 @@ impl Client {
         }
     }
 
-    async fn resolve_username(&self, username: &str) -> Result<layer_tl_types::enums::Peer, InvocationError> {
-        let req  = layer_tl_types::functions::contacts::ResolveUsername { username: username.to_string(), referer: None };
+    async fn resolve_username(&self, username: &str) -> Result<tl::enums::Peer, InvocationError> {
+        let req  = tl::functions::contacts::ResolveUsername {
+            username: username.to_string(), referer: None,
+        };
         let body = self.rpc_call_raw(&req).await?;
         let mut cur = Cursor::from_slice(&body);
-        let resolved = match layer_tl_types::enums::contacts::ResolvedPeer::deserialize(&mut cur)? {
-            layer_tl_types::enums::contacts::ResolvedPeer::ResolvedPeer(r) => r,
+        let resolved = match tl::enums::contacts::ResolvedPeer::deserialize(&mut cur)? {
+            tl::enums::contacts::ResolvedPeer::ResolvedPeer(r) => r,
         };
+        // Cache users and chats from the resolution
+        self.cache_users_slice(&resolved.users).await;
+        self.cache_chats_slice(&resolved.chats).await;
         Ok(resolved.peer)
     }
 
     // ── Raw invoke ─────────────────────────────────────────────────────────
 
-    /// Invoke any TL function directly.
-    ///
-    /// Handles flood-wait and I/O retries according to the configured
-    /// [`RetryPolicy`].
+    /// Invoke any TL function directly, handling flood-wait retries.
     pub async fn invoke<R: RemoteCall>(&self, req: &R) -> Result<R::Return, InvocationError> {
         let body = self.rpc_call_raw(req).await?;
         let mut cur = Cursor::from_slice(&body);
         R::Return::deserialize(&mut cur).map_err(Into::into)
     }
 
-    /// Invoke and return the raw response bytes (before TL deserialization).
     async fn rpc_call_raw<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let mut fail_count   = NonZeroU32::new(1).unwrap();
         let mut slept_so_far = Duration::default();
-
         loop {
             match self.do_rpc_call(req).await {
                 Ok(body) => return Ok(body),
@@ -878,14 +1342,14 @@ impl Client {
     // ── initConnection ─────────────────────────────────────────────────────
 
     async fn init_connection(&self) -> Result<(), InvocationError> {
-        use layer_tl_types::functions::{InvokeWithLayer, InitConnection, help::GetConfig};
+        use tl::functions::{InvokeWithLayer, InitConnection, help::GetConfig};
         let req = InvokeWithLayer {
-            layer: layer_tl_types::LAYER,
+            layer: tl::LAYER,
             query: InitConnection {
                 api_id:           self.inner.api_id,
                 device_model:     "Linux".to_string(),
                 system_version:   "1.0".to_string(),
-                app_version:      "0.1.0".to_string(),
+                app_version:      env!("CARGO_PKG_VERSION").to_string(),
                 system_lang_code: "en".to_string(),
                 lang_pack:        "".to_string(),
                 lang_code:        "en".to_string(),
@@ -901,12 +1365,10 @@ impl Client {
         };
 
         let mut cur = Cursor::from_slice(&body);
-        if let Ok(layer_tl_types::enums::Config::Config(cfg)) =
-            layer_tl_types::enums::Config::deserialize(&mut cur)
-        {
+        if let Ok(tl::enums::Config::Config(cfg)) = tl::enums::Config::deserialize(&mut cur) {
             let mut opts = self.inner.dc_options.lock().await;
             for opt in &cfg.dc_options {
-                let layer_tl_types::enums::DcOption::DcOption(o) = opt;
+                let tl::enums::DcOption::DcOption(o) = opt;
                 if o.media_only || o.cdn || o.tcpo_only || o.ipv6 { continue; }
                 let addr = format!("{}:{}", o.ip_address, o.port);
                 let entry = opts.entry(o.id).or_insert_with(|| DcEntry {
@@ -928,7 +1390,6 @@ impl Client {
             opts.get(&new_dc_id).map(|e| e.addr.clone())
                 .unwrap_or_else(|| "149.154.167.51:443".to_string())
         };
-
         log::info!("[layer] Migrating to DC{new_dc_id} ({addr}) …");
 
         let saved_key = {
@@ -959,25 +1420,41 @@ impl Client {
         Ok(())
     }
 
+    // ── Cache helpers ──────────────────────────────────────────────────────
+
+    async fn cache_user(&self, user: &tl::enums::User) {
+        self.inner.peer_cache.lock().await.cache_user(user);
+    }
+
+    async fn cache_users_slice(&self, users: &[tl::enums::User]) {
+        let mut cache = self.inner.peer_cache.lock().await;
+        cache.cache_users(users);
+    }
+
+    async fn cache_chats_slice(&self, chats: &[tl::enums::Chat]) {
+        let mut cache = self.inner.peer_cache.lock().await;
+        cache.cache_chats(chats);
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────
 
     async fn get_password_info(&self) -> Result<PasswordToken, InvocationError> {
-        let body    = self.rpc_call_raw(&layer_tl_types::functions::account::GetPassword {}).await?;
+        let body    = self.rpc_call_raw(&tl::functions::account::GetPassword {}).await?;
         let mut cur = Cursor::from_slice(&body);
-        let pw = match layer_tl_types::enums::account::Password::deserialize(&mut cur)? {
-            layer_tl_types::enums::account::Password::Password(p) => p,
+        let pw = match tl::enums::account::Password::deserialize(&mut cur)? {
+            tl::enums::account::Password::Password(p) => p,
         };
         Ok(PasswordToken { password: pw })
     }
 
-    fn make_send_code_req(&self, phone: &str) -> layer_tl_types::functions::auth::SendCode {
-        layer_tl_types::functions::auth::SendCode {
+    fn make_send_code_req(&self, phone: &str) -> tl::functions::auth::SendCode {
+        tl::functions::auth::SendCode {
             phone_number: phone.to_string(),
             api_id:       self.inner.api_id,
             api_hash:     self.inner.api_hash.clone(),
-            settings:     layer_tl_types::enums::CodeSettings::CodeSettings(
-                layer_tl_types::types::CodeSettings {
-                    allow_flashcall:  false, current_number: false, allow_app_hash: false,
+            settings:     tl::enums::CodeSettings::CodeSettings(
+                tl::types::CodeSettings {
+                    allow_flashcall: false, current_number: false, allow_app_hash: false,
                     allow_missed_call: false, allow_firebase: false, unknown_number: false,
                     logout_tokens: None, token: None, app_sandbox: None,
                 },
@@ -985,22 +1462,23 @@ impl Client {
         }
     }
 
-    fn extract_user_name(user: &layer_tl_types::enums::User) -> String {
+    fn extract_user_name(user: &tl::enums::User) -> String {
         match user {
-            layer_tl_types::enums::User::User(u) => {
-                format!("{} {}", u.first_name.as_deref().unwrap_or(""),
-                                  u.last_name.as_deref().unwrap_or(""))
+            tl::enums::User::User(u) => {
+                format!("{} {}",
+                    u.first_name.as_deref().unwrap_or(""),
+                    u.last_name.as_deref().unwrap_or(""))
                     .trim().to_string()
             }
-            layer_tl_types::enums::User::Empty(_) => "(unknown)".into(),
+            tl::enums::User::Empty(_) => "(unknown)".into(),
         }
     }
 
     fn extract_password_params(
-        algo: &layer_tl_types::enums::PasswordKdfAlgo,
+        algo: &tl::enums::PasswordKdfAlgo,
     ) -> Result<(&[u8], &[u8], &[u8], i32), InvocationError> {
         match algo {
-            layer_tl_types::enums::PasswordKdfAlgo::Sha256Sha256Pbkdf2Hmacsha512iter100000Sha256ModPow(a) => {
+            tl::enums::PasswordKdfAlgo::Sha256Sha256Pbkdf2Hmacsha512iter100000Sha256ModPow(a) => {
                 Ok((&a.salt1, &a.salt2, &a.p, a.g))
             }
             _ => Err(InvocationError::Deserialize("unsupported password KDF algo".into())),
@@ -1010,36 +1488,30 @@ impl Client {
 
 // ─── Connection ───────────────────────────────────────────────────────────────
 
-/// A single async MTProto connection to one DC.
 struct Connection {
-    stream:     TcpStream,
-    enc:        EncryptedSession,
+    stream: TcpStream,
+    enc:    EncryptedSession,
 }
 
 impl Connection {
     async fn connect_raw(addr: &str) -> Result<Self, InvocationError> {
         log::info!("[layer] Connecting to {addr} (DH) …");
         let mut stream = TcpStream::connect(addr).await?;
-
-        // Send abridged init byte
         stream.write_all(&[0xef]).await?;
 
         let mut plain = Session::new();
 
-        // Step 1
         let (req1, s1) = auth::step1().map_err(|e| InvocationError::Deserialize(e.to_string()))?;
         send_plain(&mut stream, &plain.pack(&req1).to_plaintext_bytes()).await?;
-        let res_pq: layer_tl_types::enums::ResPq = recv_plain(&mut stream).await?;
+        let res_pq: tl::enums::ResPq = recv_plain(&mut stream).await?;
 
-        // Step 2
         let (req2, s2) = auth::step2(s1, res_pq).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
         send_plain(&mut stream, &plain.pack(&req2).to_plaintext_bytes()).await?;
-        let dh: layer_tl_types::enums::ServerDhParams = recv_plain(&mut stream).await?;
+        let dh: tl::enums::ServerDhParams = recv_plain(&mut stream).await?;
 
-        // Step 3
         let (req3, s3) = auth::step3(s2, dh).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
         send_plain(&mut stream, &plain.pack(&req3).to_plaintext_bytes()).await?;
-        let ans: layer_tl_types::enums::SetClientDhParamsAnswer = recv_plain(&mut stream).await?;
+        let ans: tl::enums::SetClientDhParamsAnswer = recv_plain(&mut stream).await?;
 
         let done = auth::finish(s3, ans).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
         log::info!("[layer] DH complete ✓");
@@ -1051,9 +1523,9 @@ impl Connection {
     }
 
     async fn connect_with_key(
-        addr: &str,
-        auth_key: [u8; 256],
-        first_salt: i64,
+        addr:        &str,
+        auth_key:    [u8; 256],
+        first_salt:  i64,
         time_offset: i32,
     ) -> Result<Self, InvocationError> {
         let mut stream = TcpStream::connect(addr).await?;
@@ -1074,9 +1546,7 @@ impl Connection {
         self.recv_rpc().await
     }
 
-    /// Like `rpc_call` but only requires `Serializable`, bypassing the `Deserializable`
-    /// bound on `RemoteCall` that the code-generated `InvokeWithLayer` imposes.
-    async fn rpc_call_serializable<S: layer_tl_types::Serializable>(&mut self, req: &S) -> Result<Vec<u8>, InvocationError> {
+    async fn rpc_call_serializable<S: tl::Serializable>(&mut self, req: &S) -> Result<Vec<u8>, InvocationError> {
         let wire = self.enc.pack_serializable(req);
         send_abridged(&mut self.stream, &wire).await?;
         self.recv_rpc().await
@@ -1089,39 +1559,35 @@ impl Connection {
                 .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
             if msg.salt != 0 { self.enc.salt = msg.salt; }
             match unwrap_envelope(msg.body)? {
-                EnvelopeResult::Payload(p) => return Ok(p),
-                EnvelopeResult::Updates(updates) => {
-                    // Updates received while waiting for RPC result — buffer or discard
-                    // In production we'd forward these to the update channel
-                    log::debug!("[layer] {} updates received during RPC call", updates.len());
+                EnvelopeResult::Payload(p)  => return Ok(p),
+                EnvelopeResult::Updates(us) => {
+                    log::debug!("[layer] {} updates received during RPC call", us.len());
                 }
                 EnvelopeResult::None => {}
             }
         }
     }
 
-    /// Receive a single raw frame and parse updates from it (for the update loop).
     async fn recv_once(&mut self) -> Result<Vec<update::Update>, InvocationError> {
         let mut raw = recv_abridged(&mut self.stream).await?;
         let msg = self.enc.unpack(&mut raw)
             .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
         if msg.salt != 0 { self.enc.salt = msg.salt; }
         match unwrap_envelope(msg.body)? {
-            EnvelopeResult::Updates(updates) => Ok(updates),
+            EnvelopeResult::Updates(us) => Ok(us),
             _ => Ok(vec![]),
         }
     }
 
     async fn send_ping(&mut self) -> Result<(), InvocationError> {
-        let ping_id = random_i64();
-        let req = layer_tl_types::functions::Ping { ping_id };
+        let req = tl::functions::Ping { ping_id: random_i64() };
         let wire = self.enc.pack(&req);
         send_abridged(&mut self.stream, &wire).await?;
         Ok(())
     }
 }
 
-// ─── Abridged transport helpers ───────────────────────────────────────────────
+// ─── Abridged transport ───────────────────────────────────────────────────────
 
 async fn send_abridged(stream: &mut TcpStream, data: &[u8]) -> Result<(), InvocationError> {
     let words = data.len() / 4;
@@ -1156,7 +1622,9 @@ async fn send_plain(stream: &mut TcpStream, data: &[u8]) -> Result<(), Invocatio
 
 async fn recv_plain<T: Deserializable>(stream: &mut TcpStream) -> Result<T, InvocationError> {
     let raw = recv_abridged(stream).await?;
-    if raw.len() < 20 { return Err(InvocationError::Deserialize("plaintext frame too short".into())); }
+    if raw.len() < 20 {
+        return Err(InvocationError::Deserialize("plaintext frame too short".into()));
+    }
     if u64::from_le_bytes(raw[..8].try_into().unwrap()) != 0 {
         return Err(InvocationError::Deserialize("expected auth_key_id=0 in plaintext".into()));
     }
@@ -1165,7 +1633,7 @@ async fn recv_plain<T: Deserializable>(stream: &mut TcpStream) -> Result<T, Invo
     T::deserialize(&mut cur).map_err(Into::into)
 }
 
-// ─── MTProto envelope unwrapper ───────────────────────────────────────────────
+// ─── MTProto envelope ─────────────────────────────────────────────────────────
 
 enum EnvelopeResult {
     Payload(Vec<u8>),
@@ -1174,23 +1642,31 @@ enum EnvelopeResult {
 }
 
 fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
-    if body.len() < 4 { return Err(InvocationError::Deserialize("body < 4 bytes".into())); }
+    if body.len() < 4 {
+        return Err(InvocationError::Deserialize("body < 4 bytes".into()));
+    }
     let cid = u32::from_le_bytes(body[..4].try_into().unwrap());
 
     match cid {
         ID_RPC_RESULT => {
-            if body.len() < 12 { return Err(InvocationError::Deserialize("rpc_result too short".into())); }
+            if body.len() < 12 {
+                return Err(InvocationError::Deserialize("rpc_result too short".into()));
+            }
             unwrap_envelope(body[12..].to_vec())
         }
         ID_RPC_ERROR => {
-            if body.len() < 8 { return Err(InvocationError::Deserialize("rpc_error too short".into())); }
+            if body.len() < 8 {
+                return Err(InvocationError::Deserialize("rpc_error too short".into()));
+            }
             let code    = i32::from_le_bytes(body[4..8].try_into().unwrap());
             let message = tl_read_string(&body[8..]).unwrap_or_default();
             Err(InvocationError::Rpc(RpcError::from_telegram(code, &message)))
         }
         ID_MSG_CONTAINER => {
-            if body.len() < 8 { return Err(InvocationError::Deserialize("container too short".into())); }
-            let count   = u32::from_le_bytes(body[4..8].try_into().unwrap()) as usize;
+            if body.len() < 8 {
+                return Err(InvocationError::Deserialize("container too short".into()));
+            }
+            let count = u32::from_le_bytes(body[4..8].try_into().unwrap()) as usize;
             let mut pos = 8usize;
             let mut payload: Option<Vec<u8>> = None;
             let mut updates_buf: Vec<update::Update> = Vec::new();
@@ -1223,44 +1699,14 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
         ID_PONG | ID_MSGS_ACK | ID_NEW_SESSION | ID_BAD_SERVER_SALT | ID_BAD_MSG_NOTIFY => {
             Ok(EnvelopeResult::None)
         }
-        // Updates
         ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED | ID_UPDATE_SHORT_MSG => {
-            parse_updates_envelope(cid, &body)
+            Ok(EnvelopeResult::Updates(update::parse_updates(&body)))
         }
         _ => Ok(EnvelopeResult::Payload(body)),
     }
 }
 
-fn parse_updates_envelope(_cid: u32, body: &[u8]) -> Result<EnvelopeResult, InvocationError> {
-    let updates = update::parse_updates(body);
-    Ok(EnvelopeResult::Updates(updates))
-}
-
-// ─── Helper functions ─────────────────────────────────────────────────────────
-
-fn peer_to_input_peer(peer: layer_tl_types::enums::Peer) -> layer_tl_types::enums::InputPeer {
-    match peer {
-        layer_tl_types::enums::Peer::User(u) => {
-            if u.user_id == 0 {
-                layer_tl_types::enums::InputPeer::PeerSelf
-            } else {
-                layer_tl_types::enums::InputPeer::User(
-                    layer_tl_types::types::InputPeerUser { user_id: u.user_id, access_hash: 0 }
-                )
-            }
-        }
-        layer_tl_types::enums::Peer::Chat(c) => {
-            layer_tl_types::enums::InputPeer::Chat(
-                layer_tl_types::types::InputPeerChat { chat_id: c.chat_id }
-            )
-        }
-        layer_tl_types::enums::Peer::Channel(c) => {
-            layer_tl_types::enums::InputPeer::Channel(
-                layer_tl_types::types::InputPeerChannel { channel_id: c.channel_id, access_hash: 0 }
-            )
-        }
-    }
-}
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 fn random_i64() -> i64 {
     let mut b = [0u8; 8];
@@ -1271,8 +1717,9 @@ fn random_i64() -> i64 {
 fn tl_read_bytes(data: &[u8]) -> Option<Vec<u8>> {
     if data.is_empty() { return Some(vec![]); }
     let (len, start) = if data[0] < 254 { (data[0] as usize, 1) }
-    else if data.len() >= 4 { (data[1] as usize | (data[2] as usize) << 8 | (data[3] as usize) << 16, 4) }
-    else { return None; };
+    else if data.len() >= 4 {
+        (data[1] as usize | (data[2] as usize) << 8 | (data[3] as usize) << 16, 4)
+    } else { return None; };
     if data.len() < start + len { return None; }
     Some(data[start..start + len].to_vec())
 }
