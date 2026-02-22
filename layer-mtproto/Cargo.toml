@@ -1,6 +1,7 @@
 [package]
 name        = "layer-mtproto"
 description = "MTProto 2.0 session management, message framing, DH key exchange and transport abstractions"
+readme = "README.md"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
@@ -11,8 +12,8 @@ keywords             = ["telegram", "mtproto", "session", "transport", "crypto"]
 categories           = ["network-programming", "api-bindings"]
 
 [dependencies]
-layer-tl-types = { path = "../layer-tl-types", version = "0.1.1", features = ["tl-mtproto"] }
-layer-crypto   = { path = "../layer-crypto",   version = "0.1.1" }
+layer-tl-types = { path = "../layer-tl-types", version = "0.1.2", features = ["tl-mtproto"] }
+layer-crypto   = { path = "../layer-crypto",   version = "0.1.2" }
 getrandom      = "0.2"
 num-bigint     = "0.4.6"
 num-traits     = "0.2.19"

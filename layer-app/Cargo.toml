@@ -1,6 +1,6 @@
 [package]
 name        = "layer-app"
-description = "Telegram client binary: phone login, 2FA, send messages — powered by layer-client"
+description = "Telegram client binary: phone login, 2FA, bot login, updates — powered by layer-client"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
@@ -14,4 +14,5 @@ name = "layer-app"
 path = "src/main.rs"
 
 [dependencies]
-layer-client = { path = "../layer-client", version = "0.1.1" }
+layer-client = { path = "../layer-client", version = "0.1.2" }
+tokio        = { version = "1", features = ["full"] }
