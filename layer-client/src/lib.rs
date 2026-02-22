@@ -483,7 +483,34 @@ impl Client {
             _update_rx: Arc::new(Mutex::new(update_rx)),
         };
 
-        client.init_connection().await?;
+        // If init_connection fails (e.g. stale auth key rejected by Telegram),
+        // drop the saved connection, do a fresh DH handshake, and retry once.
+        // This mirrors what grammers does: on a 404/bad-auth response it reconnects
+        // with a brand-new auth key rather than giving up or hanging.
+        if let Err(e) = client.init_connection().await {
+            log::warn!("[layer] init_connection failed ({e}), retrying with fresh connect …");
+
+            let socks5_r    = client.inner.socks5.clone();
+            let transport_r = client.inner.transport.clone();
+            let (new_conn, new_dc_id, new_opts) =
+                Self::fresh_connect(socks5_r.as_ref(), &transport_r).await?;
+
+            {
+                let mut conn_guard = client.inner.conn.lock().await;
+                *conn_guard = new_conn;
+            }
+            {
+                let mut dc_guard = client.inner.home_dc_id.lock().await;
+                *dc_guard = new_dc_id;
+            }
+            {
+                let mut opts_guard = client.inner.dc_options.lock().await;
+                *opts_guard = new_opts;
+            }
+
+            client.init_connection().await?;
+        }
+
         let _ = client.sync_pts_state().await;
         Ok(client)
     }
@@ -2076,30 +2103,47 @@ impl Connection {
         transport: &TransportKind,
     ) -> Result<Self, InvocationError> {
         log::info!("[layer] Connecting to {addr} (DH) …");
-        let (mut stream, frame_kind) = Self::open_stream(addr, socks5, transport).await?;
 
-        let mut plain = Session::new();
+        // Wrap the entire DH handshake in a timeout so a silent server
+        // response (e.g. a mis-framed transport error) never causes an
+        // infinite hang.
+        let addr2      = addr.to_string();
+        let socks5_c   = socks5.cloned();
+        let transport_c = transport.clone();
 
-        let (req1, s1) = auth::step1().map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-        send_frame(&mut stream, &plain.pack(&req1).to_plaintext_bytes(), &frame_kind).await?;
-        let res_pq: tl::enums::ResPq = recv_frame_plain(&mut stream, &frame_kind).await?;
+        let fut = async move {
+            let (mut stream, frame_kind) =
+                Self::open_stream(&addr2, socks5_c.as_ref(), &transport_c).await?;
 
-        let (req2, s2) = auth::step2(s1, res_pq).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-        send_frame(&mut stream, &plain.pack(&req2).to_plaintext_bytes(), &frame_kind).await?;
-        let dh: tl::enums::ServerDhParams = recv_frame_plain(&mut stream, &frame_kind).await?;
+            let mut plain = Session::new();
 
-        let (req3, s3) = auth::step3(s2, dh).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-        send_frame(&mut stream, &plain.pack(&req3).to_plaintext_bytes(), &frame_kind).await?;
-        let ans: tl::enums::SetClientDhParamsAnswer = recv_frame_plain(&mut stream, &frame_kind).await?;
+            let (req1, s1) = auth::step1().map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+            send_frame(&mut stream, &plain.pack(&req1).to_plaintext_bytes(), &frame_kind).await?;
+            let res_pq: tl::enums::ResPq = recv_frame_plain(&mut stream, &frame_kind).await?;
 
-        let done = auth::finish(s3, ans).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-        log::info!("[layer] DH complete ✓");
+            let (req2, s2) = auth::step2(s1, res_pq).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+            send_frame(&mut stream, &plain.pack(&req2).to_plaintext_bytes(), &frame_kind).await?;
+            let dh: tl::enums::ServerDhParams = recv_frame_plain(&mut stream, &frame_kind).await?;
 
-        Ok(Self {
-            stream,
-            enc: EncryptedSession::new(done.auth_key, done.first_salt, done.time_offset),
-            frame_kind,
-        })
+            let (req3, s3) = auth::step3(s2, dh).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+            send_frame(&mut stream, &plain.pack(&req3).to_plaintext_bytes(), &frame_kind).await?;
+            let ans: tl::enums::SetClientDhParamsAnswer = recv_frame_plain(&mut stream, &frame_kind).await?;
+
+            let done = auth::finish(s3, ans).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+            log::info!("[layer] DH complete ✓");
+
+            Ok::<Self, InvocationError>(Self {
+                stream,
+                enc: EncryptedSession::new(done.auth_key, done.first_salt, done.time_offset),
+                frame_kind,
+            })
+        };
+
+        tokio::time::timeout(Duration::from_secs(15), fut)
+            .await
+            .map_err(|_| InvocationError::Deserialize(
+                format!("DH handshake with {addr} timed out after 15 s")
+            ))?
     }
 
     async fn connect_with_key(
@@ -2110,12 +2154,25 @@ impl Connection {
         socks5:      Option<&crate::socks5::Socks5Config>,
         transport:   &TransportKind,
     ) -> Result<Self, InvocationError> {
-        let (stream, frame_kind) = Self::open_stream(addr, socks5, transport).await?;
-        Ok(Self {
-            stream,
-            enc: EncryptedSession::new(auth_key, first_salt, time_offset),
-            frame_kind,
-        })
+        let addr2       = addr.to_string();
+        let socks5_c    = socks5.cloned();
+        let transport_c = transport.clone();
+
+        let fut = async move {
+            let (stream, frame_kind) =
+                Self::open_stream(&addr2, socks5_c.as_ref(), &transport_c).await?;
+            Ok::<Self, InvocationError>(Self {
+                stream,
+                enc: EncryptedSession::new(auth_key, first_salt, time_offset),
+                frame_kind,
+            })
+        };
+
+        tokio::time::timeout(Duration::from_secs(15), fut)
+            .await
+            .map_err(|_| InvocationError::Deserialize(
+                format!("connect_with_key to {addr} timed out after 15 s")
+            ))?
     }
 
     fn auth_key_bytes(&self) -> [u8; 256] { self.enc.auth_key_bytes() }
@@ -2125,13 +2182,17 @@ impl Connection {
     async fn rpc_call<R: RemoteCall>(&mut self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let wire = self.enc.pack(req);
         send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        self.recv_rpc().await
+        tokio::time::timeout(Duration::from_secs(10), self.recv_rpc())
+            .await
+            .map_err(|_| InvocationError::Deserialize("rpc_call timed out after 10 s".into()))?
     }
 
     async fn rpc_call_serializable<S: tl::Serializable>(&mut self, req: &S) -> Result<Vec<u8>, InvocationError> {
         let wire = self.enc.pack_serializable(req);
         send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        self.recv_rpc().await
+        tokio::time::timeout(Duration::from_secs(10), self.recv_rpc())
+            .await
+            .map_err(|_| InvocationError::Deserialize("rpc_call_serializable timed out after 10 s".into()))?
     }
 
     async fn recv_rpc(&mut self) -> Result<Vec<u8>, InvocationError> {
@@ -2236,8 +2297,23 @@ async fn recv_abridged(stream: &mut TcpStream) -> Result<Vec<u8>, InvocationErro
     } else {
         let mut b = [0u8; 3];
         stream.read_exact(&mut b).await?;
-        b[0] as usize | (b[1] as usize) << 8 | (b[2] as usize) << 16
+        let w = b[0] as usize | (b[1] as usize) << 8 | (b[2] as usize) << 16;
+        // word count of 1 after 0xFF = Telegram 4-byte transport error code
+        if w == 1 {
+            let mut code_buf = [0u8; 4];
+            stream.read_exact(&mut code_buf).await?;
+            let code = i32::from_le_bytes(code_buf);
+            return Err(InvocationError::Rpc(RpcError::from_telegram(code, "transport error")));
+        }
+        w
     };
+    // Guard against implausibly large reads — a raw 4-byte transport error
+    // whose first byte was mis-read as a word count causes a hang otherwise.
+    if words == 0 || words > 0x8000 {
+        return Err(InvocationError::Deserialize(
+            format!("abridged: implausible word count {words} (possible transport error or framing mismatch)")
+        ));
+    }
     let mut buf = vec![0u8; words * 4];
     stream.read_exact(&mut buf).await?;
     Ok(buf)
