@@ -25,12 +25,19 @@ mod session;
 mod transport;
 mod two_factor_auth;
 pub mod update;
+pub mod parsers;
+pub mod media;
+pub mod participants;
+pub mod pts;
 
 pub use errors::{InvocationError, LoginToken, PasswordToken, RpcError, SignInError};
 pub use retry::{AutoSleep, NoRetries, RetryContext, RetryPolicy};
 pub use update::Update;
+pub use media::{UploadedFile, DownloadIter};
+pub use participants::Participant;
 
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::num::NonZeroU32;
 use std::ops::ControlFlow;
 use std::path::PathBuf;
@@ -67,11 +74,11 @@ const ID_UPDATE_SHORT_MSG: u32 = 0x313bc7f8;
 /// Caches access hashes for users and channels so every API call carries the
 /// correct hash without re-resolving peers.
 #[derive(Default)]
-struct PeerCache {
+pub(crate) struct PeerCache {
     /// user_id → access_hash
-    users:    HashMap<i64, i64>,
+    pub(crate) users:    HashMap<i64, i64>,
     /// channel_id → access_hash
-    channels: HashMap<i64, i64>,
+    pub(crate) channels: HashMap<i64, i64>,
 }
 
 impl PeerCache {
@@ -331,7 +338,8 @@ struct ClientInner {
     conn:         Mutex<Connection>,
     home_dc_id:   Mutex<i32>,
     dc_options:   Mutex<HashMap<i32, DcEntry>>,
-    peer_cache:   Mutex<PeerCache>,
+    pub(crate) peer_cache:   Mutex<PeerCache>,
+    pub(crate) pts_state:    Mutex<pts::PtsState>,
     api_id:       i32,
     api_hash:     String,
     session_path: PathBuf,
@@ -342,7 +350,7 @@ struct ClientInner {
 /// The main Telegram client. Cheap to clone — internally Arc-wrapped.
 #[derive(Clone)]
 pub struct Client {
-    inner: Arc<ClientInner>,
+    pub(crate) inner: Arc<ClientInner>,
     _update_rx: Arc<Mutex<mpsc::UnboundedReceiver<update::Update>>>,
 }
 
@@ -390,6 +398,7 @@ impl Client {
             home_dc_id:   Mutex::new(home_dc_id),
             dc_options:   Mutex::new(dc_opts),
             peer_cache:   Mutex::new(PeerCache::default()),
+            pts_state:    Mutex::new(pts::PtsState::default()),
             api_id:       config.api_id,
             api_hash:     config.api_hash,
             session_path: config.session_path,
@@ -403,6 +412,8 @@ impl Client {
         };
 
         client.init_connection().await?;
+        // Sync pts state so we can detect update gaps
+        let _ = client.sync_pts_state().await; // non-fatal on fresh sessions
         Ok(client)
     }
 
@@ -650,6 +661,13 @@ impl Client {
                         Ok(new_conn) => {
                             *self.inner.conn.lock().await = new_conn;
                             let _ = self.init_connection().await;
+                            // Fetch any updates missed during disconnect
+                            match self.get_difference().await {
+                                Ok(missed) => {
+                                    for u in missed { let _ = tx.send(u); }
+                                }
+                                Err(e2) => log::warn!("[layer] getDifference after reconnect failed: {e2}"),
+                            }
                         }
                         Err(e2) => {
                             log::error!("[layer] Reconnect failed: {e2}");
@@ -1132,7 +1150,78 @@ impl Client {
         Ok(result)
     }
 
-    /// Delete a dialog (leave/delete the conversation).
+    /// Internal helper: fetch dialogs with a custom GetDialogs request.
+    async fn get_dialogs_raw(
+        &self,
+        req: tl::functions::messages::GetDialogs,
+    ) -> Result<Vec<Dialog>, InvocationError> {
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let raw = match tl::enums::messages::Dialogs::deserialize(&mut cur)? {
+            tl::enums::messages::Dialogs::Dialogs(d) => d,
+            tl::enums::messages::Dialogs::Slice(d)   => tl::types::messages::Dialogs {
+                dialogs: d.dialogs, messages: d.messages, chats: d.chats, users: d.users,
+            },
+            tl::enums::messages::Dialogs::NotModified(_) => return Ok(vec![]),
+        };
+
+        let msg_map: HashMap<i32, tl::enums::Message> = raw.messages.into_iter()
+            .filter_map(|m| {
+                let id = match &m {
+                    tl::enums::Message::Message(x) => x.id,
+                    tl::enums::Message::Service(x) => x.id,
+                    tl::enums::Message::Empty(x)   => x.id,
+                };
+                Some((id, m))
+            })
+            .collect();
+
+        let user_map: HashMap<i64, tl::enums::User> = raw.users.into_iter()
+            .filter_map(|u| {
+                if let tl::enums::User::User(ref uu) = u { Some((uu.id, u)) } else { None }
+            })
+            .collect();
+
+        let chat_map: HashMap<i64, tl::enums::Chat> = raw.chats.into_iter()
+            .filter_map(|c| {
+                let id = match &c {
+                    tl::enums::Chat::Chat(x)             => x.id,
+                    tl::enums::Chat::Forbidden(x)    => x.id,
+                    tl::enums::Chat::Channel(x)          => x.id,
+                    tl::enums::Chat::ChannelForbidden(x) => x.id,
+                    tl::enums::Chat::Empty(x)            => x.id,
+                };
+                Some((id, c))
+            })
+            .collect();
+
+        {
+            let u_list: Vec<tl::enums::User> = user_map.values().cloned().collect();
+            let c_list: Vec<tl::enums::Chat> = chat_map.values().cloned().collect();
+            self.cache_users_slice(&u_list).await;
+            self.cache_chats_slice(&c_list).await;
+        }
+
+        let result = raw.dialogs.into_iter().map(|d| {
+            let top_id = match &d { tl::enums::Dialog::Dialog(x) => x.top_message, _ => 0 };
+            let peer   = match &d { tl::enums::Dialog::Dialog(x) => Some(&x.peer), _ => None };
+
+            let message = msg_map.get(&top_id).cloned();
+            let entity = peer.and_then(|p| match p {
+                tl::enums::Peer::User(u) => user_map.get(&u.user_id).cloned(),
+                _ => None,
+            });
+            let chat = peer.and_then(|p| match p {
+                tl::enums::Peer::Chat(c)    => chat_map.get(&c.chat_id).cloned(),
+                tl::enums::Peer::Channel(c) => chat_map.get(&c.channel_id).cloned(),
+                _ => None,
+            });
+
+            Dialog { raw: d, message, entity, chat }
+        }).collect();
+
+        Ok(result)
+    }
     pub async fn delete_dialog(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
         let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
         let req = tl::functions::messages::DeleteHistory {
@@ -1436,6 +1525,110 @@ impl Client {
         cache.cache_chats(chats);
     }
 
+    // Public versions used by sub-modules (media.rs, participants.rs, pts.rs)
+    #[doc(hidden)]
+    pub async fn cache_users_slice_pub(&self, users: &[tl::enums::User]) {
+        self.cache_users_slice(users).await;
+    }
+
+    #[doc(hidden)]
+    pub async fn cache_chats_slice_pub(&self, chats: &[tl::enums::Chat]) {
+        self.cache_chats_slice(chats).await;
+    }
+
+    /// Public RPC call for use by sub-modules.
+    #[doc(hidden)]
+    pub async fn rpc_call_raw_pub<R: layer_tl_types::RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
+        self.rpc_call_raw(req).await
+    }
+
+    // ── Paginated dialog iterator ──────────────────────────────────────────
+
+    /// Fetch dialogs page by page.
+    ///
+    /// Returns a [`DialogIter`] that can be advanced with [`DialogIter::next`].
+    /// This lets you page through all dialogs without loading them all at once.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # async fn f(client: layer_client::Client) -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut iter = client.iter_dialogs();
+    /// while let Some(dialog) = iter.next(&client).await? {
+    ///     println!("{}", dialog.title());
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub fn iter_dialogs(&self) -> DialogIter {
+        DialogIter {
+            offset_date: 0,
+            offset_id:   0,
+            offset_peer: tl::enums::InputPeer::Empty,
+            done:        false,
+            buffer:      VecDeque::new(),
+        }
+    }
+
+    /// Fetch messages from a peer, page by page.
+    ///
+    /// Returns a [`MessageIter`] that can be advanced with [`MessageIter::next`].
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # async fn f(client: layer_client::Client, peer: layer_tl_types::enums::Peer) -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut iter = client.iter_messages(peer);
+    /// while let Some(msg) = iter.next(&client).await? {
+    ///     println!("{:?}", msg.text());
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub fn iter_messages(&self, peer: tl::enums::Peer) -> MessageIter {
+        MessageIter {
+            peer,
+            offset_id: 0,
+            done:      false,
+            buffer:    VecDeque::new(),
+        }
+    }
+
+    // ── resolve_peer helper returning Result on unknown hash ───────────────
+
+    /// Try to resolve a peer to InputPeer, returning an error if the access_hash
+    /// is unknown (i.e. the peer has not been seen in any prior API call).
+    pub async fn resolve_to_input_peer(
+        &self,
+        peer: &tl::enums::Peer,
+    ) -> Result<tl::enums::InputPeer, InvocationError> {
+        let cache = self.inner.peer_cache.lock().await;
+        match peer {
+            tl::enums::Peer::User(u) => {
+                if u.user_id == 0 {
+                    return Ok(tl::enums::InputPeer::PeerSelf);
+                }
+                match cache.users.get(&u.user_id) {
+                    Some(&hash) => Ok(tl::enums::InputPeer::User(tl::types::InputPeerUser {
+                        user_id: u.user_id, access_hash: hash,
+                    })),
+                    None => Err(InvocationError::Deserialize(format!(
+                        "access_hash unknown for user {}; resolve via username first", u.user_id
+                    ))),
+                }
+            }
+            tl::enums::Peer::Chat(c) => {
+                Ok(tl::enums::InputPeer::Chat(tl::types::InputPeerChat { chat_id: c.chat_id }))
+            }
+            tl::enums::Peer::Channel(c) => {
+                match cache.channels.get(&c.channel_id) {
+                    Some(&hash) => Ok(tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+                        channel_id: c.channel_id, access_hash: hash,
+                    })),
+                    None => Err(InvocationError::Deserialize(format!(
+                        "access_hash unknown for channel {}; resolve via username first", c.channel_id
+                    ))),
+                }
+            }
+        }
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────
 
     async fn get_password_info(&self) -> Result<PasswordToken, InvocationError> {
@@ -1485,6 +1678,95 @@ impl Client {
         }
     }
 }
+
+// ─── Paginated iterators ──────────────────────────────────────────────────────
+
+/// Cursor-based iterator over dialogs. Created by [`Client::iter_dialogs`].
+pub struct DialogIter {
+    offset_date: i32,
+    offset_id:   i32,
+    offset_peer: tl::enums::InputPeer,
+    done:        bool,
+    buffer:      VecDeque<Dialog>,
+}
+
+impl DialogIter {
+    const PAGE_SIZE: i32 = 100;
+
+    /// Fetch the next dialog. Returns `None` when all dialogs have been yielded.
+    pub async fn next(&mut self, client: &Client) -> Result<Option<Dialog>, InvocationError> {
+        if let Some(d) = self.buffer.pop_front() { return Ok(Some(d)); }
+        if self.done { return Ok(None); }
+
+        let req = tl::functions::messages::GetDialogs {
+            exclude_pinned: false,
+            folder_id:      None,
+            offset_date:    self.offset_date,
+            offset_id:      self.offset_id,
+            offset_peer:    self.offset_peer.clone(),
+            limit:          Self::PAGE_SIZE,
+            hash:           0,
+        };
+
+        let dialogs = client.get_dialogs_raw(req).await?;
+        if dialogs.is_empty() || dialogs.len() < Self::PAGE_SIZE as usize {
+            self.done = true;
+        }
+
+        // Prepare cursor for next page
+        if let Some(last) = dialogs.last() {
+            self.offset_date = last.message.as_ref().map(|m| match m {
+                tl::enums::Message::Message(x) => x.date,
+                tl::enums::Message::Service(x) => x.date,
+                _ => 0,
+            }).unwrap_or(0);
+            self.offset_id = last.top_message();
+            if let Some(peer) = last.peer() {
+                self.offset_peer = client.inner.peer_cache.lock().await.peer_to_input(peer);
+            }
+        }
+
+        self.buffer.extend(dialogs);
+        Ok(self.buffer.pop_front())
+    }
+}
+
+/// Cursor-based iterator over message history. Created by [`Client::iter_messages`].
+pub struct MessageIter {
+    peer:      tl::enums::Peer,
+    offset_id: i32,
+    done:      bool,
+    buffer:    VecDeque<update::IncomingMessage>,
+}
+
+impl MessageIter {
+    const PAGE_SIZE: i32 = 100;
+
+    /// Fetch the next message (newest first). Returns `None` when all messages have been yielded.
+    pub async fn next(&mut self, client: &Client) -> Result<Option<update::IncomingMessage>, InvocationError> {
+        if let Some(m) = self.buffer.pop_front() { return Ok(Some(m)); }
+        if self.done { return Ok(None); }
+
+        let input_peer = client.inner.peer_cache.lock().await.peer_to_input(&self.peer);
+        let page = client.get_messages(input_peer, Self::PAGE_SIZE, self.offset_id).await?;
+
+        if page.is_empty() || page.len() < Self::PAGE_SIZE as usize {
+            self.done = true;
+        }
+        if let Some(last) = page.last() {
+            self.offset_id = last.id();
+        }
+
+        self.buffer.extend(page);
+        Ok(self.buffer.pop_front())
+    }
+}
+
+// ─── Public random helper (used by media.rs) ──────────────────────────────────
+
+/// Public wrapper for `random_i64` used by sub-modules.
+#[doc(hidden)]
+pub fn random_i64_pub() -> i64 { random_i64() }
 
 // ─── Connection ───────────────────────────────────────────────────────────────
 

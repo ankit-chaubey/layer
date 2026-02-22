@@ -353,7 +353,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
 
     match cid {
         ID_UPDATES_TOO_LONG => {
-            log::warn!("[layer] updatesTooLong — some updates may be missed (gap handling not yet implemented)");
+            log::warn!("[layer] updatesTooLong — call client.get_difference() to recover missed updates");
             vec![]
         }
 
@@ -405,6 +405,11 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
 
         _ => vec![],
     }
+}
+
+/// Convert a single `tl::enums::Update` into a `Vec<Update>`.
+pub fn from_single_update_pub(upd: tl::enums::Update) -> Vec<Update> {
+    from_single_update(upd)
 }
 
 /// Convert a single `tl::enums::Update` into a `Vec<Update>`.
