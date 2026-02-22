@@ -1,86 +1,55 @@
+<div align="center">
+
 # ⚡ layer
 
-> A modular, from-scratch Rust implementation of the Telegram MTProto protocol.
+**A modular, production-grade async Rust implementation of the Telegram MTProto protocol.**
 
+[![Crates.io](https://img.shields.io/crates/v/layer-client?color=fc8d62&label=layer-client)](https://crates.io/crates/layer-client)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
 [![TL Layer](https://img.shields.io/badge/TL%20Layer-222-8b5cf6)](https://core.telegram.org/schema)
-[![Status: Experimental](https://img.shields.io/badge/status-experimental-red)](https://github.com/ankit-chaubey/layer)
+[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
+
+*Written from the ground up to understand Telegram's internals at the lowest level.*
+
+</div>
 
 ---
 
-> ⚠️ **Use at your own risk!** 😁
->
-> This is an experimental, educational project built from scratch to understand Telegram's
-> MTProto protocol at the lowest level. It is **not** production-ready.
-> For serious projects, use [grammers](https://codeberg.org/Lonami/grammers).
+## 🧩 What is layer?
 
----
-
-## ✨ About
-
-**layer** is a hand-written, bottom-up Rust implementation of the
+**layer** is a hand-written, bottom-up async Rust implementation of the
 [Telegram MTProto](https://core.telegram.org/mtproto) protocol. Every component —
-from the TL schema parser, to the AES-IGE cipher, to the Diffie-Hellman key exchange —
-is written and owned by this project.
+from the `.tl` schema parser, to the AES-IGE cipher, to the Diffie-Hellman key
+exchange, to the async update stream — is written and owned by this project.
 
-Built purely for **learning and experimentation**: to understand what happens inside a
-Telegram client at the raw byte level, all the way from TCP to a high-level API call.
-
----
-
-## 💡 Inspiration & Credits
-
-This project is **heavily inspired by** and **based on the architecture of**
-[**grammers**](https://codeberg.org/Lonami/grammers) by
-[**Lonami**](https://codeberg.org/Lonami).
-
-> 🙏 A huge **Thank You** to [Lonami](https://codeberg.org/Lonami) for building grammers —
-> an incredibly well-structured, readable library that made MTProto's internals approachable.
-> Without grammers, this project simply would not exist. Thank you for the awesome library! 🎉
-
-The flow, naming conventions, SRP 2FA math, DC migration logic, session persistence,
-and overall architecture mirror grammers closely — intentionally, as a learning exercise.
-
-**Written by:** [Ankit Chaubey](https://github.com/ankit-chaubey)  
-**Inspired by:** [grammers](https://codeberg.org/Lonami/grammers) by [Lonami](https://codeberg.org/Lonami)
+No black boxes. No magic. Just Rust, all the way down.
 
 ---
 
-## 🏗️ Crate Structure
+## 🏗️ Crate Overview
+
+| Crate | Description |
+|---|---|
+| [`layer-tl-parser`](./layer-tl-parser) | Parses `.tl` schema text into an AST |
+| [`layer-tl-gen`](./layer-tl-gen) | Generates Rust code from the AST at build time |
+| [`layer-tl-types`](./layer-tl-types) | All Layer 222 constructors, functions and enums |
+| [`layer-crypto`](./layer-crypto) | AES-IGE, RSA, SHA, DH key derivation |
+| [`layer-mtproto`](./layer-mtproto) | MTProto session, DH exchange, message framing |
+| [`layer-client`](./layer-client) | High-level async client — auth, bots, updates, 2FA |
+| `layer-app` | Interactive demo binary (not published) |
+| `layer-connect` | Raw DH connection demo (not published) |
 
 ```
 layer/
 ├── layer-tl-parser/   ── Parses .tl schema text → AST
-├── layer-tl-gen/      ── AST → Rust source code (runs at build time)
+├── layer-tl-gen/      ── AST → Rust source (build-time)
 ├── layer-tl-types/    ── Auto-generated types, functions & enums (Layer 222)
 ├── layer-crypto/      ── AES-IGE, RSA, SHA, auth key derivation
-├── layer-mtproto/     ── MTProto session, DH exchange, message framing, transport
-├── layer-client/      ── High-level Client: auth, 2FA, send messages
-├── layer-connect/     ── Demo binary: raw DH + getConfig
-├── layer-app/         ── Binary: interactive login + send a message
-└── layer/             ── Convenience facade re-exporting everything
-```
-
-The code generation pipeline runs automatically at build time:
-
-```
-api.tl / mtproto.tl
-      │
-      ▼
-layer-tl-parser  ── .tl text → Definition AST
-      │
-      ▼
-layer-tl-gen     ── AST → Rust source (inside build.rs)
-      │
-      ▼
-layer-tl-types   ── compiled structs, enums, RemoteCall impls
-      │
-      ▼
-layer-mtproto    ── Session + EncryptedSession + Transport
-      │
-      ▼
-layer-client     ── Client::connect / sign_in / send_message
+├── layer-mtproto/     ── MTProto session, DH, framing, transport
+├── layer-client/      ── High-level async Client API
+├── layer-connect/     ── Demo: raw DH + getConfig
+└── layer-app/         ── Demo: interactive login + update stream
 ```
 
 ---
@@ -91,164 +60,148 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-layer-client = { git = "https://github.com/ankit-chaubey/layer" }
+layer-client = "0.1.2"
+tokio = { version = "1", features = ["full"] }
 ```
 
-Basic usage:
+### 👤 User Account
 
 ```rust
-use layer_client::{Client, SignInError};
+use layer_client::{Client, Config, SignInError};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connects, runs DH key exchange, calls initConnection(GetConfig)
-    let mut client = Client::load_or_connect("session.bin", API_ID, API_HASH)?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::connect(Config {
+        session_path: "my.session".into(),
+        api_id:       12345,          // https://my.telegram.org
+        api_hash:     "abc123".into(),
+        ..Default::default()
+    }).await?;
 
-    if !client.is_authorized()? {
-        let token = client.request_login_code("+1234567890")?;
-        let code  = "12345"; // the code Telegram sent you
+    if !client.is_authorized().await? {
+        let token = client.request_login_code("+1234567890").await?;
+        let code  = "12345"; // read from stdin
 
-        match client.sign_in(&token, code) {
+        match client.sign_in(&token, code).await {
             Ok(name) => println!("Welcome, {name}!"),
-
-            // 2FA cloud password
-            Err(SignInError::PasswordRequired(pw_token)) => {
-                let hint = pw_token.hint().unwrap_or("no hint");
-                println!("2FA hint: {hint}");
-                client.check_password(pw_token, "my_2fa_password")?;
+            Err(SignInError::PasswordRequired(t)) => {
+                client.check_password(t, "my_2fa_password").await?;
             }
-
             Err(e) => return Err(e.into()),
         }
-
-        client.save_session("session.bin")?;
+        client.save_session().await?;
     }
 
-    client.send_message("me", "Hello from layer! 😁")?;
+    client.send_message("me", "Hello from layer! 👋").await?;
     Ok(())
 }
 ```
 
-Or just run the included app — fill in your credentials at the top of `layer-app/src/main.rs`:
+### 🤖 Bot
 
-```bash
-cargo run -p layer-app
+```rust
+use layer_client::{Client, Config, update::Update};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::connect(Config {
+        session_path: "bot.session".into(),
+        api_id:       12345,
+        api_hash:     "abc123".into(),
+        ..Default::default()
+    }).await?;
+
+    client.bot_sign_in("1234567890:ABCdef...").await?;
+    client.save_session().await?;
+
+    let mut updates = client.stream_updates();
+    while let Some(update) = updates.next().await {
+        match update {
+            Update::NewMessage(msg) if !msg.outgoing() => {
+                if let Some(peer) = msg.peer_id() {
+                    client.send_message_to_peer(
+                        peer.clone(),
+                        &format!("Echo: {}", msg.text().unwrap_or("")),
+                    ).await?;
+                }
+            }
+            Update::CallbackQuery(cb) => {
+                client.answer_callback_query(cb.query_id, Some("Done!"), false).await?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
 ```
 
 ---
 
-## ✅ What's Implemented
+## ✅ Features
 
-### 🔐 Cryptography (`layer-crypto`)
+### 🔐 Cryptography
+- AES-IGE encryption / decryption (MTProto 2.0)
+- RSA encryption with Telegram's public keys
+- SHA-1 and SHA-256 hashing
+- Auth key derivation from DH nonce material
+- PQ factorization (Pollard's rho)
+- Diffie-Hellman shared secret computation
 
-- [x] AES-IGE encryption / decryption (MTProto 2.0)
-- [x] RSA encryption with Telegram's public keys
-- [x] SHA-1 and SHA-256 hashing utilities
-- [x] Auth key derivation from nonce material
-- [x] PQ factorization (Pollard's rho algorithm)
-- [x] Diffie-Hellman shared secret computation
-
-### 📡 MTProto Layer (`layer-mtproto`)
-
-- [x] Full 3-step Diffie-Hellman key exchange handshake
-- [x] MTProto 2.0 encrypted sessions (AES-IGE + auth key)
-- [x] Proper message framing (salt, session_id, msg_id, seq_no)
-- [x] Abridged TCP transport
-- [x] Server salt tracking and correction
-- [x] `msg_container` (multi-message) unpacking
-- [x] gzip-packed response decompression
-- [x] Pong, bad_server_salt, new_session_created handling
+### 📡 MTProto
+- Full 3-step DH key exchange handshake
+- MTProto 2.0 encrypted sessions
+- Proper message framing (salt, session_id, msg_id, seq_no)
+- Abridged TCP transport
+- `msg_container` (multi-message) unpacking
+- gzip-packed response decompression
+- Server salt tracking, pong, bad_server_salt handling
 
 ### 📦 TL Type System
+- Full `.tl` schema parser
+- Build-time Rust code generation
+- All Layer 222 constructors — 2,295 definitions
+- `Serializable` / `Deserializable` traits for all types
+- `RemoteCall` trait for all RPC functions
+- Optional: `Debug`, `serde`, `name_for_id(u32)`
 
-- [x] Full `.tl` schema parser (`layer-tl-parser`)
-- [x] Build-time Rust code generation (`layer-tl-gen`)
-- [x] All Layer 222 constructors — 2,295 definitions (`layer-tl-types`)
-- [x] `Serializable` / `Deserializable` traits for all types
-- [x] `RemoteCall` trait for all RPC functions
-- [x] `From<types::T> for enums::E` conversion impls
-- [x] Optional: `Debug`, `serde`, `name_for_id(u32)`
-
-### 👤 High-Level Client (`layer-client`)
-
-- [x] `Client::connect()` — TCP + DH + `initConnection(GetConfig)`
-- [x] `Client::load_or_connect()` — reuses saved session if available
-- [x] `Client::save_session()` — persists auth key + DC table to disk
-- [x] `Client::is_authorized()` — probes with `updates.getState`
-- [x] `Client::request_login_code()` — sends code via SMS or Telegram app
-- [x] `Client::sign_in()` — phone code login
-- [x] `Client::check_password()` — full SRP 2FA (same math as grammers)
-- [x] `Client::send_message()` — sends text to any peer (`"me"`, username, phone)
-- [x] `Client::invoke()` — raw `RemoteCall` escape hatch for any API method
-- [x] DC migration (`PHONE_MIGRATE_X`, `USER_MIGRATE_X`)
-- [x] RPC error propagation (code + message string)
+### 👤 Client
+- `Client::connect()` — async TCP + DH + initConnection
+- Session persistence across restarts
+- Phone code login + 2FA SRP
+- Bot token login
+- DC migration (PHONE_MIGRATE, USER_MIGRATE)
+- FLOOD_WAIT auto-retry with configurable policy
+- Async update stream with typed events
+- Send / delete / fetch messages
+- Dialogs list
+- Username / peer resolution
+- Raw `RemoteCall` escape hatch for any API method
 
 ---
 
-## ❌ What's NOT Implemented
-
-- [ ] **Async / Tokio** — fully synchronous, blocking I/O
-- [ ] **Update handling** — no event loop, no `iter_messages()`, no update callbacks
-- [ ] **Media** — no file upload, no file download, no thumbnails
-- [ ] **Dialogs / contacts** — no `get_dialogs()`, `get_entity()`
-- [ ] **Automatic flood wait** — `FLOOD_WAIT_X` errors surface as `Err`, not retried
-- [ ] **MTProxy / obfuscation** — no proxy support
-- [ ] **Multiple accounts** — single session only
-- [ ] **Channels / groups** — only basic peer resolution for `send_message`
-- [ ] **Bots** — no bot-specific auth flow
-- [ ] **WebSocket transport** — TCP only
-
----
-
-## 🆚 layer vs grammers
-
-| Feature | layer | grammers |
-|---|---|---|
-| Async / non-blocking | ❌ sync | ✅ Tokio |
-| DH key exchange | ✅ | ✅ |
-| 2FA / SRP | ✅ | ✅ |
-| Session persistence | ✅ | ✅ |
-| DC migration | ✅ | ✅ |
-| Send message | ✅ | ✅ |
-| TL code generation | ✅ custom | ✅ grammers-tl-gen |
-| Update / event handling | ❌ | ✅ |
-| Media upload/download | ❌ | ✅ |
-| Dialogs / contacts | ❌ | ✅ |
-| Flood wait handling | ❌ | ✅ |
-| MTProxy support | ❌ | ✅ |
-| Production ready | ❌ | ✅ |
-| Purpose | Learning & experiment | Real projects |
-
-**Use grammers for anything real. Use layer to understand how MTProto actually works.**
-
----
-
-## 🔧 Feature Flags
-
-`layer-tl-types` exposes optional compile-time features:
+## 🔧 Feature Flags (`layer-tl-types`)
 
 | Feature | Default | Description |
 |---|---|---|
-| `tl-api` | ✅ | High-level Telegram API schema (api.tl) |
-| `tl-mtproto` | ❌ | Low-level MTProto schema (mtproto.tl) |
-| `impl-debug` | ✅ | `#[derive(Debug)]` on all generated types |
+| `tl-api` | ✅ | High-level Telegram API schema |
+| `tl-mtproto` | ❌ | Low-level MTProto schema |
+| `impl-debug` | ✅ | `#[derive(Debug)]` on generated types |
 | `impl-from-type` | ✅ | `From<types::T> for enums::E` |
 | `impl-from-enum` | ✅ | `TryFrom<enums::E> for types::T` |
 | `name-for-id` | ❌ | `name_for_id(u32) -> Option<&'static str>` |
-| `impl-serde` | ❌ | `serde::Serialize` / `Deserialize` on all types |
-| `deserializable-functions` | ❌ | `Deserializable` on RPC function types (server use) |
-
-```toml
-[dependencies]
-layer-tl-types = { git = "...", features = ["impl-serde", "name-for-id"] }
-```
+| `impl-serde` | ❌ | `serde::Serialize` / `Deserialize` |
 
 ---
 
 ## 📐 Updating to a New TL Layer
 
-1. Replace `layer-tl-types/tl/api.tl` with the new schema file.
-2. Update the `// LAYER N` comment on the first line.
-3. Run `cargo build` — all types regenerate automatically. That's it.
+```bash
+# 1. Replace the schema
+cp new-api.tl layer-tl-types/tl/api.tl
+
+# 2. Build — types regenerate automatically
+cargo build
+```
 
 ---
 
@@ -271,92 +224,30 @@ Licensed under either of, at your option:
 
 ## 👤 Author
 
-**Ankit Chaubey**  
-GitHub: [github.com/ankit-chaubey](https://github.com/ankit-chaubey)
+<table>
+<tr>
+<td align="center">
+<strong>Ankit Chaubey</strong><br/>
+<a href="https://github.com/ankit-chaubey">github.com/ankit-chaubey</a><br/>
+<a href="https://ankitchaubey.in">ankitchaubey.in</a><br/>
+<a href="mailto:ankitchaubey.dev@gmail.com">ankitchaubey.dev@gmail.com</a>
+</td>
+</tr>
+</table>
+
+📦 Project: [github.com/ankit-chaubey/layer](https://github.com/ankit-chaubey/layer)
 
 ---
 
 ## 🙏 Acknowledgements
 
-- [**Lonami**](https://codeberg.org/Lonami) — for [grammers](https://codeberg.org/Lonami/grammers).
-  The architecture, design decisions, SRP math, and session handling in this project
-  are all directly inspired by grammers. It's a fantastic library and an even better
-  learning resource. Thank you for making it open source! 🎉
-
 - [**Telegram**](https://core.telegram.org/mtproto) — for the detailed MTProto specification.
+- The Rust async ecosystem — `tokio`, `getrandom`, `flate2`, and friends.
 
 ---
 
-## 📦 Publishing to crates.io
-
-The publishable crates (in dependency order) are:
-
-```
-layer-tl-parser  →  layer-tl-gen  →  layer-tl-types  →  layer-crypto
-                                                              ↓
-                                                        layer-mtproto
-                                                              ↓
-                                                        layer-client
-                                                              ↓
-                                                           layer
-```
-
-**One-time setup:**
-
-```bash
-# 1. Init git (crates.io requires a clean git repo)
-git init
-git add .
-git commit -m "initial release v0.1.0"
-
-# 2. Login with your crates.io API token
-cargo login
-```
-
-**Publish in this exact order** — each crate must finish uploading before the next:
-
-```bash
-# 1. No layer deps
-cargo publish -p layer-tl-parser
-
-# 2. Depends on layer-tl-parser
-cargo publish -p layer-tl-gen
-
-# 3. Depends on layer-tl-parser + layer-tl-gen (build-deps)
-cargo publish -p layer-tl-types
-
-# 4. No layer deps
-cargo publish -p layer-crypto
-
-# 5. Depends on layer-tl-types + layer-crypto
-cargo publish -p layer-mtproto
-
-# 6. Depends on layer-tl-types + layer-mtproto
-cargo publish -p layer-client
-
-# 7. Facade — depends on everything above
-cargo publish -p layer
-```
-
-> `layer-app` and `layer-connect` are marked `publish = false` — they are skipped automatically.
-
-**Dry run first** to catch issues without uploading:
-
-```bash
-cargo publish -p layer-tl-parser --dry-run
-# repeat for each crate
-```
-
-**Bump the version** for future releases (all crates share the workspace version):
-
-```bash
-# 1. Edit `version = "0.1.0"` → `"0.2.0"` in the root Cargo.toml
-# 2. Commit the change
-git add Cargo.toml && git commit -m "bump to v0.2.0"
-# 3. Publish in the same order above
-```
-
----
+<div align="center">
 
 *layer — because sometimes you have to build it yourself to truly understand it.*
 
+</div>

@@ -1,18 +1,20 @@
 [package]
 name        = "layer-client"
-description = "High-level synchronous Telegram client — connect, auth, 2FA/SRP, send messages"
+description = "Production-grade async Telegram client — updates, bots, flood-wait, dialogs, messages"
+readme = "README.md"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
-keywords             = ["telegram", "mtproto", "client", "2fa", "bot"]
-categories           = ["api-bindings", "network-programming"]
+keywords             = ["telegram", "mtproto", "client", "bot", "async"]
+categories           = ["api-bindings", "network-programming", "asynchronous"]
 
 [dependencies]
-layer-tl-types = { path = "../layer-tl-types", version = "0.1.1", features = ["tl-api", "tl-mtproto"] }
-layer-mtproto  = { path = "../layer-mtproto",  version = "0.1.1" }
+layer-tl-types = { path = "../layer-tl-types", version = "0.1.2", features = ["tl-api", "tl-mtproto"] }
+layer-mtproto  = { path = "../layer-mtproto",  version = "0.1.2" }
+tokio          = { version = "1",  features = ["net", "io-util", "sync", "time", "rt", "rt-multi-thread", "macros"] }
 getrandom      = "0.2"
 flate2         = "1"
 num-bigint     = "0.4"
@@ -20,3 +22,4 @@ num-traits     = "0.2"
 sha2           = "0.10"
 hmac           = "0.12"
 pbkdf2         = "0.12"
+log            = "0.4"

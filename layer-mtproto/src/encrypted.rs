@@ -129,6 +129,26 @@ impl EncryptedSession {
         buf.as_ref().to_vec()
     }
 
+    /// Like [`pack`] but also returns the `msg_id` allocated for this message.
+    ///
+    /// Used by the async client to register a pending RPC reply channel keyed
+    /// by `msg_id` *before* sending the packet.
+    pub fn pack_with_msg_id<R: RemoteCall>(&mut self, call: &R) -> (Vec<u8>, i64) {
+        let body   = call.to_bytes();
+        let msg_id = self.next_msg_id();
+        let seq_no = self.next_seq_no();
+        let inner_len = 8 + 8 + 8 + 4 + 4 + body.len();
+        let mut buf   = DequeBuffer::with_capacity(inner_len, 32);
+        buf.extend(self.salt.to_le_bytes());
+        buf.extend(self.session_id.to_le_bytes());
+        buf.extend(msg_id.to_le_bytes());
+        buf.extend(seq_no.to_le_bytes());
+        buf.extend((body.len() as u32).to_le_bytes());
+        buf.extend(body.iter().copied());
+        encrypt_data_v2(&mut buf, &self.auth_key);
+        (buf.as_ref().to_vec(), msg_id)
+    }
+
     /// Encrypt and frame a [`RemoteCall`] into a ready-to-send MTProto message.
     ///
     /// Returns the encrypted bytes to pass directly to the transport layer.
