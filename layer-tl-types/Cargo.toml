@@ -14,8 +14,8 @@ categories           = ["api-bindings", "encoding"]
 build = "build.rs"
 
 [build-dependencies]
-layer-tl-parser = { path = "../layer-tl-parser", version = "0.1.2" }
-layer-tl-gen    = { path = "../layer-tl-gen",    version = "0.1.2" }
+layer-tl-parser = { workspace = true }
+layer-tl-gen    = { workspace = true }
 
 [features]
 default = ["impl-debug", "impl-from-type", "impl-from-enum", "tl-api"]

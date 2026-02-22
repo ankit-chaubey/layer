@@ -24,6 +24,7 @@ async fn main() {
     if std::env::var("RUST_LOG").is_err() {
         // SAFETY: single-threaded at this point, no other threads reading env
         unsafe { std::env::set_var("RUST_LOG", "layer_client=info,layer_app=info"); }
+    env_logger::init();
     }
 
     if let Err(e) = run().await {
