@@ -400,7 +400,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
             let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShortMessage::deserialize(&mut cur) {
                 Ok(m)  => vec![Update::NewMessage(make_short_dm(m))],
-                Err(e) => { log::warn!("[layer] updateShortMessage parse error: {e}"); vec![] }
+                Err(e) => { log::debug!("[layer] updateShortMessage parse error (unknown constructor or newer layer): {e}"); vec![] }
             }
         }
 
@@ -408,7 +408,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
             let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShortChatMessage::deserialize(&mut cur) {
                 Ok(m)  => vec![Update::NewMessage(make_short_chat(m))],
-                Err(e) => { log::warn!("[layer] updateShortChatMessage parse error: {e}"); vec![] }
+                Err(e) => { log::debug!("[layer] updateShortChatMessage parse error (unknown constructor or newer layer): {e}"); vec![] }
             }
         }
 
@@ -416,7 +416,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
             let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShort::deserialize(&mut cur) {
                 Ok(m)  => from_single_update(m.update),
-                Err(e) => { log::warn!("[layer] updateShort parse error: {e}"); vec![] }
+                Err(e) => { log::debug!("[layer] updateShort parse error (unknown constructor or newer layer): {e}"); vec![] }
             }
         }
 
@@ -426,7 +426,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
                 Ok(tl::enums::Updates::Updates(u)) => {
                     u.updates.into_iter().flat_map(from_single_update).collect()
                 }
-                Err(e) => { log::warn!("[layer] Updates parse error: {e}"); vec![] }
+                Err(e) => { log::debug!("[layer] Updates parse error (unknown constructor or newer layer): {e}"); vec![] }
                 _ => vec![],
             }
         }
@@ -437,7 +437,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
                 Ok(tl::enums::Updates::Combined(u)) => {
                     u.updates.into_iter().flat_map(from_single_update).collect()
                 }
-                Err(e) => { log::warn!("[layer] UpdatesCombined parse error: {e}"); vec![] }
+                Err(e) => { log::debug!("[layer] UpdatesCombined parse error (unknown constructor or newer layer): {e}"); vec![] }
                 _ => vec![],
             }
         }
@@ -507,39 +507,158 @@ fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
 fn tl_constructor_id(upd: &tl::enums::Update) -> u32 {
     use tl::enums::Update::*;
     match upd {
-        UserStatus(_)               => 0x1bfbd823,
-        ContactsReset               => 0xdeaf4e67,
-        NewEncryptedMessage(_)      => 0x12bcbd9a,
-        EncryptedChatTyping(_)      => 0x1710f156,
-        Encryption(_)               => 0xb4a2e88d,
-        EncryptedMessagesRead(_)    => 0x38fe25b7,
-        ChatParticipants(_)         => 0x07761198,
-        NewMessage(_)               => 0x1f2b0afd,
-        MessageId(_)                => 0x4e90bfd6,
-        ReadMessagesContents(_)     => 0x68c13933,
-        DeleteMessages(_)           => 0xa20db0e5,
-        UserTyping(_)               => 0x5c486927,
-        ChatUserTyping(_)           => 0x9a65ea1f,
-        ChatParticipantAdd(_)       => 0xea4cb65b,
-        ChatParticipantDelete(_)    => 0x6e5f2de1,
-        DcOptions(_)                => 0x8e5e9873,
-        NotifySettings(_)           => 0xbec268ef,
-        ServiceNotification(_)      => 0xebe46819,
-        Privacy(_)                  => 0xee3b272a,
-        UserPhone(_)                => 0x05492a13,
-        ReadHistoryInbox(_)         => 0x9961fd5c,
-        ReadHistoryOutbox(_)        => 0x2f2f21bf,
-        WebPage(_)                  => 0x7f891213,
-        EditMessage(_)              => 0xe40370a3,
-        EditChannelMessage(_)       => 0x1b3f4df7,
-        NewChannelMessage(_)        => 0x62ba04d9,
-        DeleteChannelMessages(_)    => 0xc32d5b12,
-        ChannelMessageViews(_)      => 0x98a12b4b,
-        BotCallbackQuery(_)         => 0xe9ff1938,
-        InlineBotCallbackQuery(_)   => 0x691e9f68,
-        BotInlineQuery(_)           => 0x54826690,
-        BotInlineSend(_)            => 0x0e48f964,
-        _                           => 0x00000000,
+        AttachMenuBots => 0x17b7a20b,
+        AutoSaveSettings => 0xec05b097,
+        BotBusinessConnect(_) => 0x8ae5c97a,
+        BotCallbackQuery(_) => 0xb9cfc48d,
+        BotChatBoost(_) => 0x904dd49c,
+        BotChatInviteRequester(_) => 0x11dfa986,
+        BotCommands(_) => 0x4d712f2e,
+        BotDeleteBusinessMessage(_) => 0xa02a982e,
+        BotEditBusinessMessage(_) => 0x7df587c,
+        BotInlineQuery(_) => 0x496f379c,
+        BotInlineSend(_) => 0x12f12a07,
+        BotMenuButton(_) => 0x14b85813,
+        BotMessageReaction(_) => 0xac21d3ce,
+        BotMessageReactions(_) => 0x9cb7759,
+        BotNewBusinessMessage(_) => 0x9ddb347c,
+        BotPrecheckoutQuery(_) => 0x8caa9a96,
+        BotPurchasedPaidMedia(_) => 0x283bd312,
+        BotShippingQuery(_) => 0xb5aefd7d,
+        BotStopped(_) => 0xc4870a49,
+        BotWebhookJson(_) => 0x8317c0c3,
+        BotWebhookJsonquery(_) => 0x9b9240a6,
+        BusinessBotCallbackQuery(_) => 0x1ea2fda7,
+        Channel(_) => 0x635b4c09,
+        ChannelAvailableMessages(_) => 0xb23fc698,
+        ChannelMessageForwards(_) => 0xd29a27f4,
+        ChannelMessageViews(_) => 0xf226ac08,
+        ChannelParticipant(_) => 0x985d3abb,
+        ChannelReadMessagesContents(_) => 0x25f324f7,
+        ChannelTooLong(_) => 0x108d941f,
+        ChannelUserTyping(_) => 0x8c88c923,
+        ChannelViewForumAsMessages(_) => 0x7b68920,
+        ChannelWebPage(_) => 0x2f2ba99f,
+        Chat(_) => 0xf89a6a4e,
+        ChatDefaultBannedRights(_) => 0x54c01850,
+        ChatParticipant(_) => 0xd087663a,
+        ChatParticipantAdd(_) => 0x3dda5451,
+        ChatParticipantAdmin(_) => 0xd7ca61a2,
+        ChatParticipantDelete(_) => 0xe32f3d77,
+        ChatParticipants(_) => 0x7761198,
+        ChatUserTyping(_) => 0x83487af0,
+        Config => 0xa229dd06,
+        ContactsReset => 0x7084a7be,
+        DcOptions(_) => 0x8e5e9873,
+        DeleteChannelMessages(_) => 0xc32d5b12,
+        DeleteGroupCallMessages(_) => 0x3e85e92c,
+        DeleteMessages(_) => 0xa20db0e5,
+        DeleteQuickReply(_) => 0x53e6f1ec,
+        DeleteQuickReplyMessages(_) => 0x566fe7cd,
+        DeleteScheduledMessages(_) => 0xf2a71983,
+        DialogFilter(_) => 0x26ffde7d,
+        DialogFilterOrder(_) => 0xa5d72105,
+        DialogFilters => 0x3504914f,
+        DialogPinned(_) => 0x6e6fe51c,
+        DialogUnreadMark(_) => 0xb658f23e,
+        DraftMessage(_) => 0xedfc111e,
+        EditChannelMessage(_) => 0x1b3f4df7,
+        EditMessage(_) => 0xe40370a3,
+        EmojiGameInfo(_) => 0xfb9c547a,
+        EncryptedChatTyping(_) => 0x1710f156,
+        EncryptedMessagesRead(_) => 0x38fe25b7,
+        Encryption(_) => 0xb4a2e88d,
+        FavedStickers => 0xe511996d,
+        FolderPeers(_) => 0x19360dc0,
+        GeoLiveViewed(_) => 0x871fb939,
+        GroupCall(_) => 0x9d2216e0,
+        GroupCallChainBlocks(_) => 0xa477288f,
+        GroupCallConnection(_) => 0xb783982,
+        GroupCallEncryptedMessage(_) => 0xc957a766,
+        GroupCallMessage(_) => 0xd8326f0d,
+        GroupCallParticipants(_) => 0xf2ebdb4e,
+        InlineBotCallbackQuery(_) => 0x691e9052,
+        LangPack(_) => 0x56022f4d,
+        LangPackTooLong(_) => 0x46560264,
+        LoginToken => 0x564fe691,
+        MessageExtendedMedia(_) => 0xd5a41724,
+        MessageId(_) => 0x4e90bfd6,
+        MessagePoll(_) => 0xaca1657b,
+        MessagePollVote(_) => 0x24f40e77,
+        MessageReactions(_) => 0x1e297bfa,
+        MonoForumNoPaidException(_) => 0x9f812b08,
+        MoveStickerSetToTop(_) => 0x86fccf85,
+        NewAuthorization(_) => 0x8951abef,
+        NewChannelMessage(_) => 0x62ba04d9,
+        NewEncryptedMessage(_) => 0x12bcbd9a,
+        NewMessage(_) => 0x1f2b0afd,
+        NewQuickReply(_) => 0xf53da717,
+        NewScheduledMessage(_) => 0x39a51dfb,
+        NewStickerSet(_) => 0x688a30aa,
+        NewStoryReaction(_) => 0x1824e40b,
+        NotifySettings(_) => 0xbec268ef,
+        PaidReactionPrivacy(_) => 0x8b725fce,
+        PeerBlocked(_) => 0xebe07752,
+        PeerHistoryTtl(_) => 0xbb9bb9a5,
+        PeerLocated(_) => 0xb4afcfb0,
+        PeerSettings(_) => 0x6a7e7366,
+        PeerWallpaper(_) => 0xae3f101d,
+        PendingJoinRequests(_) => 0x7063c3db,
+        PhoneCall(_) => 0xab0f6b1e,
+        PhoneCallSignalingData(_) => 0x2661bf09,
+        PinnedChannelMessages(_) => 0x5bb98608,
+        PinnedDialogs(_) => 0xfa0f3ca2,
+        PinnedForumTopic(_) => 0x683b2c52,
+        PinnedForumTopics(_) => 0xdef143d0,
+        PinnedMessages(_) => 0xed85eab5,
+        PinnedSavedDialogs(_) => 0x686c85a6,
+        Privacy(_) => 0xee3b272a,
+        PtsChanged => 0x3354678f,
+        QuickReplies(_) => 0xf9470ab2,
+        QuickReplyMessage(_) => 0x3e050d0f,
+        ReadChannelDiscussionInbox(_) => 0xd6b19546,
+        ReadChannelDiscussionOutbox(_) => 0x695c9e7c,
+        ReadChannelInbox(_) => 0x922e6e10,
+        ReadChannelOutbox(_) => 0xb75f99a9,
+        ReadFeaturedEmojiStickers => 0xfb4c496c,
+        ReadFeaturedStickers => 0x571d2742,
+        ReadHistoryInbox(_) => 0x9e84bc99,
+        ReadHistoryOutbox(_) => 0x2f2f21bf,
+        ReadMessagesContents(_) => 0xf8227181,
+        ReadMonoForumInbox(_) => 0x77b0e372,
+        ReadMonoForumOutbox(_) => 0xa4a79376,
+        ReadStories(_) => 0xf74e932b,
+        RecentEmojiStatuses => 0x30f443db,
+        RecentReactions => 0x6f7863f4,
+        RecentStickers => 0x9a422c20,
+        SavedDialogPinned(_) => 0xaeaf9e74,
+        SavedGifs => 0x9375341e,
+        SavedReactionTags => 0x39c67432,
+        SavedRingtones => 0x74d8be99,
+        SentPhoneCode(_) => 0x504aa18f,
+        SentStoryReaction(_) => 0x7d627683,
+        ServiceNotification(_) => 0xebe46819,
+        SmsJob(_) => 0xf16269d4,
+        StarGiftAuctionState(_) => 0x48e246c2,
+        StarGiftAuctionUserState(_) => 0xdc58f31e,
+        StarGiftCraftFail => 0xac072444,
+        StarsBalance(_) => 0x4e80a379,
+        StarsRevenueStatus(_) => 0xa584b019,
+        StickerSets(_) => 0x31c24808,
+        StickerSetsOrder(_) => 0xbb2d201,
+        StoriesStealthMode(_) => 0x2c084dc1,
+        Story(_) => 0x75b3b798,
+        StoryId(_) => 0x1bf335b9,
+        Theme(_) => 0x8216fba3,
+        TranscribedAudio(_) => 0x84cd5a,
+        User(_) => 0x20529438,
+        UserEmojiStatus(_) => 0x28373599,
+        UserName(_) => 0xa7848924,
+        UserPhone(_) => 0x5492a13,
+        UserStatus(_) => 0xe5bdf8de,
+        UserTyping(_) => 0x2a17bf5c,
+        WebPage(_) => 0x7f891213,
+        WebViewResultSent(_) => 0x1592b79d,
     }
 }
 

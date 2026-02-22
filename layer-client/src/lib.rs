@@ -405,7 +405,7 @@ struct ClientInner {
     transport:       TransportKind,
     session_backend: Arc<dyn crate::session_backend::SessionBackend>,
     dc_pool:         Mutex<dc_pool::DcPool>,
-    _update_tx:      mpsc::UnboundedSender<update::Update>,
+    update_tx:       mpsc::UnboundedSender<update::Update>,
 }
 
 /// The main Telegram client. Cheap to clone — internally Arc-wrapped.
@@ -477,7 +477,7 @@ impl Client {
             transport:       config.transport,
             session_backend: config.session_backend,
             dc_pool:         Mutex::new(pool),
-            _update_tx:      update_tx,
+            update_tx:       update_tx,
         });
 
         let client = Self {
@@ -1593,8 +1593,15 @@ impl Client {
     }
 
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
-        let mut conn = self.inner.conn.lock().await;
-        conn.rpc_call(req).await
+        let mut side_updates = Vec::new();
+        let result = {
+            let mut conn = self.inner.conn.lock().await;
+            conn.rpc_call(req, &mut side_updates).await
+        };
+        for u in side_updates {
+            let _ = self.inner.update_tx.send(u);
+        }
+        result
     }
 
     /// Like `rpc_call_raw` but for write RPCs whose TL return type is `Updates`.
@@ -1604,10 +1611,14 @@ impl Client {
         let mut fail_count   = NonZeroU32::new(1).unwrap();
         let mut slept_so_far = Duration::default();
         loop {
+            let mut side_updates = Vec::new();
             let result = {
                 let mut conn = self.inner.conn.lock().await;
-                conn.rpc_call_ack(req).await
+                conn.rpc_call_ack(req, &mut side_updates).await
             };
+            for u in side_updates {
+                let _ = self.inner.update_tx.send(u);
+            }
             match result {
                 Ok(()) => return Ok(()),
                 Err(e) => {
@@ -1646,8 +1657,15 @@ impl Client {
         };
 
         let body = {
-            let mut conn = self.inner.conn.lock().await;
-            conn.rpc_call_serializable(&req).await?
+            let mut side_updates = Vec::new();
+            let result = {
+                let mut conn = self.inner.conn.lock().await;
+                conn.rpc_call_serializable(&req, &mut side_updates).await
+            };
+            for u in side_updates {
+                let _ = self.inner.update_tx.send(u);
+            }
+            result?
         };
 
         let mut cur = Cursor::from_slice(&body);
@@ -2220,18 +2238,26 @@ impl Connection {
     fn first_salt(&self)     -> i64         { self.enc.salt }
     fn time_offset(&self)    -> i32         { self.enc.time_offset }
 
-    async fn rpc_call<R: RemoteCall>(&mut self, req: &R) -> Result<Vec<u8>, InvocationError> {
+    async fn rpc_call<R: RemoteCall>(
+        &mut self,
+        req: &R,
+        side_updates: &mut Vec<update::Update>,
+    ) -> Result<Vec<u8>, InvocationError> {
         let wire = self.enc.pack(req);
         send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        tokio::time::timeout(Duration::from_secs(10), self.recv_rpc())
+        tokio::time::timeout(Duration::from_secs(10), self.recv_rpc_with_updates(side_updates))
             .await
             .map_err(|_| InvocationError::Deserialize("rpc_call timed out after 10 s".into()))?
     }
 
-    async fn rpc_call_serializable<S: tl::Serializable>(&mut self, req: &S) -> Result<Vec<u8>, InvocationError> {
+    async fn rpc_call_serializable<S: tl::Serializable>(
+        &mut self,
+        req: &S,
+        side_updates: &mut Vec<update::Update>,
+    ) -> Result<Vec<u8>, InvocationError> {
         let wire = self.enc.pack_serializable(req);
         send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        tokio::time::timeout(Duration::from_secs(10), self.recv_rpc())
+        tokio::time::timeout(Duration::from_secs(10), self.recv_rpc_with_updates(side_updates))
             .await
             .map_err(|_| InvocationError::Deserialize("rpc_call_serializable timed out after 10 s".into()))?
     }
@@ -2240,28 +2266,44 @@ impl Connection {
     /// frame as a successful response.  Use this for write RPCs whose return
     /// type in the TL schema is `Updates` — Telegram may respond with an
     /// `updateShort` instead of a full serialized result.
-    async fn rpc_call_ack<S: tl::Serializable>(&mut self, req: &S) -> Result<(), InvocationError> {
+    async fn rpc_call_ack<S: tl::Serializable>(
+        &mut self,
+        req: &S,
+        side_updates: &mut Vec<update::Update>,
+    ) -> Result<(), InvocationError> {
         let wire = self.enc.pack_serializable(req);
         send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        tokio::time::timeout(Duration::from_secs(10), self.recv_ack())
+        tokio::time::timeout(Duration::from_secs(10), self.recv_ack(side_updates))
             .await
             .map_err(|_| InvocationError::Deserialize("rpc_call_ack timed out after 10 s".into()))?
     }
 
-    async fn recv_ack(&mut self) -> Result<(), InvocationError> {
+    async fn recv_ack(
+        &mut self,
+        side_updates: &mut Vec<update::Update>,
+    ) -> Result<(), InvocationError> {
         loop {
             let mut raw = recv_frame(&mut self.stream, &mut self.frame_kind).await?;
             let msg = self.enc.unpack(&mut raw)
                 .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
             if msg.salt != 0 { self.enc.salt = msg.salt; }
             match unwrap_envelope(msg.body)? {
-                EnvelopeResult::Payload(_) | EnvelopeResult::Updates(_) => return Ok(()),
+                EnvelopeResult::Payload(_) => return Ok(()),
+                EnvelopeResult::Updates(us) => {
+                    side_updates.extend(us);
+                    return Ok(());
+                }
                 EnvelopeResult::None => {}
             }
         }
     }
 
-    async fn recv_rpc(&mut self) -> Result<Vec<u8>, InvocationError> {
+    /// Receive one RPC response, collecting any interleaved server-push updates
+    /// into `side_updates` so the caller can forward them to the update channel.
+    async fn recv_rpc_with_updates(
+        &mut self,
+        side_updates: &mut Vec<update::Update>,
+    ) -> Result<Vec<u8>, InvocationError> {
         loop {
             let mut raw = recv_frame(&mut self.stream, &mut self.frame_kind).await?;
             let msg = self.enc.unpack(&mut raw)
@@ -2270,11 +2312,19 @@ impl Connection {
             match unwrap_envelope(msg.body)? {
                 EnvelopeResult::Payload(p)  => return Ok(p),
                 EnvelopeResult::Updates(us) => {
-                    log::debug!("[layer] {} updates during RPC", us.len());
+                    log::debug!("[layer] {} updates interleaved during RPC", us.len());
+                    side_updates.extend(us);
                 }
                 EnvelopeResult::None => {}
             }
         }
+    }
+
+    /// Legacy recv_rpc that discards interleaved updates (used internally only).
+    #[allow(dead_code)]
+    async fn recv_rpc(&mut self) -> Result<Vec<u8>, InvocationError> {
+        let mut _discard = Vec::new();
+        self.recv_rpc_with_updates(&mut _discard).await
     }
 
     async fn recv_once(&mut self) -> Result<Vec<update::Update>, InvocationError> {
@@ -2465,7 +2515,21 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
             let bytes = tl_read_bytes(&body[4..]).unwrap_or_default();
             unwrap_envelope(gz_inflate(&bytes)?)
         }
-        ID_PONG | ID_MSGS_ACK | ID_NEW_SESSION | ID_BAD_SERVER_SALT | ID_BAD_MSG_NOTIFY => {
+        // MTProto service messages — all silently acknowledged, no payload extracted
+        ID_PONG | ID_MSGS_ACK | ID_NEW_SESSION | ID_BAD_SERVER_SALT | ID_BAD_MSG_NOTIFY
+        // Grammers also silences these; we do the same to avoid routing them as payloads
+        | 0xd33b5459  // MsgsStateReq
+        | 0x04deb57d  // MsgsStateInfo
+        | 0x8cc0d131  // MsgsAllInfo
+        | 0x276d3ec6  // MsgDetailedInfo
+        | 0x809db6df  // MsgNewDetailedInfo
+        | 0x7d861a08  // MsgResendReq / MsgResendAnsReq
+        | 0x0949d9dc  // FutureSalt
+        | 0xae500895  // FutureSalts
+        | 0x9299359f  // HttpWait
+        | 0xe22045fc  // DestroySessionOk
+        | 0x62d350c9  // DestroySessionNone
+        => {
             Ok(EnvelopeResult::None)
         }
         ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED
