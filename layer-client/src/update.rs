@@ -1,8 +1,8 @@
-//! High-level update types delivered by [`crate::Client::next_update`].
+//! High-level update types delivered by [`crate::Client::stream_updates`].
 //!
 //! Every update the Telegram server pushes is classified into one of the
-//! variants of [`Update`].  The raw constructor ID and bytes are always
-//! available via [`Update::Raw`] for anything not yet wrapped.
+//! variants of [`Update`].  The raw constructor ID is always available
+//! via [`Update::Raw`] for anything not yet wrapped.
 
 use layer_tl_types as tl;
 use layer_tl_types::{Cursor, Deserializable};
@@ -42,7 +42,7 @@ impl IncomingMessage {
         }
     }
 
-    /// The peer (chat) this message was sent in.
+    /// The peer (chat) this message belongs to.
     pub fn peer_id(&self) -> Option<&tl::enums::Peer> {
         match &self.raw {
             tl::enums::Message::Message(m) => Some(&m.peer_id),
@@ -51,7 +51,7 @@ impl IncomingMessage {
         }
     }
 
-    /// The sender, if available (not set for channel posts).
+    /// The sender peer, if available (not set for anonymous channel posts).
     pub fn sender_id(&self) -> Option<&tl::enums::Peer> {
         match &self.raw {
             tl::enums::Message::Message(m) => m.from_id.as_ref(),
@@ -69,13 +69,155 @@ impl IncomingMessage {
         }
     }
 
+    /// Unix timestamp when the message was sent.
+    pub fn date(&self) -> i32 {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.date,
+            tl::enums::Message::Service(m) => m.date,
+            _ => 0,
+        }
+    }
+
+    /// Unix timestamp of the last edit, if the message has been edited.
+    pub fn edit_date(&self) -> Option<i32> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.edit_date,
+            _ => None,
+        }
+    }
+
+    /// `true` if the logged-in user was mentioned in this message.
+    pub fn mentioned(&self) -> bool {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.mentioned,
+            tl::enums::Message::Service(m) => m.mentioned,
+            _ => false,
+        }
+    }
+
+    /// `true` if the message was sent silently (no notification).
+    pub fn silent(&self) -> bool {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.silent,
+            tl::enums::Message::Service(m) => m.silent,
+            _ => false,
+        }
+    }
+
+    /// `true` if this is a channel post (no sender).
+    pub fn post(&self) -> bool {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.post,
+            _ => false,
+        }
+    }
+
+    /// `true` if this message is currently pinned.
+    pub fn pinned(&self) -> bool {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.pinned,
+            _ => false,
+        }
+    }
+
+    /// Number of times the message has been forwarded (channels only).
+    pub fn forward_count(&self) -> Option<i32> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.forwards,
+            _ => None,
+        }
+    }
+
+    /// View count for channel posts.
+    pub fn view_count(&self) -> Option<i32> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.views,
+            _ => None,
+        }
+    }
+
+    /// Reply count (number of replies in a thread).
+    pub fn reply_count(&self) -> Option<i32> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => {
+                m.replies.as_ref().map(|r| match r {
+                    tl::enums::MessageReplies::MessageReplies(x) => x.replies,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// ID of the message this one is replying to.
+    pub fn reply_to_message_id(&self) -> Option<i32> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => {
+                m.reply_to.as_ref().and_then(|r| match r {
+                    tl::enums::MessageReplyHeader::MessageReplyHeader(h) => h.reply_to_msg_id,
+                    _ => None,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// The media attached to this message, if any.
+    pub fn media(&self) -> Option<&tl::enums::MessageMedia> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.media.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Formatting entities (bold, italic, code, links, etc).
+    pub fn entities(&self) -> Option<&Vec<tl::enums::MessageEntity>> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.entities.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Group ID for album messages (multiple media in one).
+    pub fn grouped_id(&self) -> Option<i64> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.grouped_id,
+            _ => None,
+        }
+    }
+
+    /// Reply markup (inline keyboards, etc).
+    pub fn reply_markup(&self) -> Option<&tl::enums::ReplyMarkup> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.reply_markup.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Forward info header, if this message was forwarded.
+    pub fn forward_header(&self) -> Option<&tl::enums::MessageFwdHeader> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.fwd_from.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// `true` if forwarding this message is restricted.
+    pub fn noforwards(&self) -> bool {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.noforwards,
+            _ => false,
+        }
+    }
+
     /// Reply to this message with plain text.
     pub async fn reply(&self, client: &mut Client, text: impl Into<String>) -> Result<(), Error> {
         let peer = match self.peer_id() {
             Some(p) => p.clone(),
             None    => return Err(Error::Deserialize("cannot reply: unknown peer".into())),
         };
-        client.send_message_to_peer(peer, &text.into()).await
+        let msg_id = self.id();
+        client.send_message_to_peer_ex(peer, &crate::InputMessage::text(text.into())
+            .reply_to(Some(msg_id))).await
     }
 }
 
@@ -139,11 +281,25 @@ pub struct InlineQuery {
     pub user_id:  i64,
     pub query:    String,
     pub offset:   String,
+    /// Peer of the chat the user sent the inline query from, if available.
+    pub peer:     Option<tl::enums::Peer>,
 }
 
 impl InlineQuery {
     /// The text the user typed after the bot username.
     pub fn query(&self) -> &str { &self.query }
+}
+
+// ─── InlineSend ──────────────────────────────────────────────────────────────
+
+/// A user chose an inline result and sent it.
+#[derive(Debug, Clone)]
+pub struct InlineSend {
+    pub user_id:  i64,
+    pub query:    String,
+    pub id:       String,
+    /// Message ID of the sent message, if available.
+    pub msg_id:   Option<tl::enums::InputBotInlineMessageId>,
 }
 
 // ─── RawUpdate ───────────────────────────────────────────────────────────────
@@ -158,8 +314,6 @@ pub struct RawUpdate {
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 /// A high-level event received from Telegram.
-///
-/// See [`crate::Client::next_update`] for usage.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum Update {
@@ -173,6 +327,8 @@ pub enum Update {
     CallbackQuery(CallbackQuery),
     /// A user typed an inline query for the bot.
     InlineQuery(InlineQuery),
+    /// A user chose an inline result and sent it (bots only).
+    InlineSend(InlineSend),
     /// A raw TL update not mapped to any of the above variants.
     Raw(RawUpdate),
 }
@@ -189,8 +345,6 @@ const ID_UPDATES_COMBINED:      u32 = 0x725b04c3;
 // ─── Parser ──────────────────────────────────────────────────────────────────
 
 /// Parse raw update container bytes into high-level [`Update`] values.
-///
-/// Returns an empty vector for unknown or unhandled containers.
 pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
     if bytes.len() < 4 {
         return vec![];
@@ -199,51 +353,41 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
 
     match cid {
         ID_UPDATES_TOO_LONG => {
-            log::warn!("updatesTooLong received — some updates may be missed; call getDifference if gap-free delivery is required");
+            log::warn!("[layer] updatesTooLong — some updates may be missed (gap handling not yet implemented)");
             vec![]
         }
 
-        // updateShortMessage — single DM
         ID_UPDATE_SHORT_MESSAGE => {
             let mut cur = Cursor::from_slice(bytes);
             match tl::types::UpdateShortMessage::deserialize(&mut cur) {
-                Ok(m) => {
-                    vec![Update::NewMessage(make_short_dm(m))]
-                }
-                Err(e) => { log::warn!("updateShortMessage parse error: {e}"); vec![] }
+                Ok(m)  => vec![Update::NewMessage(make_short_dm(m))],
+                Err(e) => { log::warn!("[layer] updateShortMessage parse error: {e}"); vec![] }
             }
         }
 
-        // updateShortChatMessage — single group message
         ID_UPDATE_SHORT_CHAT_MSG => {
             let mut cur = Cursor::from_slice(bytes);
             match tl::types::UpdateShortChatMessage::deserialize(&mut cur) {
-                Ok(m) => {
-                    vec![Update::NewMessage(make_short_chat(m))]
-                }
-                Err(e) => { log::warn!("updateShortChatMessage parse error: {e}"); vec![] }
+                Ok(m)  => vec![Update::NewMessage(make_short_chat(m))],
+                Err(e) => { log::warn!("[layer] updateShortChatMessage parse error: {e}"); vec![] }
             }
         }
 
-        // updateShort — wraps a single Update
         ID_UPDATE_SHORT => {
             let mut cur = Cursor::from_slice(bytes);
             match tl::types::UpdateShort::deserialize(&mut cur) {
-                Ok(u) => {
-                    from_single_update(u.update)
-                }
-                Err(e) => { log::warn!("updateShort parse error: {e}"); vec![] }
+                Ok(m)  => from_single_update(m.update),
+                Err(e) => { log::warn!("[layer] updateShort parse error: {e}"); vec![] }
             }
         }
 
-        // updates / updatesCombined — batch of updates
         ID_UPDATES => {
             let mut cur = Cursor::from_slice(bytes);
             match tl::enums::Updates::deserialize(&mut cur) {
                 Ok(tl::enums::Updates::Updates(u)) => {
                     u.updates.into_iter().flat_map(from_single_update).collect()
                 }
-                Err(e) => { log::warn!("Updates parse error: {e}"); vec![] }
+                Err(e) => { log::warn!("[layer] Updates parse error: {e}"); vec![] }
                 _ => vec![],
             }
         }
@@ -254,16 +398,16 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
                 Ok(tl::enums::Updates::Combined(u)) => {
                     u.updates.into_iter().flat_map(from_single_update).collect()
                 }
-                Err(e) => { log::warn!("UpdatesCombined parse error: {e}"); vec![] }
+                Err(e) => { log::warn!("[layer] UpdatesCombined parse error: {e}"); vec![] }
                 _ => vec![],
             }
         }
 
-        _ => vec![], // Not an updates container (handled elsewhere by dispatch_body)
+        _ => vec![],
     }
 }
 
-/// Convert a single `tl::enums::Update` into a `Vec<Update>` (usually 0 or 1 element).
+/// Convert a single `tl::enums::Update` into a `Vec<Update>`.
 fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
     use tl::enums::Update::*;
     match upd {
@@ -271,8 +415,14 @@ fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
         NewChannelMessage(u) => vec![Update::NewMessage(IncomingMessage::from_raw(u.message))],
         EditMessage(u) => vec![Update::MessageEdited(IncomingMessage::from_raw(u.message))],
         EditChannelMessage(u) => vec![Update::MessageEdited(IncomingMessage::from_raw(u.message))],
-        DeleteMessages(u) => vec![Update::MessageDeleted(MessageDeletion { message_ids: u.messages, channel_id: None })],
-        DeleteChannelMessages(u) => vec![Update::MessageDeleted(MessageDeletion { message_ids: u.messages, channel_id: Some(u.channel_id) })],
+        DeleteMessages(u) => vec![Update::MessageDeleted(MessageDeletion {
+            message_ids: u.messages,
+            channel_id: None,
+        })],
+        DeleteChannelMessages(u) => vec![Update::MessageDeleted(MessageDeletion {
+            message_ids: u.messages,
+            channel_id: Some(u.channel_id),
+        })],
         BotCallbackQuery(u) => vec![Update::CallbackQuery(CallbackQuery {
             query_id:        u.query_id,
             user_id:         u.user_id,
@@ -294,9 +444,15 @@ fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
             user_id:  u.user_id,
             query:    u.query,
             offset:   u.offset,
+            peer:     None,
+        })],
+        BotInlineSend(u) => vec![Update::InlineSend(InlineSend {
+            user_id: u.user_id,
+            query:   u.query,
+            id:      u.id,
+            msg_id:  u.msg_id,
         })],
         other => {
-            // Use the TL constructor ID as the raw update identifier
             let cid = tl_constructor_id(&other);
             vec![Update::Raw(RawUpdate { constructor_id: cid })]
         }
