@@ -129,6 +129,25 @@ impl EncryptedSession {
         buf.as_ref().to_vec()
     }
 
+
+    /// Like [`pack_serializable`] but also returns the `msg_id`.
+    /// Used by the split-writer path for write RPCs (Serializable but not RemoteCall).
+    pub fn pack_serializable_with_msg_id<S: layer_tl_types::Serializable>(&mut self, call: &S) -> (Vec<u8>, i64) {
+        let body   = call.to_bytes();
+        let msg_id = self.next_msg_id();
+        let seq_no = self.next_seq_no();
+        let inner_len = 8 + 8 + 8 + 4 + 4 + body.len();
+        let mut buf   = DequeBuffer::with_capacity(inner_len, 32);
+        buf.extend(self.salt.to_le_bytes());
+        buf.extend(self.session_id.to_le_bytes());
+        buf.extend(msg_id.to_le_bytes());
+        buf.extend(seq_no.to_le_bytes());
+        buf.extend((body.len() as u32).to_le_bytes());
+        buf.extend(body.iter().copied());
+        encrypt_data_v2(&mut buf, &self.auth_key);
+        (buf.as_ref().to_vec(), msg_id)
+    }
+
     /// Like [`pack`] but also returns the `msg_id` allocated for this message.
     ///
     /// Used by the async client to register a pending RPC reply channel keyed
@@ -205,4 +224,31 @@ impl EncryptedSession {
 
     /// Return the current session_id.
     pub fn session_id(&self) -> i64 { self.session_id }
+}
+
+impl EncryptedSession {
+    /// Decrypt a frame using explicit key + session_id — no mutable state needed.
+    /// Used by the split-reader task so it can decrypt without locking the writer.
+    pub fn decrypt_frame(
+        auth_key:   &[u8; 256],
+        session_id: i64,
+        frame:      &mut Vec<u8>,
+    ) -> Result<DecryptedMessage, DecryptError> {
+        let key = AuthKey::from_bytes(*auth_key);
+        let plaintext = decrypt_data_v2(frame, &key)
+            .map_err(DecryptError::Crypto)?;
+        if plaintext.len() < 32 {
+            return Err(DecryptError::FrameTooShort);
+        }
+        let salt     = i64::from_le_bytes(plaintext[..8].try_into().unwrap());
+        let sid      = i64::from_le_bytes(plaintext[8..16].try_into().unwrap());
+        let msg_id   = i64::from_le_bytes(plaintext[16..24].try_into().unwrap());
+        let seq_no   = i32::from_le_bytes(plaintext[24..28].try_into().unwrap());
+        let body_len = u32::from_le_bytes(plaintext[28..32].try_into().unwrap()) as usize;
+        if sid != session_id {
+            return Err(DecryptError::SessionMismatch);
+        }
+        let body = plaintext[32..32 + body_len.min(plaintext.len() - 32)].to_vec();
+        Ok(DecryptedMessage { salt, session_id: sid, msg_id, seq_no, body })
+    }
 }

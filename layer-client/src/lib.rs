@@ -61,7 +61,8 @@ use layer_tl_types::{Cursor, Deserializable, RemoteCall};
 use session::{DcEntry, PersistedSession};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::time::sleep;
 
 // ─── MTProto envelope constructor IDs ────────────────────────────────────────
@@ -392,7 +393,17 @@ impl Dialog {
 // ─── ClientInner ─────────────────────────────────────────────────────────────
 
 struct ClientInner {
-    conn:            Mutex<Connection>,
+    /// Write half of the connection — holds the EncryptedSession (for packing)
+    /// and the send half of the TCP stream. The read half is owned by the
+    /// reader task started in connect().
+    writer:          Mutex<ConnectionWriter>,
+    /// Pending RPC replies, keyed by MTProto msg_id.
+    /// RPC callers insert a oneshot::Sender here before sending; the reader
+    /// task routes incoming rpc_result frames to the matching sender.
+    pending:         Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Vec<u8>, InvocationError>>>>>,
+    /// Channel used to hand a new (OwnedReadHalf, FrameKind, auth_key, session_id)
+    /// to the reader task after a reconnect.
+    reconnect_tx:    mpsc::UnboundedSender<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
     home_dc_id:      Mutex<i32>,
     dc_options:      Mutex<HashMap<i32, DcEntry>>,
     pub(crate) peer_cache:    Mutex<PeerCache>,
@@ -463,8 +474,25 @@ impl Client {
         // ── Build DC pool ───────────────────────────────────────────────
         let pool = dc_pool::DcPool::new(home_dc_id, &dc_opts.values().cloned().collect::<Vec<_>>());
 
+        // Split the TCP stream immediately.
+        // The writer (write half + EncryptedSession) stays in ClientInner.
+        // The read half goes to the reader task which we spawn right now so
+        // that RPC calls during init_connection work correctly.
+        let (writer, read_half, frame_kind) = conn.into_writer();
+        let auth_key   = writer.enc.auth_key_bytes();
+        let session_id = writer.enc.session_id();
+
+        let pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Vec<u8>, InvocationError>>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        // Channel the reconnect logic uses to hand a new read half to the reader task.
+        let (reconnect_tx, reconnect_rx) =
+            mpsc::unbounded_channel::<(OwnedReadHalf, FrameKind, [u8; 256], i64)>();
+
         let inner = Arc::new(ClientInner {
-            conn:            Mutex::new(conn),
+            writer:          Mutex::new(writer),
+            pending:         pending.clone(),
+            reconnect_tx,
             home_dc_id:      Mutex::new(home_dc_id),
             dc_options:      Mutex::new(dc_opts),
             peer_cache:      Mutex::new(PeerCache::default()),
@@ -485,10 +513,19 @@ impl Client {
             _update_rx: Arc::new(Mutex::new(update_rx)),
         };
 
+        // Spawn the reader task immediately so that RPC calls during
+        // init_connection can receive their responses.
+        {
+            let client_r = client.clone();
+            tokio::spawn(async move {
+                client_r.run_reader_task(
+                    read_half, frame_kind, auth_key, session_id, reconnect_rx,
+                ).await;
+            });
+        }
+
         // If init_connection fails (e.g. stale auth key rejected by Telegram),
-        // drop the saved connection, do a fresh DH handshake, and retry once.
-        // This mirrors what grammers does: on a 404/bad-auth response it reconnects
-        // with a brand-new auth key rather than giving up or hanging.
+        // do a fresh DH handshake and retry once.
         if let Err(e) = client.init_connection().await {
             log::warn!("[layer] init_connection failed ({e}), retrying with fresh connect …");
 
@@ -498,10 +535,6 @@ impl Client {
                 Self::fresh_connect(socks5_r.as_ref(), &transport_r).await?;
 
             {
-                let mut conn_guard = client.inner.conn.lock().await;
-                *conn_guard = new_conn;
-            }
-            {
                 let mut dc_guard = client.inner.home_dc_id.lock().await;
                 *dc_guard = new_dc_id;
             }
@@ -509,6 +542,13 @@ impl Client {
                 let mut opts_guard = client.inner.dc_options.lock().await;
                 *opts_guard = new_opts;
             }
+
+            // Replace writer and hand new read half to reader task
+            let (new_writer, new_read, new_fk) = new_conn.into_writer();
+            let new_ak = new_writer.enc.auth_key_bytes();
+            let new_sid = new_writer.enc.session_id();
+            *client.inner.writer.lock().await = new_writer;
+            let _ = client.inner.reconnect_tx.send((new_read, new_fk, new_ak, new_sid));
 
             client.init_connection().await?;
         }
@@ -533,16 +573,16 @@ impl Client {
     // ── Session ────────────────────────────────────────────────────────────
 
     pub async fn save_session(&self) -> Result<(), InvocationError> {
-        let conn_guard = self.inner.conn.lock().await;
-        let home_dc_id = *self.inner.home_dc_id.lock().await;
-        let dc_options = self.inner.dc_options.lock().await;
+        let writer_guard = self.inner.writer.lock().await;
+        let home_dc_id   = *self.inner.home_dc_id.lock().await;
+        let dc_options   = self.inner.dc_options.lock().await;
 
         let mut dcs: Vec<DcEntry> = dc_options.values().map(|e| DcEntry {
             dc_id:       e.dc_id,
             addr:        e.addr.clone(),
-            auth_key:    if e.dc_id == home_dc_id { Some(conn_guard.auth_key_bytes()) } else { e.auth_key },
-            first_salt:  if e.dc_id == home_dc_id { conn_guard.first_salt() } else { e.first_salt },
-            time_offset: if e.dc_id == home_dc_id { conn_guard.time_offset() } else { e.time_offset },
+            auth_key:    if e.dc_id == home_dc_id { Some(writer_guard.auth_key_bytes()) } else { e.auth_key },
+            first_salt:  if e.dc_id == home_dc_id { writer_guard.first_salt() } else { e.first_salt },
+            time_offset: if e.dc_id == home_dc_id { writer_guard.time_offset() } else { e.time_offset },
         }).collect();
         // Collect auth keys from worker DCs in the pool
         self.inner.dc_pool.lock().await.collect_keys(&mut dcs);
@@ -726,87 +766,225 @@ impl Client {
     // ── Updates ────────────────────────────────────────────────────────────
 
     /// Return an [`UpdateStream`] that yields incoming [`Update`]s.
+    ///
+    /// The reader task (started inside `connect()`) sends all updates to
+    /// `inner.update_tx`. This method proxies those updates into a fresh
+    /// caller-owned channel — typically called once per bot/app loop.
     pub fn stream_updates(&self) -> UpdateStream {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let client = self.clone();
+        let (caller_tx, rx) = mpsc::unbounded_channel::<update::Update>();
+        // The internal channel is: reader_task → update_tx → _update_rx
+        // We forward _update_rx → caller_tx so the caller gets an owned stream.
+        let internal_rx = self._update_rx.clone();
         tokio::spawn(async move {
-            client.run_update_loop(tx).await;
+            // Lock once and hold — this is the sole consumer of the internal channel.
+            let mut guard = internal_rx.lock().await;
+            while let Some(upd) = guard.recv().await {
+                if caller_tx.send(upd).is_err() { break; }
+            }
         });
         UpdateStream { rx }
     }
 
-    async fn run_update_loop(&self, tx: mpsc::UnboundedSender<update::Update>) {
+    // ── Reader task ────────────────────────────────────────────────────────
+    // Started once inside connect(). Owns the TCP read half forever.
+    // Decrypts frames without holding any lock, then routes:
+    //   rpc_result  → pending map (oneshot to waiting RPC caller)
+    //   update      → update_tx  (delivered to stream_updates consumers)
+    //   bad_server_salt → updates writer salt
+    //
+    // DC migration / reconnect: the new read half arrives via new_conn_rx.
+    // The select! between recv_frame_owned and new_conn_rx.recv() ensures we
+    // switch to the new connection immediately, without waiting for the next
+    // frame on the old (now stale) connection.
+
+    async fn run_reader_task(
+        &self,
+        read_half:   OwnedReadHalf,
+        frame_kind:  FrameKind,
+        auth_key:    [u8; 256],
+        session_id:  i64,
+        mut new_conn_rx: mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
+    ) {
+        self.reader_loop(read_half, frame_kind, auth_key, session_id, &mut new_conn_rx).await;
+    }
+
+    async fn reader_loop(
+        &self,
+        mut rh:          OwnedReadHalf,
+        mut fk:          FrameKind,
+        mut ak:          [u8; 256],
+        mut sid:         i64,
+        new_conn_rx:     &mut mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
+    ) {
         loop {
-            let result = {
-                let mut conn = self.inner.conn.lock().await;
-                match tokio::time::timeout(Duration::from_secs(30), conn.recv_once()).await {
-                    Ok(Ok(updates)) => Ok(updates),
-                    Ok(Err(e))      => Err(e),
-                    Err(_timeout)   => {
-                        let _ = conn.send_ping().await;
-                        continue;
+            // Race the frame-read against an incoming new-connection signal.
+            // Both branches are polled concurrently; whichever resolves first wins.
+            // If new_conn_rx wins, the frame-read future is dropped (closing old rh).
+            tokio::select! {
+                // Normal frame (or keepalive timeout) from current connection
+                outcome = recv_frame_with_keepalive(&mut rh, &fk, self, &ak) => {
+                    match outcome {
+                        FrameOutcome::Frame(mut raw) => {
+                            let msg = match EncryptedSession::decrypt_frame(&ak, sid, &mut raw) {
+                                Ok(m)  => m,
+                                Err(e) => { log::warn!("[layer] Decrypt error: {e:?}"); continue; }
+                            };
+                            if msg.salt != 0 {
+                                self.inner.writer.lock().await.enc.salt = msg.salt;
+                            }
+                            self.route_frame(msg.body).await;
+                        }
+                        FrameOutcome::Error(e) => {
+                            log::warn!("[layer] Reader: error: {e} — reconnecting …");
+                            self.inner.pending.lock().await.clear();
+                            sleep(Duration::from_secs(1)).await;
+                            match self.do_reconnect(&ak, &fk).await {
+                                Ok((new_rh, new_fk, new_ak, new_sid)) => {
+                                    rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
+                                    let c = self.clone();
+                                    let utx = self.inner.update_tx.clone();
+                                    tokio::spawn(async move {
+                                        if let Ok(missed) = c.get_difference().await {
+                                            for u in missed { let _ = utx.send(u); }
+                                        }
+                                    });
+                                }
+                                Err(e2) => { log::error!("[layer] Reconnect failed: {e2}"); break; }
+                            }
+                        }
+                        FrameOutcome::Keepalive => {} // ping was sent; loop again
                     }
                 }
-            };
 
-            match result {
-                Ok(updates) => {
-                    for u in updates { let _ = tx.send(u); }
-                }
-                Err(e) => {
-                    log::warn!("[layer] Update loop error: {e} — reconnecting …");
-                    sleep(Duration::from_secs(1)).await;
-                    let home_dc_id = *self.inner.home_dc_id.lock().await;
-                    let (addr, saved_key, first_salt, time_offset) = {
-                        let opts = self.inner.dc_options.lock().await;
-                        match opts.get(&home_dc_id) {
-                            Some(e) => (e.addr.clone(), e.auth_key, e.first_salt, e.time_offset),
-                            None    => ("149.154.167.51:443".to_string(), None, 0, 0),
-                        }
-                    };
-                    let socks5    = self.inner.socks5.clone();
-                    let transport = self.inner.transport.clone();
-
-                    // Prefer reconnecting with the existing auth key (user is already
-                    // authorised on it).  Only fall back to a fresh DH if that fails.
-                    let new_conn_result = if let Some(key) = saved_key {
-                        log::info!("[layer] Reconnecting to DC{home_dc_id} with saved key …");
-                        match Connection::connect_with_key(
-                            &addr, key, first_salt, time_offset,
-                            socks5.as_ref(), &transport,
-                        ).await {
-                            Ok(c)  => Ok(c),
-                            Err(e2) => {
-                                log::warn!("[layer] connect_with_key failed ({e2}), falling back to fresh DH …");
-                                Connection::connect_raw(&addr, socks5.as_ref(), &transport).await
-                            }
-                        }
+                // A new connection arrived (DC migration or deliberate reconnect)
+                maybe = new_conn_rx.recv() => {
+                    if let Some((new_rh, new_fk, new_ak, new_sid)) = maybe {
+                        // frame-read future was dropped → old TCP read half is closed
+                        rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
+                        log::info!("[layer] Reader: switched to new connection");
                     } else {
-                        Connection::connect_raw(&addr, socks5.as_ref(), &transport).await
-                    };
-
-                    match new_conn_result {
-                        Ok(new_conn) => {
-                            *self.inner.conn.lock().await = new_conn;
-                            if let Err(e2) = self.init_connection().await {
-                                log::warn!("[layer] init_connection after reconnect failed: {e2}");
-                            }
-                            // Fetch any updates missed during disconnect
-                            match self.get_difference().await {
-                                Ok(missed) => {
-                                    for u in missed { let _ = tx.send(u); }
-                                }
-                                Err(e2) => log::warn!("[layer] getDifference after reconnect failed: {e2}"),
-                            }
-                        }
-                        Err(e2) => {
-                            log::error!("[layer] Reconnect failed: {e2}");
-                            break;
-                        }
+                        break; // reconnect_tx dropped → client shutting down
                     }
                 }
             }
         }
+    }
+
+    /// Route a decrypted MTProto frame body to either a pending RPC caller or update_tx.
+    async fn route_frame(&self, body: Vec<u8>) {
+        if body.len() < 4 { return; }
+        let cid = u32::from_le_bytes(body[..4].try_into().unwrap());
+
+        match cid {
+            ID_RPC_RESULT => {
+                // body[4..12] = req_msg_id of the request this is answering
+                if body.len() < 12 { return; }
+                let req_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
+                let inner = body[12..].to_vec();
+                // Recursively unwrap the inner payload (handles gzip, containers, etc.)
+                let result = unwrap_envelope(inner);
+                if let Some(tx) = self.inner.pending.lock().await.remove(&req_msg_id) {
+                    let to_send = match result {
+                        Ok(EnvelopeResult::Payload(p)) => Ok(p),
+                        Ok(EnvelopeResult::Updates(us)) => {
+                            // Write RPCs return Updates — forward them and signal success
+                            for u in us { let _ = self.inner.update_tx.send(u); }
+                            Ok(vec![])
+                        }
+                        Ok(EnvelopeResult::None) => Ok(vec![]),
+                        Err(e) => Err(e),
+                    };
+                    let _ = tx.send(to_send);
+                }
+            }
+            // ID_RPC_ERROR only appears as the INNER body of ID_RPC_RESULT.
+            // At top level it has no req_msg_id — ignore it here (the ID_RPC_RESULT
+            // handler above uses unwrap_envelope which correctly returns Err for it).
+            ID_RPC_ERROR => {
+                log::warn!("[layer] Unexpected top-level rpc_error (no pending target)");
+            }
+            ID_MSG_CONTAINER => {
+                // Container of multiple inner messages — recurse into each
+                if body.len() < 8 { return; }
+                let count = u32::from_le_bytes(body[4..8].try_into().unwrap()) as usize;
+                let mut pos = 8usize;
+                for _ in 0..count {
+                    if pos + 16 > body.len() { break; }
+                    let inner_len = u32::from_le_bytes(body[pos + 12..pos + 16].try_into().unwrap()) as usize;
+                    pos += 16;
+                    if pos + inner_len > body.len() { break; }
+                    let inner = body[pos..pos + inner_len].to_vec();
+                    pos += inner_len;
+                    Box::pin(self.route_frame(inner)).await;
+                }
+            }
+            ID_GZIP_PACKED => {
+                let bytes = tl_read_bytes(&body[4..]).unwrap_or_default();
+                if let Ok(inflated) = gz_inflate(&bytes) {
+                    Box::pin(self.route_frame(inflated)).await;
+                }
+            }
+            ID_BAD_SERVER_SALT => {
+                // Server is telling us to use a different salt — update writer enc
+                if body.len() >= 16 {
+                    let new_salt = i64::from_le_bytes(body[8..16].try_into().unwrap());
+                    self.inner.writer.lock().await.enc.salt = new_salt;
+                }
+            }
+            ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED
+            | ID_UPDATE_SHORT_MSG | ID_UPDATE_SHORT_CHAT_MSG
+            | ID_UPDATES_TOO_LONG => {
+                for u in update::parse_updates(&body) {
+                    let _ = self.inner.update_tx.send(u);
+                }
+            }
+            // Silently acknowledged service messages — pong, acks, etc.
+            _ => {}
+        }
+    }
+
+    /// Reconnect to the home DC, replace the writer, and return the new read half.
+    async fn do_reconnect(
+        &self,
+        _old_auth_key: &[u8; 256],
+        _old_frame_kind: &FrameKind,
+    ) -> Result<(OwnedReadHalf, FrameKind, [u8; 256], i64), InvocationError> {
+        let home_dc_id = *self.inner.home_dc_id.lock().await;
+        let (addr, saved_key, first_salt, time_offset) = {
+            let opts = self.inner.dc_options.lock().await;
+            match opts.get(&home_dc_id) {
+                Some(e) => (e.addr.clone(), e.auth_key, e.first_salt, e.time_offset),
+                None    => ("149.154.167.51:443".to_string(), None, 0, 0),
+            }
+        };
+        let socks5    = self.inner.socks5.clone();
+        let transport = self.inner.transport.clone();
+
+        let new_conn = if let Some(key) = saved_key {
+            log::info!("[layer] Reconnecting to DC{home_dc_id} with saved key …");
+            match Connection::connect_with_key(
+                &addr, key, first_salt, time_offset, socks5.as_ref(), &transport,
+            ).await {
+                Ok(c)   => c,
+                Err(e2) => {
+                    log::warn!("[layer] connect_with_key failed ({e2}), fresh DH …");
+                    Connection::connect_raw(&addr, socks5.as_ref(), &transport).await?
+                }
+            }
+        } else {
+            Connection::connect_raw(&addr, socks5.as_ref(), &transport).await?
+        };
+
+        let (new_writer, new_read, new_fk) = new_conn.into_writer();
+        let new_ak  = new_writer.enc.auth_key_bytes();
+        let new_sid = new_writer.enc.session_id();
+        *self.inner.writer.lock().await = new_writer;
+
+        if let Err(e2) = self.init_connection().await {
+            log::warn!("[layer] init_connection after reconnect failed: {e2}");
+        }
+
+        Ok((new_read, new_fk, new_ak, new_sid))
     }
 
     // ── Messaging ──────────────────────────────────────────────────────────
@@ -1592,33 +1770,42 @@ impl Client {
         }
     }
 
+    /// Send an RPC call and await the response via a oneshot channel.
+    ///
+    /// This is the core of the split-stream design:
+    ///  1. Pack the request and get its msg_id.
+    ///  2. Register a oneshot Sender in the pending map (BEFORE sending).
+    ///  3. Send the frame while holding the writer lock.
+    ///  4. Release the writer lock immediately — the reader task now runs freely.
+    ///  5. Await the oneshot Receiver; the reader task will fulfill it when
+    ///     the matching rpc_result frame arrives.
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
-        let mut side_updates = Vec::new();
-        let result = {
-            let mut conn = self.inner.conn.lock().await;
-            conn.rpc_call(req, &mut side_updates).await
-        };
-        for u in side_updates {
-            let _ = self.inner.update_tx.send(u);
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut w = self.inner.writer.lock().await;
+            let (wire, msg_id) = w.enc.pack_with_msg_id(req);
+            let fk = w.frame_kind.clone();
+            // Insert BEFORE sending — response cannot arrive before we send, but
+            // inserting first is the safe contract.
+            self.inner.pending.lock().await.insert(msg_id, tx);
+            send_frame_write(&mut w.write_half, &wire, &fk).await?;
         }
-        result
+        // Writer lock is released. Reader task can now freely read from the socket
+        // without competing with us.
+        match tokio::time::timeout(Duration::from_secs(30), rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_))     => Err(InvocationError::Deserialize("RPC channel closed (reader died?)".into())),
+            Err(_)         => Err(InvocationError::Deserialize("RPC timed out after 30 s".into())),
+        }
     }
 
-    /// Like `rpc_call_raw` but for write RPCs whose TL return type is `Updates`.
-    /// Accepts either a normal payload or an `Updates` frame as success, so we
-    /// don't hang when Telegram sends back an `updateShort` instead of a full result.
+    /// Like `rpc_call_raw` but for write RPCs (Serializable, return type is Updates).
+    /// Uses the same oneshot mechanism — the reader task signals success/failure.
     async fn rpc_write<S: tl::Serializable>(&self, req: &S) -> Result<(), InvocationError> {
         let mut fail_count   = NonZeroU32::new(1).unwrap();
         let mut slept_so_far = Duration::default();
         loop {
-            let mut side_updates = Vec::new();
-            let result = {
-                let mut conn = self.inner.conn.lock().await;
-                conn.rpc_call_ack(req, &mut side_updates).await
-            };
-            for u in side_updates {
-                let _ = self.inner.update_tx.send(u);
-            }
+            let result = self.do_rpc_write(req).await;
             match result {
                 Ok(()) => return Ok(()),
                 Err(e) => {
@@ -1633,6 +1820,22 @@ impl Client {
                     }
                 }
             }
+        }
+    }
+
+    async fn do_rpc_write<S: tl::Serializable>(&self, req: &S) -> Result<(), InvocationError> {
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut w = self.inner.writer.lock().await;
+            let (wire, msg_id) = w.enc.pack_serializable_with_msg_id(req);
+            let fk = w.frame_kind.clone();
+            self.inner.pending.lock().await.insert(msg_id, tx);
+            send_frame_write(&mut w.write_half, &wire, &fk).await?;
+        }
+        match tokio::time::timeout(Duration::from_secs(30), rx).await {
+            Ok(Ok(result)) => result.map(|_| ()),  // ignore body for write RPCs
+            Ok(Err(_))     => Err(InvocationError::Deserialize("rpc_write channel closed".into())),
+            Err(_)         => Err(InvocationError::Deserialize("rpc_write timed out after 30 s".into())),
         }
     }
 
@@ -1656,17 +1859,8 @@ impl Client {
             },
         };
 
-        let body = {
-            let mut side_updates = Vec::new();
-            let result = {
-                let mut conn = self.inner.conn.lock().await;
-                conn.rpc_call_serializable(&req, &mut side_updates).await
-            };
-            for u in side_updates {
-                let _ = self.inner.update_tx.send(u);
-            }
-            result?
-        };
+        // Use the split-writer oneshot path (reader task routes the response).
+        let body = self.rpc_call_raw_serializable(&req).await?;
 
         let mut cur = Cursor::from_slice(&body);
         if let Ok(tl::enums::Config::Config(cfg)) = tl::enums::Config::deserialize(&mut cur) {
@@ -1721,7 +1915,12 @@ impl Client {
             entry.auth_key = Some(new_key);
         }
 
-        *self.inner.conn.lock().await = conn;
+        // Split the new connection and replace writer + reader
+        let (new_writer, new_read, new_fk) = conn.into_writer();
+        let new_ak  = new_writer.enc.auth_key_bytes();
+        let new_sid = new_writer.enc.session_id();
+        *self.inner.writer.lock().await = new_writer;
+        let _ = self.inner.reconnect_tx.send((new_read, new_fk, new_ak, new_sid));
         *self.inner.home_dc_id.lock().await = new_dc_id;
         self.init_connection().await?;
         log::info!("[layer] Now on DC{new_dc_id} ✓");
@@ -1759,6 +1958,44 @@ impl Client {
     #[doc(hidden)]
     pub async fn rpc_call_raw_pub<R: layer_tl_types::RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         self.rpc_call_raw(req).await
+    }
+
+    /// Like rpc_call_raw but takes a Serializable (for InvokeWithLayer wrappers).
+    async fn rpc_call_raw_serializable<S: tl::Serializable>(&self, req: &S) -> Result<Vec<u8>, InvocationError> {
+        let mut fail_count   = NonZeroU32::new(1).unwrap();
+        let mut slept_so_far = Duration::default();
+        loop {
+            match self.do_rpc_write_returning_body(req).await {
+                Ok(body) => return Ok(body),
+                Err(e) => {
+                    let ctx = RetryContext { fail_count, slept_so_far, error: e };
+                    match self.inner.retry_policy.should_retry(&ctx) {
+                        ControlFlow::Continue(delay) => {
+                            sleep(delay).await;
+                            slept_so_far += delay;
+                            fail_count = fail_count.saturating_add(1);
+                        }
+                        ControlFlow::Break(()) => return Err(ctx.error),
+                    }
+                }
+            }
+        }
+    }
+
+    async fn do_rpc_write_returning_body<S: tl::Serializable>(&self, req: &S) -> Result<Vec<u8>, InvocationError> {
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut w = self.inner.writer.lock().await;
+            let (wire, msg_id) = w.enc.pack_serializable_with_msg_id(req);
+            let fk = w.frame_kind.clone();
+            self.inner.pending.lock().await.insert(msg_id, tx);
+            send_frame_write(&mut w.write_half, &wire, &fk).await?;
+        }
+        match tokio::time::timeout(Duration::from_secs(30), rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_))     => Err(InvocationError::Deserialize("rpc channel closed".into())),
+            Err(_)         => Err(InvocationError::Deserialize("rpc timed out after 30 s".into())),
+        }
     }
 
     // ── Paginated dialog iterator ──────────────────────────────────────────
@@ -2086,11 +2323,29 @@ pub fn random_i64_pub() -> i64 { random_i64() }
 // ─── Connection ───────────────────────────────────────────────────────────────
 
 /// How framing bytes are sent/received on a connection.
+#[derive(Clone)]
 enum FrameKind {
     Abridged,
     Intermediate,
     #[allow(dead_code)]
     Full { send_seqno: u32, recv_seqno: u32 },
+}
+
+
+// ─── Split connection types ───────────────────────────────────────────────────
+
+/// Write half of a split connection.  Held under `Mutex` in `ClientInner`.
+/// Owns the EncryptedSession (for packing) and the pending-RPC map.
+struct ConnectionWriter {
+    write_half: OwnedWriteHalf,
+    enc:        EncryptedSession,
+    frame_kind: FrameKind,
+}
+
+impl ConnectionWriter {
+    fn auth_key_bytes(&self) -> [u8; 256] { self.enc.auth_key_bytes() }
+    fn first_salt(&self)    -> i64         { self.enc.salt }
+    fn time_offset(&self)   -> i32         { self.enc.time_offset }
 }
 
 struct Connection {
@@ -2235,114 +2490,16 @@ impl Connection {
     }
 
     fn auth_key_bytes(&self) -> [u8; 256] { self.enc.auth_key_bytes() }
-    fn first_salt(&self)     -> i64         { self.enc.salt }
-    fn time_offset(&self)    -> i32         { self.enc.time_offset }
 
-    async fn rpc_call<R: RemoteCall>(
-        &mut self,
-        req: &R,
-        side_updates: &mut Vec<update::Update>,
-    ) -> Result<Vec<u8>, InvocationError> {
-        let wire = self.enc.pack(req);
-        send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        tokio::time::timeout(Duration::from_secs(10), self.recv_rpc_with_updates(side_updates))
-            .await
-            .map_err(|_| InvocationError::Deserialize("rpc_call timed out after 10 s".into()))?
-    }
-
-    async fn rpc_call_serializable<S: tl::Serializable>(
-        &mut self,
-        req: &S,
-        side_updates: &mut Vec<update::Update>,
-    ) -> Result<Vec<u8>, InvocationError> {
-        let wire = self.enc.pack_serializable(req);
-        send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        tokio::time::timeout(Duration::from_secs(10), self.recv_rpc_with_updates(side_updates))
-            .await
-            .map_err(|_| InvocationError::Deserialize("rpc_call_serializable timed out after 10 s".into()))?
-    }
-
-    /// Like `rpc_call_serializable` but accepts either a Payload OR an Updates
-    /// frame as a successful response.  Use this for write RPCs whose return
-    /// type in the TL schema is `Updates` — Telegram may respond with an
-    /// `updateShort` instead of a full serialized result.
-    async fn rpc_call_ack<S: tl::Serializable>(
-        &mut self,
-        req: &S,
-        side_updates: &mut Vec<update::Update>,
-    ) -> Result<(), InvocationError> {
-        let wire = self.enc.pack_serializable(req);
-        send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        tokio::time::timeout(Duration::from_secs(10), self.recv_ack(side_updates))
-            .await
-            .map_err(|_| InvocationError::Deserialize("rpc_call_ack timed out after 10 s".into()))?
-    }
-
-    async fn recv_ack(
-        &mut self,
-        side_updates: &mut Vec<update::Update>,
-    ) -> Result<(), InvocationError> {
-        loop {
-            let mut raw = recv_frame(&mut self.stream, &mut self.frame_kind).await?;
-            let msg = self.enc.unpack(&mut raw)
-                .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-            if msg.salt != 0 { self.enc.salt = msg.salt; }
-            match unwrap_envelope(msg.body)? {
-                EnvelopeResult::Payload(_) => return Ok(()),
-                EnvelopeResult::Updates(us) => {
-                    side_updates.extend(us);
-                    return Ok(());
-                }
-                EnvelopeResult::None => {}
-            }
-        }
-    }
-
-    /// Receive one RPC response, collecting any interleaved server-push updates
-    /// into `side_updates` so the caller can forward them to the update channel.
-    async fn recv_rpc_with_updates(
-        &mut self,
-        side_updates: &mut Vec<update::Update>,
-    ) -> Result<Vec<u8>, InvocationError> {
-        loop {
-            let mut raw = recv_frame(&mut self.stream, &mut self.frame_kind).await?;
-            let msg = self.enc.unpack(&mut raw)
-                .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-            if msg.salt != 0 { self.enc.salt = msg.salt; }
-            match unwrap_envelope(msg.body)? {
-                EnvelopeResult::Payload(p)  => return Ok(p),
-                EnvelopeResult::Updates(us) => {
-                    log::debug!("[layer] {} updates interleaved during RPC", us.len());
-                    side_updates.extend(us);
-                }
-                EnvelopeResult::None => {}
-            }
-        }
-    }
-
-    /// Legacy recv_rpc that discards interleaved updates (used internally only).
-    #[allow(dead_code)]
-    async fn recv_rpc(&mut self) -> Result<Vec<u8>, InvocationError> {
-        let mut _discard = Vec::new();
-        self.recv_rpc_with_updates(&mut _discard).await
-    }
-
-    async fn recv_once(&mut self) -> Result<Vec<update::Update>, InvocationError> {
-        let mut raw = recv_frame(&mut self.stream, &mut self.frame_kind).await?;
-        let msg = self.enc.unpack(&mut raw)
-            .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-        if msg.salt != 0 { self.enc.salt = msg.salt; }
-        match unwrap_envelope(msg.body)? {
-            EnvelopeResult::Updates(us) => Ok(us),
-            _ => Ok(vec![]),
-        }
-    }
-
-    async fn send_ping(&mut self) -> Result<(), InvocationError> {
-        let req = tl::functions::Ping { ping_id: random_i64() };
-        let wire = self.enc.pack(&req);
-        send_frame(&mut self.stream, &wire, &self.frame_kind).await?;
-        Ok(())
+    /// Split into a write-only `ConnectionWriter` and the TCP read half.
+    fn into_writer(self) -> (ConnectionWriter, OwnedReadHalf, FrameKind) {
+        let (read_half, write_half) = self.stream.into_split();
+        let writer = ConnectionWriter {
+            write_half,
+            enc:        self.enc,
+            frame_kind: self.frame_kind.clone(),
+        };
+        (writer, read_half, self.frame_kind)
     }
 }
 
@@ -2374,13 +2531,85 @@ async fn send_frame(
     }
 }
 
-/// Receive a framed message.
-async fn recv_frame(
-    stream: &mut TcpStream,
-    kind:   &mut FrameKind,
+// ─── Split-reader helpers ─────────────────────────────────────────────────────
+
+/// Outcome of a timed frame read attempt.
+enum FrameOutcome {
+    Frame(Vec<u8>),
+    Error(InvocationError),
+    Keepalive,  // timeout elapsed but ping was sent; caller should loop
+}
+
+/// Read one frame with a 25-second keepalive timeout.
+/// If the timeout fires, send a ping (using the writer) and return Keepalive.
+async fn recv_frame_with_keepalive(
+    rh:      &mut OwnedReadHalf,
+    fk:      &FrameKind,
+    client:  &Client,
+    _ak:     &[u8; 256],
+) -> FrameOutcome {
+    match tokio::time::timeout(Duration::from_secs(25), recv_frame_read(rh, fk)).await {
+        Ok(Ok(raw)) => FrameOutcome::Frame(raw),
+        Ok(Err(e))  => FrameOutcome::Error(e),
+        Err(_)      => {
+            // Send keepalive ping
+            let ping_req = tl::functions::Ping { ping_id: random_i64() };
+            let mut w = client.inner.writer.lock().await;
+            let wire = w.enc.pack(&ping_req);
+            let fk = w.frame_kind.clone();
+            let _ = send_frame_write(&mut w.write_half, &wire, &fk).await;
+            FrameOutcome::Keepalive
+        }
+    }
+}
+
+/// Send a framed message via an OwnedWriteHalf (split connection).
+async fn send_frame_write(
+    stream: &mut OwnedWriteHalf,
+    data:   &[u8],
+    kind:   &FrameKind,
+) -> Result<(), InvocationError> {
+    match kind {
+        FrameKind::Abridged => {
+            let words = data.len() / 4;
+            if words < 0x7f {
+                stream.write_all(&[words as u8]).await?;
+            } else {
+                let b = [0x7f, (words & 0xff) as u8, ((words >> 8) & 0xff) as u8, ((words >> 16) & 0xff) as u8];
+                stream.write_all(&b).await?;
+            }
+            stream.write_all(data).await?;
+            Ok(())
+        }
+        FrameKind::Intermediate | FrameKind::Full { .. } => {
+            stream.write_all(&(data.len() as u32).to_le_bytes()).await?;
+            stream.write_all(data).await?;
+            Ok(())
+        }
+    }
+}
+
+/// Receive a framed message via an OwnedReadHalf (split connection).
+async fn recv_frame_read(
+    stream: &mut OwnedReadHalf,
+    kind:   &FrameKind,
 ) -> Result<Vec<u8>, InvocationError> {
     match kind {
-        FrameKind::Abridged => recv_abridged(stream).await,
+        FrameKind::Abridged => {
+            let mut h = [0u8; 1];
+            stream.read_exact(&mut h).await?;
+            let words = if h[0] < 0x7f {
+                h[0] as usize
+            } else {
+                let mut b = [0u8; 3];
+                stream.read_exact(&mut b).await?;
+                b[0] as usize | (b[1] as usize) << 8 | (b[2] as usize) << 16
+            };
+            let len = words * 4;
+            let mut buf = vec![0u8; len];
+            stream.read_exact(&mut buf).await?;
+            Ok(buf)
+        }
         FrameKind::Intermediate | FrameKind::Full { .. } => {
             let mut len_buf = [0u8; 4];
             stream.read_exact(&mut len_buf).await?;
@@ -2391,6 +2620,7 @@ async fn recv_frame(
         }
     }
 }
+
 
 /// Send using Abridged framing (used for DH plaintext during connect).
 async fn send_abridged(stream: &mut TcpStream, data: &[u8]) -> Result<(), InvocationError> {
