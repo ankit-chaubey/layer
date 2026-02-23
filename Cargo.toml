@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version     = "0.2.0"
+version     = "0.2.1"
 edition     = "2024"
 license     = "MIT OR Apache-2.0"
 readme      = "README.md"
@@ -27,5 +27,5 @@ layer-tl-parser = { path = "layer-tl-parser", version = "0.2.0" }
 layer-tl-gen    = { path = "layer-tl-gen",    version = "0.2.0" }
 layer-tl-types  = { path = "layer-tl-types",  version = "0.2.0" }
 layer-crypto    = { path = "layer-crypto",     version = "0.2.0" }
-layer-mtproto   = { path = "layer-mtproto",    version = "0.2.0" }
-layer-client    = { path = "layer-client",     version = "0.2.0" }
+layer-mtproto   = { path = "layer-mtproto",    version = "0.2.1" }
+layer-client    = { path = "layer-client",     version = "0.2.1" }
