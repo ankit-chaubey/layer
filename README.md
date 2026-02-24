@@ -241,19 +241,36 @@ Licensed under either of, at your option:
 
 ## 🙏 Acknowledgements
 
-- [**Lonami**](https://codeberg.org/Lonami) — for [grammers](https://codeberg.org/Lonami/grammers).
-  The architecture, design decisions, SRP math, and session handling in this project
-  are all directly inspired by grammers. It's a fantastic library and an even better
-  learning resource. Thank you for making it open source! 🎉
+- [**Lonami**](https://codeberg.org/Lonami) for
+  [**grammers**](https://codeberg.org/Lonami/grammers).
+  Portions of this project include code derived from the grammers project,
+  which is dual-licensed under the MIT or Apache-2.0 licenses. The architecture,
+  design decisions, SRP math, and session handling are deeply inspired by grammers.
+  It's a fantastic library and an even better learning resource. Thank you for
+  making it open source! 🎉
 
-- [**Telegram**](https://core.telegram.org/mtproto) — for the detailed MTProto specification.
+- [**Telegram**](https://core.telegram.org/mtproto) for the detailed MTProto specification.
 
-- The Rust async ecosystem — `tokio`, `getrandom`, `flate2`, and friends.
+- The Rust async ecosystem `tokio`, `getrandom`, `flate2`, and friends.
+
+- 🤖 AI tools used for clearer documentation and better comments across the repo
+  (2026 is a good year to use AI).  
+  Even regrets 😁 after making these docs through AI. iykyk.
+  Too lazy to revert and type again, so it stays as is!
   
+---
+
+## ⚠️ Telegram Terms of Service
+
+As with any third-party Telegram library, please ensure that your usage
+complies with [Telegram’s Terms of Service](https://core.telegram.org/api/terms).
+Misuse or abuse of the Telegram API may result in temporary limitations or
+permanent bans of Telegram accounts.
+
 ---
 
 <div align="center">
 
-*layer — because sometimes you have to build it yourself to truly understand it.*
+*layer.. because sometimes you have to build it yourself to truly understand it.*
 
 </div>
