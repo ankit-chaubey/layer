@@ -1,0 +1,30 @@
+[book]
+title = "layer — Async Telegram MTProto in Rust"
+authors = ["Ankit Chaubey"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/ankit-chaubey/layer"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/ankit-chaubey/layer/edit/main/docs/{path}"
+additional-css = ["theme/custom.css"]
+additional-js = ["theme/custom.js"]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 20
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3

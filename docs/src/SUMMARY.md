@@ -1,0 +1,67 @@
+# Summary
+
+[Introduction](./introduction.md)
+
+---
+
+# Getting Started
+
+- [Installation](./installation.md)
+- [Quick Start — User Account](./quickstart-user.md)
+- [Quick Start — Bot](./quickstart-bot.md)
+
+---
+
+# Authentication
+
+- [User Login](./authentication/user-login.md)
+- [Bot Login](./authentication/bot-login.md)
+- [Two-Factor Auth (2FA)](./authentication/2fa.md)
+- [Session Persistence](./authentication/session.md)
+
+---
+
+# Messaging
+
+- [Sending Messages](./messaging/sending.md)
+- [Receiving Updates](./messaging/receiving.md)
+- [Inline Keyboards](./messaging/keyboards.md)
+- [Media & Files](./messaging/media.md)
+- [Message Formatting](./messaging/formatting.md)
+
+---
+
+# Updates & Events
+
+- [Update Types](./updates/update-types.md)
+- [IncomingMessage](./updates/incoming-message.md)
+- [Callback Queries](./updates/callbacks.md)
+- [Inline Mode](./updates/inline-mode.md)
+
+---
+
+# Client API Reference
+
+- [Client Methods](./api/client.md)
+- [InputMessage Builder](./api/input-message.md)
+- [Participants & Members](./api/participants.md)
+- [Dialogs & History](./api/dialogs.md)
+
+---
+
+# Advanced
+
+- [Raw API Access](./advanced/raw-api.md)
+- [Retry & Flood Wait](./advanced/retry.md)
+- [DC Migration](./advanced/dc-migration.md)
+- [Socks5 Proxy](./advanced/proxy.md)
+- [Upgrading TL Layer](./advanced/layer-upgrade.md)
+
+---
+
+# Reference
+
+- [Configuration](./config.md)
+- [Error Types](./errors.md)
+- [Crate Architecture](./crates.md)
+- [Feature Flags](./features.md)
