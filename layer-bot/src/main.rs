@@ -325,12 +325,14 @@ async fn handle_time(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
 }
 
 async fn handle_about(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
-    let text =
+    let text = format!(
         "ℹ️ **About layer-bot**\n\n\
         Built with **layer** — async Telegram MTProto in pure **Rust** 🦀\n\n\
         **Features:** Commands · Inline keyboards · Callback queries · \
         Inline mode · Markdown entities · Concurrent update handling\n\n\
-        **[layer on GitHub](https://github.com/ankit-chaubey/layer)** · Layer 222";
+        **[layer on GitHub](https://github.com/ankit-chaubey/layer)** · Layer {}",
+        tl::LAYER
+    );
     let keyboard = inline_keyboard(vec![
         vec![btn_url("⭐ Star on GitHub", "https://github.com/ankit-chaubey/layer")],
     ]);

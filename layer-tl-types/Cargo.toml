@@ -1,6 +1,6 @@
 [package]
 name        = "layer-tl-types"
-description = "Auto-generated Telegram TL types — constructors, functions, enums (Layer 222)"
+description = "Auto-generated Telegram TL types — constructors, functions, enums (Layer 223)"
 readme = "README.md"
 version.workspace    = true
 edition.workspace    = true

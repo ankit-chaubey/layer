@@ -7,7 +7,7 @@
 [![Crates.io](https://img.shields.io/crates/v/layer-mtproto?color=fc8d62)](https://crates.io/crates/layer-mtproto)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
-[![TL Layer](https://img.shields.io/badge/TL%20Layer-222-8b5cf6)](https://core.telegram.org/mtproto)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/mtproto)
 
 *A complete, from-scratch implementation of Telegram's MTProto 2.0 session layer.*
 

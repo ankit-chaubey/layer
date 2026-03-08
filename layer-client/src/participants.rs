@@ -225,6 +225,7 @@ impl Client {
                 send_voices:     false,
                 send_docs:       false,
                 send_plain:      false,
+                edit_rank:       false,
                 until_date,
             }),
         };
@@ -268,6 +269,7 @@ impl Client {
                 edit_stories:           false,
                 delete_stories:         false,
                 manage_direct_messages: false,
+                manage_ranks:           false,
             }
         } else {
             tl::types::ChatAdminRights {
@@ -287,6 +289,7 @@ impl Client {
                 edit_stories:           false,
                 delete_stories:         false,
                 manage_direct_messages: false,
+                manage_ranks:           false,
             }
         };
 
@@ -296,7 +299,7 @@ impl Client {
             }),
             user_id: tl::enums::InputUser::InputUser(tl::types::InputUser { user_id, access_hash: user_hash }),
             admin_rights: tl::enums::ChatAdminRights::ChatAdminRights(rights),
-            rank: String::new(),
+            rank: None,
         };
         self.rpc_call_raw_pub(&req).await?;
         Ok(())
