@@ -8,6 +8,7 @@ jobs:
     permissions:
       pages: write
       id-token: write
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: peaceiris/actions-mdbook@v2
