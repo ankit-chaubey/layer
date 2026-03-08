@@ -7,7 +7,7 @@
 [![Crates.io](https://img.shields.io/crates/v/layer-client?color=fc8d62&label=layer-client)](https://crates.io/crates/layer-client)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
-[![TL Layer](https://img.shields.io/badge/TL%20Layer-222-8b5cf6)](https://core.telegram.org/schema)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/schema)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
 
 *Written from the ground up to understand Telegram's internals at the lowest level.*
@@ -33,7 +33,7 @@ No black boxes. No magic. Just Rust, all the way down.
 |---|---|
 | [`layer-tl-parser`](./layer-tl-parser) | Parses `.tl` schema text into an AST |
 | [`layer-tl-gen`](./layer-tl-gen) | Generates Rust code from the AST at build time |
-| [`layer-tl-types`](./layer-tl-types) | All Layer 222 constructors, functions and enums |
+| [`layer-tl-types`](./layer-tl-types) | All Layer 223 constructors, functions and enums |
 | [`layer-crypto`](./layer-crypto) | AES-IGE, RSA, SHA, DH key derivation |
 | [`layer-mtproto`](./layer-mtproto) | MTProto session, DH exchange, message framing |
 | [`layer-client`](./layer-client) | High-level async client — auth, bots, updates, 2FA |
@@ -44,7 +44,7 @@ No black boxes. No magic. Just Rust, all the way down.
 layer/
 ├── layer-tl-parser/   ── Parses .tl schema text → AST
 ├── layer-tl-gen/      ── AST → Rust source (build-time)
-├── layer-tl-types/    ── Auto-generated types, functions & enums (Layer 222)
+├── layer-tl-types/    ── Auto-generated types, functions & enums (Layer 223)
 ├── layer-crypto/      ── AES-IGE, RSA, SHA, auth key derivation
 ├── layer-mtproto/     ── MTProto session, DH, framing, transport
 ├── layer-client/      ── High-level async Client API
@@ -159,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 📦 TL Type System
 - Full `.tl` schema parser
 - Build-time Rust code generation
-- All Layer 222 constructors — 2,295 definitions
+- All Layer 223 constructors — 2,295 definitions
 - `Serializable` / `Deserializable` traits for all types
 - `RemoteCall` trait for all RPC functions
 - Optional: `Debug`, `serde`, `name_for_id(u32)`

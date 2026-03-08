@@ -2,12 +2,12 @@
 
 # 📦 layer-tl-types
 
-**Auto-generated Rust types for all Telegram API Layer 222 constructors, functions and enums.**
+**Auto-generated Rust types for all Telegram API Layer 223 constructors, functions and enums.**
 
 [![Crates.io](https://img.shields.io/crates/v/layer-tl-types?color=fc8d62)](https://crates.io/crates/layer-tl-types)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
-[![TL Layer](https://img.shields.io/badge/TL%20Layer-222-8b5cf6)](https://core.telegram.org/schema)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/schema)
 
 *2,295 TL constructors. Every Telegram type, function and enum — as idiomatic Rust.*
 

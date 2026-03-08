@@ -659,6 +659,7 @@ fn tl_constructor_id(upd: &tl::enums::Update) -> u32 {
         UserTyping(_) => 0x2a17bf5c,
         WebPage(_) => 0x7f891213,
         WebViewResultSent(_) => 0x1592b79d,
+        ChatParticipantRank(_) => 0xbd8367b9,
     }
 }
 
@@ -707,6 +708,7 @@ fn make_short_dm(m: tl::types::UpdateShortMessage) -> IncomingMessage {
         report_delivery_until_date: None,
         paid_message_stars: None,
         suggested_post:    None,
+        from_rank:           None,
         from_boosts_applied: None,
         paid_suggested_post_stars: false,
         paid_suggested_post_ton: false,
@@ -759,6 +761,7 @@ fn make_short_chat(m: tl::types::UpdateShortChatMessage) -> IncomingMessage {
         report_delivery_until_date: None,
         paid_message_stars: None,
         suggested_post:    None,
+        from_rank:           None,
         from_boosts_applied: None,
         paid_suggested_post_stars: false,
         paid_suggested_post_ton: false,
