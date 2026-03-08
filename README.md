@@ -9,6 +9,7 @@
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
 [![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/schema)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
+[![Docs](https://img.shields.io/badge/docs-online-5865F2?style=flat-square&logo=mdbook)](https://github.ankitchaubey.in/layer/)
 
 *Written from the ground up to understand Telegram's internals at the lowest level.*
 
