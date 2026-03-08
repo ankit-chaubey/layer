@@ -6,7 +6,6 @@ src = "src"
 
 [output.html]
 git-repository-url = "https://github.com/ankit-chaubey/layer"
-git-repository-icon = "fa-github"
 edit-url-template = "https://github.com/ankit-chaubey/layer/edit/main/docs/{path}"
 additional-css = ["theme/custom.css"]
 additional-js = ["theme/custom.js"]
