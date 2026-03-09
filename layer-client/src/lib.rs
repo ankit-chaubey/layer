@@ -38,6 +38,10 @@ pub mod socks5;
 pub mod session_backend;
 pub mod inline_iter;
 pub mod typing_guard;
+pub mod keyboard;
+
+#[macro_use]
+pub mod macros;
 
 pub use errors::{InvocationError, LoginToken, PasswordToken, RpcError, SignInError};
 pub use retry::{AutoSleep, NoRetries, RetryContext, RetryPolicy};
@@ -47,6 +51,11 @@ pub use participants::Participant;
 pub use typing_guard::TypingGuard;
 pub use socks5::Socks5Config;
 pub use session_backend::{SessionBackend, BinaryFileBackend, InMemoryBackend};
+pub use keyboard::{Button, InlineKeyboard, ReplyKeyboard};
+
+/// Re-export of `layer_tl_types` — generated TL constructors, functions, and enums.
+/// Users can write `use layer_client::tl` instead of adding a separate `layer-tl-types` dep.
+pub use layer_tl_types as tl;
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -55,7 +64,6 @@ use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
 
-use layer_tl_types as tl;
 use layer_mtproto::{EncryptedSession, Session, authentication as auth};
 use layer_tl_types::{Cursor, Deserializable, RemoteCall};
 use session::{DcEntry, PersistedSession};
@@ -64,6 +72,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 // ─── MTProto envelope constructor IDs ────────────────────────────────────────
 
@@ -235,6 +244,19 @@ impl InputMessage {
         self.reply_markup = Some(rm); self
     }
 
+    /// Shorthand for attaching an [`crate::keyboard::InlineKeyboard`].
+    ///
+    /// ```rust,no_run
+    /// use layer_client::{InputMessage, keyboard::{InlineKeyboard, Button}};
+    ///
+    /// let msg = InputMessage::text("Pick one:")
+    ///     .keyboard(InlineKeyboard::new()
+    ///         .row([Button::callback("A", b"a"), Button::callback("B", b"b")]));
+    /// ```
+    pub fn keyboard(mut self, kb: impl Into<tl::enums::ReplyMarkup>) -> Self {
+        self.reply_markup = Some(kb.into()); self
+    }
+
     /// Schedule the message for a future Unix timestamp.
     pub fn schedule_date(mut self, ts: Option<i32>) -> Self {
         self.schedule_date = ts; self
@@ -302,6 +324,25 @@ pub enum TransportKind {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
+/// A token that can be used to gracefully shut down a [`Client`].
+///
+/// Obtained from [`Client::connect`] — call [`ShutdownToken::cancel`] to begin
+/// graceful shutdown. All pending requests will finish and the reader task will
+/// exit cleanly.
+///
+/// # Example
+/// ```rust,no_run
+/// # async fn f() -> Result<(), Box<dyn std::error::Error>> {
+/// use layer_client::{Client, Config, ShutdownToken};
+///
+/// let (client, shutdown) = Client::connect(Config::default()).await?;
+///
+/// // In a signal handler or background task:
+/// // shutdown.cancel();
+/// # Ok(()) }
+/// ```
+pub type ShutdownToken = CancellationToken;
+
 /// Configuration for [`Client::connect`].
 #[derive(Clone)]
 pub struct Config {
@@ -317,6 +358,10 @@ pub struct Config {
     pub transport:      TransportKind,
     /// Session persistence backend (default: binary file `"layer.session"`).
     pub session_backend: Arc<dyn crate::session_backend::SessionBackend>,
+    /// If `true`, replay missed updates via `updates.getDifference` immediately
+    /// after connecting. Mirrors grammers' `UpdatesConfiguration { catch_up: true }`.
+    /// Default: `false`.
+    pub catch_up:       bool,
 }
 
 impl Default for Config {
@@ -330,6 +375,7 @@ impl Default for Config {
             allow_ipv6:      false,
             transport:       TransportKind::Abridged,
             session_backend: Arc::new(crate::session_backend::BinaryFileBackend::new("layer.session")),
+            catch_up:        false,
         }
     }
 }
@@ -422,6 +468,12 @@ struct ClientInner {
     /// Send `()` here to wake the reader's reconnect backoff loop immediately.
     /// Used by [`Client::signal_network_restored`].
     network_hint_tx: mpsc::UnboundedSender<()>,
+    /// Cancelled to signal graceful shutdown to the reader task.
+    #[allow(dead_code)]
+    shutdown_token:  CancellationToken,
+    /// Whether to replay missed updates via getDifference on connect.
+    #[allow(dead_code)]
+    catch_up:        bool,
     home_dc_id:      Mutex<i32>,
     dc_options:      Mutex<HashMap<i32, DcEntry>>,
     pub(crate) peer_cache:    Mutex<PeerCache>,
@@ -447,7 +499,7 @@ pub struct Client {
 impl Client {
     // ── Connect ────────────────────────────────────────────────────────────
 
-    pub async fn connect(config: Config) -> Result<Self, InvocationError> {
+    pub async fn connect(config: Config) -> Result<(Self, ShutdownToken), InvocationError> {
         let (update_tx, update_rx) = mpsc::unbounded_channel();
 
         // ── Load or fresh-connect ───────────────────────────────────────
@@ -511,11 +563,17 @@ impl Client {
         // skip the reconnect backoff and attempt immediately.
         let (network_hint_tx, network_hint_rx) = mpsc::unbounded_channel::<()>();
 
+        // Graceful shutdown token — cancel this to stop the reader task cleanly.
+        let shutdown_token = CancellationToken::new();
+        let catch_up = config.catch_up;
+
         let inner = Arc::new(ClientInner {
             writer:          Mutex::new(writer),
             pending:         pending.clone(),
             reconnect_tx,
             network_hint_tx,
+            shutdown_token:  shutdown_token.clone(),
+            catch_up,
             home_dc_id:      Mutex::new(home_dc_id),
             dc_options:      Mutex::new(dc_opts),
             peer_cache:      Mutex::new(PeerCache::default()),
@@ -540,9 +598,11 @@ impl Client {
         // init_connection can receive their responses.
         {
             let client_r = client.clone();
+            let shutdown_r = shutdown_token.clone();
             tokio::spawn(async move {
                 client_r.run_reader_task(
-                    read_half, frame_kind, auth_key, session_id, reconnect_rx, network_hint_rx,
+                    read_half, frame_kind, auth_key, session_id,
+                    reconnect_rx, network_hint_rx, shutdown_r,
                 ).await;
             });
         }
@@ -577,7 +637,19 @@ impl Client {
         }
 
         let _ = client.sync_pts_state().await;
-        Ok(client)
+
+        // If catch_up is enabled, replay any missed updates immediately.
+        if catch_up {
+            let c = client.clone();
+            let utx = client.inner.update_tx.clone();
+            tokio::spawn(async move {
+                if let Ok(missed) = c.get_difference().await {
+                    for u in missed { let _ = utx.send(u); }
+                }
+            });
+        }
+
+        Ok((client, shutdown_token))
     }
 
     async fn fresh_connect(
@@ -847,8 +919,22 @@ impl Client {
         session_id:  i64,
         mut new_conn_rx:     mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
         mut network_hint_rx: mpsc::UnboundedReceiver<()>,
+        shutdown_token:      CancellationToken,
     ) {
-        self.reader_loop(read_half, frame_kind, auth_key, session_id, &mut new_conn_rx, &mut network_hint_rx).await;
+        tokio::select! {
+            _ = shutdown_token.cancelled() => {
+                log::info!("[layer] Reader task: shutdown requested, exiting cleanly.");
+                // Fail all pending RPCs so callers unblock immediately.
+                let mut pending = self.inner.pending.lock().await;
+                for (_, tx) in pending.drain() {
+                    let _ = tx.send(Err(InvocationError::Dropped));
+                }
+            }
+            _ = self.reader_loop(
+                    read_half, frame_kind, auth_key, session_id,
+                    &mut new_conn_rx, &mut network_hint_rx,
+                ) => {}
+        }
     }
 
     async fn reader_loop(
@@ -1598,6 +1684,7 @@ impl Client {
     }
 
     /// Internal helper: fetch dialogs with a custom GetDialogs request.
+    #[allow(dead_code)]
     async fn get_dialogs_raw(
         &self,
         req: tl::functions::messages::GetDialogs,
@@ -1669,6 +1756,125 @@ impl Client {
 
         Ok(result)
     }
+
+    /// Like `get_dialogs_raw` but also returns the total count from `messages.DialogsSlice`.
+    async fn get_dialogs_raw_with_count(
+        &self,
+        req: tl::functions::messages::GetDialogs,
+    ) -> Result<(Vec<Dialog>, Option<i32>), InvocationError> {
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let (raw, count) = match tl::enums::messages::Dialogs::deserialize(&mut cur)? {
+            tl::enums::messages::Dialogs::Dialogs(d) => (d, None),
+            tl::enums::messages::Dialogs::Slice(d)   => {
+                let cnt = Some(d.count);
+                (tl::types::messages::Dialogs {
+                    dialogs: d.dialogs, messages: d.messages, chats: d.chats, users: d.users,
+                }, cnt)
+            }
+            tl::enums::messages::Dialogs::NotModified(_) => return Ok((vec![], None)),
+        };
+
+        let msg_map: HashMap<i32, tl::enums::Message> = raw.messages.into_iter()
+            .filter_map(|m| {
+                let id = match &m {
+                    tl::enums::Message::Message(x) => x.id,
+                    tl::enums::Message::Service(x) => x.id,
+                    tl::enums::Message::Empty(x)   => x.id,
+                };
+                Some((id, m))
+            }).collect();
+
+        let user_map: HashMap<i64, tl::enums::User> = raw.users.into_iter()
+            .filter_map(|u| {
+                if let tl::enums::User::User(ref uu) = u { Some((uu.id, u)) } else { None }
+            }).collect();
+
+        let chat_map: HashMap<i64, tl::enums::Chat> = raw.chats.into_iter()
+            .filter_map(|c| {
+                let id = match &c {
+                    tl::enums::Chat::Chat(x)             => x.id,
+                    tl::enums::Chat::Forbidden(x)        => x.id,
+                    tl::enums::Chat::Channel(x)          => x.id,
+                    tl::enums::Chat::ChannelForbidden(x) => x.id,
+                    tl::enums::Chat::Empty(x)            => x.id,
+                };
+                Some((id, c))
+            }).collect();
+
+        {
+            let u_list: Vec<tl::enums::User> = user_map.values().cloned().collect();
+            let c_list: Vec<tl::enums::Chat> = chat_map.values().cloned().collect();
+            self.cache_users_slice(&u_list).await;
+            self.cache_chats_slice(&c_list).await;
+        }
+
+        let result = raw.dialogs.into_iter().map(|d| {
+            let top_id = match &d { tl::enums::Dialog::Dialog(x) => x.top_message, _ => 0 };
+            let peer   = match &d { tl::enums::Dialog::Dialog(x) => Some(&x.peer), _ => None };
+            let message = msg_map.get(&top_id).cloned();
+            let entity = peer.and_then(|p| match p {
+                tl::enums::Peer::User(u) => user_map.get(&u.user_id).cloned(),
+                _ => None,
+            });
+            let chat = peer.and_then(|p| match p {
+                tl::enums::Peer::Chat(c)    => chat_map.get(&c.chat_id).cloned(),
+                tl::enums::Peer::Channel(c) => chat_map.get(&c.channel_id).cloned(),
+                _ => None,
+            });
+            Dialog { raw: d, message, entity, chat }
+        }).collect();
+
+        Ok((result, count))
+    }
+
+    /// Like `get_messages` but also returns the total count from `messages.Slice`.
+    async fn get_messages_with_count(
+        &self,
+        peer:      tl::enums::InputPeer,
+        limit:     i32,
+        offset_id: i32,
+    ) -> Result<(Vec<update::IncomingMessage>, Option<i32>), InvocationError> {
+        let req = tl::functions::messages::GetHistory {
+            peer, offset_id, offset_date: 0, add_offset: 0,
+            limit, max_id: 0, min_id: 0, hash: 0,
+        };
+        let body    = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let (msgs, count) = match tl::enums::messages::Messages::deserialize(&mut cur)? {
+            tl::enums::messages::Messages::Messages(m) => (m.messages, None),
+            tl::enums::messages::Messages::Slice(m)    => {
+                let cnt = Some(m.count);
+                (m.messages, cnt)
+            }
+            tl::enums::messages::Messages::ChannelMessages(m) => (m.messages, Some(m.count)),
+            tl::enums::messages::Messages::NotModified(_) => (vec![], None),
+        };
+        Ok((msgs.into_iter().map(update::IncomingMessage::from_raw).collect(), count))
+    }
+
+    /// Download all bytes of a media attachment and save them to `path`.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # async fn f(client: layer_client::Client, msg: layer_client::update::IncomingMessage) -> Result<(), Box<dyn std::error::Error>> {
+    /// if let Some(loc) = msg.download_location() {
+    ///     client.download_media_to_file(loc, "/tmp/file.jpg").await?;
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub async fn download_media_to_file(
+        &self,
+        location: tl::enums::InputFileLocation,
+        path:     impl AsRef<std::path::Path>,
+    ) -> Result<(), InvocationError> {
+        use tokio::io::AsyncWriteExt as _;
+        let bytes = self.download_media(location).await?;
+        let mut f = tokio::fs::File::create(path).await?;
+        f.write_all(&bytes).await?;
+        Ok(())
+    }
+
     pub async fn delete_dialog(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
         let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
         let req = tl::functions::messages::DeleteHistory {
@@ -2117,6 +2323,7 @@ impl Client {
             offset_peer: tl::enums::InputPeer::Empty,
             done:        false,
             buffer:      VecDeque::new(),
+            total:       None,
         }
     }
 
@@ -2139,6 +2346,7 @@ impl Client {
             offset_id: 0,
             done:      false,
             buffer:    VecDeque::new(),
+            total:     None,
         }
     }
 
@@ -2336,10 +2544,20 @@ pub struct DialogIter {
     offset_peer: tl::enums::InputPeer,
     done:        bool,
     buffer:      VecDeque<Dialog>,
+    /// Total dialog count as reported by the first server response.
+    /// `None` until the first page is fetched.
+    pub total: Option<i32>,
 }
 
 impl DialogIter {
     const PAGE_SIZE: i32 = 100;
+
+    /// Total number of dialogs as reported by the server on the first page fetch.
+    ///
+    /// Returns `None` before the first [`next`](Self::next) call, and `None` for
+    /// accounts with fewer dialogs than `PAGE_SIZE` (where the server returns
+    /// `messages.Dialogs` instead of `messages.DialogsSlice`).
+    pub fn total(&self) -> Option<i32> { self.total }
 
     /// Fetch the next dialog. Returns `None` when all dialogs have been yielded.
     pub async fn next(&mut self, client: &Client) -> Result<Option<Dialog>, InvocationError> {
@@ -2356,7 +2574,11 @@ impl DialogIter {
             hash:           0,
         };
 
-        let dialogs = client.get_dialogs_raw(req).await?;
+        let (dialogs, count) = client.get_dialogs_raw_with_count(req).await?;
+        // Populate total from the first response (messages.DialogsSlice carries a count).
+        if self.total.is_none() {
+            self.total = count;
+        }
         if dialogs.is_empty() || dialogs.len() < Self::PAGE_SIZE as usize {
             self.done = true;
         }
@@ -2385,10 +2607,20 @@ pub struct MessageIter {
     offset_id: i32,
     done:      bool,
     buffer:    VecDeque<update::IncomingMessage>,
+    /// Total message count from the first server response (messages.Slice).
+    /// `None` until the first page is fetched, `None` for `messages.Messages`
+    /// (which returns an exact slice with no separate count).
+    pub total: Option<i32>,
 }
 
 impl MessageIter {
     const PAGE_SIZE: i32 = 100;
+
+    /// Total message count from the first server response.
+    ///
+    /// Returns `None` before the first [`next`](Self::next) call, or for chats
+    /// where the server returns an exact (non-slice) response.
+    pub fn total(&self) -> Option<i32> { self.total }
 
     /// Fetch the next message (newest first). Returns `None` when all messages have been yielded.
     pub async fn next(&mut self, client: &Client) -> Result<Option<update::IncomingMessage>, InvocationError> {
@@ -2396,7 +2628,9 @@ impl MessageIter {
         if self.done { return Ok(None); }
 
         let input_peer = client.inner.peer_cache.lock().await.peer_to_input(&self.peer);
-        let page = client.get_messages(input_peer, Self::PAGE_SIZE, self.offset_id).await?;
+        let (page, count) = client.get_messages_with_count(input_peer, Self::PAGE_SIZE, self.offset_id).await?;
+
+        if self.total.is_none() { self.total = count; }
 
         if page.is_empty() || page.len() < Self::PAGE_SIZE as usize {
             self.done = true;

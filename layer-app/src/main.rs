@@ -39,7 +39,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let client = Client::connect(Config {
+    let (client, _shutdown) = Client::connect(Config {
         api_id:       API_ID,
         api_hash:     API_HASH.to_string(),
         ..Default::default()

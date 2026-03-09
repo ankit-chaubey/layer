@@ -15,6 +15,7 @@ categories           = ["api-bindings", "network-programming", "asynchronous"]
 layer-tl-types = { workspace = true, features = ["tl-api", "tl-mtproto"] }
 layer-mtproto  = { workspace = true }
 tokio          = { version = "1",  features = ["net", "io-util", "sync", "time", "rt", "rt-multi-thread", "macros"] }
+tokio-util     = { version = "0.7", features = ["rt"] }
 getrandom      = "0.2"
 flate2         = "1"
 num-bigint     = "0.4"
@@ -30,3 +31,5 @@ tokio-socks    = "0.5"
 
 [features]
 sqlite-session = ["rusqlite"]
+## Enable HTML ↔ entity parsing via the built-in parser (no extra deps required).
+html = []
