@@ -841,9 +841,17 @@ impl Client {
                             match self.do_reconnect(&ak, &fk).await {
                                 Ok((new_rh, new_fk, new_ak, new_sid)) => {
                                     rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
+                                    // Spawn init_connection + get_difference in a separate task.
+                                    // This MUST NOT be awaited inline — the reader loop must
+                                    // resume first so it can route the init_connection RPC
+                                    // response back to the pending caller. Awaiting inline
+                                    // causes a self-deadlock → 30 s timeout.
                                     let c = self.clone();
                                     let utx = self.inner.update_tx.clone();
                                     tokio::spawn(async move {
+                                        if let Err(e) = c.init_connection().await {
+                                            log::warn!("[layer] init_connection after reconnect failed: {e}");
+                                        }
                                         if let Ok(missed) = c.get_difference().await {
                                             for u in missed { let _ = utx.send(u); }
                                         }
@@ -980,9 +988,16 @@ impl Client {
         let new_sid = new_writer.enc.session_id();
         *self.inner.writer.lock().await = new_writer;
 
-        if let Err(e2) = self.init_connection().await {
-            log::warn!("[layer] init_connection after reconnect failed: {e2}");
-        }
+        // NOTE: init_connection() is intentionally NOT called here.
+        //
+        // do_reconnect() is always called from inside the reader loop's select!,
+        // which means the reader task is blocked while this function runs.
+        // init_connection() sends an RPC and awaits the response — but only the
+        // reader task can route that response back to the pending caller.
+        // Calling it here creates a self-deadlock that times out after 30 s.
+        //
+        // Instead, callers are responsible for spawning init_connection() in a
+        // separate task AFTER the reader loop has resumed and can process frames.
 
         Ok((new_read, new_fk, new_ak, new_sid))
     }
