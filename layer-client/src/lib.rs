@@ -73,6 +73,7 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
+use socket2::TcpKeepalive;
 
 // ─── MTProto envelope constructor IDs ────────────────────────────────────────
 
@@ -94,18 +95,30 @@ const ID_UPDATES_TOO_LONG:      u32 = 0xe317af7e;
 
 // ─── Keepalive / reconnect tuning ─────────────────────────────────────────────
 
-/// How often to send a keepalive ping (mirrors grammers PING_DELAY).
-const PING_DELAY_SECS: u64 = 60;
+/// How often to send a keepalive ping.
+/// Telegram Desktop uses ~15 s on mobile connections.  60 s is too slow to
+/// detect a dead connection before the user notices.
+const PING_DELAY_SECS: u64 = 15;
 
 /// Tell Telegram to close the connection if it hears nothing for this many
 /// seconds.  Must be > PING_DELAY_SECS so a single missed ping doesn't drop us.
-const NO_PING_DISCONNECT: i32 = 75;
+const NO_PING_DISCONNECT: i32 = 20;
 
 /// Initial backoff before the first reconnect attempt.
 const RECONNECT_BASE_MS: u64 = 500;
 
-/// Maximum backoff between reconnect attempts (mirrors Telegram official clients).
-const RECONNECT_MAX_SECS: u64 = 30;
+/// Maximum backoff between reconnect attempts.
+/// 5 s cap instead of 30 s — on mobile, network outages are brief and a 30 s
+/// sleep means the bot stays dead for up to 30 s after the network returns.
+/// Official Telegram mobile clients use a short cap for the same reason.
+const RECONNECT_MAX_SECS: u64 = 5;
+
+/// TCP socket-level keepalive: start probes after this many seconds of idle.
+const TCP_KEEPALIVE_IDLE_SECS: u64 = 10;
+/// Interval between TCP keepalive probes.
+const TCP_KEEPALIVE_INTERVAL_SECS: u64 = 5;
+/// Number of failed probes before the OS declares the connection dead.
+const TCP_KEEPALIVE_PROBES: u32 = 3;
 
 // ─── PeerCache ────────────────────────────────────────────────────────────────
 
@@ -563,6 +576,7 @@ impl Client {
         // skip the reconnect backoff and attempt immediately.
         let (network_hint_tx, network_hint_rx) = mpsc::unbounded_channel::<()>();
 
+
         // Graceful shutdown token — cancel this to stop the reader task cleanly.
         let shutdown_token = CancellationToken::new();
         let catch_up = config.catch_up;
@@ -911,29 +925,150 @@ impl Client {
     // switch to the new connection immediately, without waiting for the next
     // frame on the old (now stale) connection.
 
+    // ── Reader task supervisor ────────────────────────────────────────────────
+    //
+    // run_reader_task is the outer supervisor. It wraps reader_loop in a
+    // restart loop so that if reader_loop ever exits for any reason other than
+    // a clean shutdown request, it is automatically reconnected and restarted.
+    //
+    // This mirrors what Telegram Desktop does: the network thread is considered
+    // infrastructure and is never allowed to die permanently.
+    //
+    // Restart sequence on unexpected exit:
+    //   1. Drain all pending RPCs with ConnectionReset so callers unblock.
+    //   2. Exponential-backoff reconnect loop (500 ms → 30 s cap) until TCP
+    //      succeeds, respecting the shutdown token at every sleep point.
+    //   3. Spawn init_connection in a background task (same deadlock-safe
+    //      pattern as do_reconnect_loop) and pass the oneshot receiver as the
+    //      initial_init_rx to the restarted reader_loop.
+    //   4. reader_loop picks up init_rx immediately on its first iteration and
+    //      handles success/failure exactly like a mid-session reconnect.
     async fn run_reader_task(
         &self,
         read_half:   OwnedReadHalf,
         frame_kind:  FrameKind,
         auth_key:    [u8; 256],
         session_id:  i64,
-        mut new_conn_rx:     mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
-        mut network_hint_rx: mpsc::UnboundedReceiver<()>,
-        shutdown_token:      CancellationToken,
+        mut new_conn_rx:      mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
+        mut network_hint_rx:  mpsc::UnboundedReceiver<()>,
+        shutdown_token:       CancellationToken,
     ) {
-        tokio::select! {
-            _ = shutdown_token.cancelled() => {
-                log::info!("[layer] Reader task: shutdown requested, exiting cleanly.");
-                // Fail all pending RPCs so callers unblock immediately.
+        let mut rh  = read_half;
+        let mut fk  = frame_kind;
+        let mut ak  = auth_key;
+        let mut sid = session_id;
+        // On first start no init is needed (connect() already called it).
+        // On restarts we pass the spawned init task so reader_loop handles it.
+        let mut restart_init_rx: Option<oneshot::Receiver<Result<(), InvocationError>>> = None;
+        let mut restart_count: u32 = 0;
+
+        loop {
+            tokio::select! {
+                // ── Clean shutdown ────────────────────────────────────────────
+                _ = shutdown_token.cancelled() => {
+                    log::info!("[layer] Reader task: shutdown requested, exiting cleanly.");
+                    let mut pending = self.inner.pending.lock().await;
+                    for (_, tx) in pending.drain() {
+                        let _ = tx.send(Err(InvocationError::Dropped));
+                    }
+                    return;
+                }
+
+                // ── reader_loop ───────────────────────────────────────────────
+                _ = self.reader_loop(
+                        rh, fk, ak, sid,
+                        restart_init_rx.take(),
+                        &mut new_conn_rx, &mut network_hint_rx,
+                    ) => {}
+            }
+
+            // If we reach here, reader_loop returned without a shutdown signal.
+            // This should never happen in normal operation — treat it as a fault.
+            if shutdown_token.is_cancelled() {
+                log::info!("[layer] Reader task: exiting after loop (shutdown).");
+                return;
+            }
+
+            restart_count += 1;
+            log::error!(
+                "[layer] Reader loop exited unexpectedly (restart #{restart_count}) —                  supervisor reconnecting …"
+            );
+
+            // Step 1: drain all pending RPCs so callers don't hang.
+            {
                 let mut pending = self.inner.pending.lock().await;
                 for (_, tx) in pending.drain() {
-                    let _ = tx.send(Err(InvocationError::Dropped));
+                    let _ = tx.send(Err(InvocationError::Io(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionReset,
+                        "reader task restarted",
+                    ))));
                 }
             }
-            _ = self.reader_loop(
-                    read_half, frame_kind, auth_key, session_id,
-                    &mut new_conn_rx, &mut network_hint_rx,
-                ) => {}
+
+            // Step 2: reconnect with exponential backoff, honouring shutdown.
+            let mut delay_ms = RECONNECT_BASE_MS;
+            let new_conn = loop {
+                log::info!("[layer] Supervisor: reconnecting in {delay_ms} ms …");
+                tokio::select! {
+                    _ = shutdown_token.cancelled() => {
+                        log::info!("[layer] Supervisor: shutdown during reconnect, exiting.");
+                        return;
+                    }
+                    _ = sleep(Duration::from_millis(delay_ms)) => {}
+                }
+
+                // do_reconnect ignores both params (_old_auth_key, _old_frame_kind) —
+                // it re-reads everything from ClientInner. rh/fk/ak/sid were moved
+                // into reader_loop, so we pass dummies here; fresh values come back
+                // from the Ok result and replace them below.
+                let dummy_ak = [0u8; 256];
+                let dummy_fk = FrameKind::Abridged;
+                match self.do_reconnect(&dummy_ak, &dummy_fk).await {
+                    Ok(conn) => break conn,
+                    Err(e)   => {
+                        log::warn!("[layer] Supervisor: reconnect failed ({e})");
+                        let next = (delay_ms * 2).min(RECONNECT_MAX_SECS * 1_000);
+                        delay_ms = jitter_delay(next).as_millis() as u64;
+                    }
+                }
+            };
+
+            let (new_rh, new_fk, new_ak, new_sid) = new_conn;
+            rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
+
+            // Step 3: spawn init_connection (cannot await inline — reader must
+            // be running to route the RPC response, or we deadlock).
+            let (init_tx, init_rx) = oneshot::channel();
+            let c   = self.clone();
+            let utx = self.inner.update_tx.clone();
+            tokio::spawn(async move {
+                // Respect FLOOD_WAIT (same as do_reconnect_loop).
+                let result = loop {
+                    match c.init_connection().await {
+                        Ok(()) => break Ok(()),
+                        Err(InvocationError::Rpc(ref r))
+                            if r.flood_wait_seconds().is_some() =>
+                        {
+                            let secs = r.flood_wait_seconds().unwrap();
+                            log::warn!(
+                                "[layer] Supervisor init_connection FLOOD_WAIT_{secs} — waiting"
+                            );
+                            sleep(Duration::from_secs(secs + 1)).await;
+                        }
+                        Err(e) => break Err(e),
+                    }
+                };
+                if result.is_ok() {
+                    if let Ok(missed) = c.get_difference().await {
+                        for u in missed { let _ = utx.send(u); }
+                    }
+                }
+                let _ = init_tx.send(result);
+            });
+            restart_init_rx = Some(init_rx);
+
+            log::info!("[layer] Supervisor: restarting reader loop (restart #{restart_count}) …");
+            // Loop back → reader_loop restarts with the fresh connection.
         }
     }
 
@@ -943,15 +1078,21 @@ impl Client {
         mut fk:          FrameKind,
         mut ak:          [u8; 256],
         mut sid:         i64,
-        new_conn_rx:     &mut mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
-        network_hint_rx: &mut mpsc::UnboundedReceiver<()>,
+        // When Some, the supervisor has already spawned init_connection on our
+        // behalf (supervisor restart path). On first start this is None.
+        initial_init_rx:  Option<oneshot::Receiver<Result<(), InvocationError>>>,
+        new_conn_rx:      &mut mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
+        network_hint_rx:  &mut mpsc::UnboundedReceiver<()>,
     ) {
+        // Tracks an in-flight init_connection task spawned after every reconnect.
+        // The reader loop must keep routing frames while we wait so the RPC
+        // response can reach its oneshot sender (otherwise → 30 s self-deadlock).
+        // If init fails we re-enter the reconnect loop immediately.
+        let mut init_rx: Option<oneshot::Receiver<Result<(), InvocationError>>> = initial_init_rx;
+
         loop {
-            // Race the frame-read against an incoming new-connection signal.
-            // Both branches are polled concurrently; whichever resolves first wins.
-            // If new_conn_rx wins, the frame-read future is dropped (closing old rh).
             tokio::select! {
-                // Normal frame (or keepalive timeout) from current connection
+                // ── Normal frame (or application-level keepalive timeout) ─────
                 outcome = recv_frame_with_keepalive(&mut rh, &fk, self, &ak) => {
                     match outcome {
                         FrameOutcome::Frame(mut raw) => {
@@ -964,81 +1105,108 @@ impl Client {
                             }
                             self.route_frame(msg.body).await;
                         }
+
                         FrameOutcome::Error(e) => {
                             log::warn!("[layer] Reader: connection error: {e}");
+                            drop(init_rx.take()); // discard any in-flight init
 
-                            // Fail all in-flight RPCs immediately with an I/O error.
-                            // This ensures AutoSleep retries them (it only retries Io errors)
-                            // rather than leaving callers hanging for the full 30 s timeout.
+                            // Fail all in-flight RPCs immediately so AutoSleep
+                            // retries them as soon as we reconnect.
                             {
                                 let mut pending = self.inner.pending.lock().await;
                                 let msg = e.to_string();
                                 for (_, tx) in pending.drain() {
                                     let _ = tx.send(Err(InvocationError::Io(
                                         std::io::Error::new(
-                                            std::io::ErrorKind::ConnectionReset,
-                                            msg.clone(),
-                                        )
-                                    )));
+                                            std::io::ErrorKind::ConnectionReset, msg.clone()))));
                                 }
                             }
 
-                            // Reconnect loop with exponential backoff + network-hint fast-path.
-                            // Mirrors Telegram official client behaviour:
-                            //   500 ms → 1 s → 2 s → 4 s → … → 30 s cap, then retry forever.
-                            let mut delay_ms = RECONNECT_BASE_MS;
-                            loop {
-                                log::info!("[layer] Reconnecting in {delay_ms} ms …");
+                            match self.do_reconnect_loop(
+                                RECONNECT_BASE_MS, &mut rh, &mut fk, &mut ak, &mut sid,
+                                network_hint_rx,
+                            ).await {
+                                Some(rx) => { init_rx = Some(rx); }
+                                None     => return, // shutdown requested
+                            }
+                        }
 
-                                // Race the back-off sleep against an external "network restored"
-                                // hint so Android/iOS callbacks can skip the wait entirely.
-                                tokio::select! {
-                                    _ = sleep(Duration::from_millis(delay_ms)) => {}
-                                    hint = network_hint_rx.recv() => {
-                                        if hint.is_none() { return; } // channel closed → shutdown
-                                        log::info!("[layer] Network hint → attempting reconnect now");
-                                    }
-                                }
+                        FrameOutcome::Keepalive => {} // ping sent successfully; loop
+                    }
+                }
 
-                                match self.do_reconnect(&ak, &fk).await {
-                                    Ok((new_rh, new_fk, new_ak, new_sid)) => {
-                                        rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
-                                        // Spawn init_connection + get_difference in a separate task.
-                                        // MUST NOT be awaited inline: the reader loop must resume
-                                        // first so it can route the init_connection RPC response.
-                                        // Awaiting here causes a self-deadlock → 30 s timeout.
-                                        let c = self.clone();
-                                        let utx = self.inner.update_tx.clone();
-                                        tokio::spawn(async move {
-                                            if let Err(e) = c.init_connection().await {
-                                                log::warn!("[layer] init_connection after reconnect failed: {e}");
-                                            }
-                                            if let Ok(missed) = c.get_difference().await {
-                                                for u in missed { let _ = utx.send(u); }
-                                            }
-                                        });
-                                        break; // reconnected successfully — resume outer loop
+                // ── DC migration / deliberate reconnect ──────────────────────
+                maybe = new_conn_rx.recv() => {
+                    if let Some((new_rh, new_fk, new_ak, new_sid)) = maybe {
+                        rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
+                        log::info!("[layer] Reader: switched to new connection.");
+                    } else {
+                        break; // reconnect_tx dropped → client is shutting down
+                    }
+                }
+
+
+                // ── init_connection result (polled only when Some) ────────────
+                init_result = async { init_rx.as_mut().unwrap().await }, if init_rx.is_some() => {
+                    init_rx = None;
+                    match init_result {
+                        Ok(Ok(())) => {
+                            // Fully initialised. Persist updated DC/session state.
+                            // Retry up to 3 times — a transient I/O error (e.g. the
+                            // filesystem briefly unavailable on Android) should not
+                            // cause the auth key to diverge from disk permanently.
+                            log::info!("[layer] Reconnected to Telegram ✓ — session live, replaying missed updates …");
+                            for attempt in 1u8..=3 {
+                                match self.save_session().await {
+                                    Ok(()) => break,
+                                    Err(e) if attempt < 3 => {
+                                        log::warn!(
+                                            "[layer] save_session failed (attempt {attempt}/3): {e}"
+                                        );
+                                        sleep(Duration::from_millis(500)).await;
                                     }
-                                    Err(e2) => {
-                                        log::warn!("[layer] Reconnect attempt failed: {e2}");
-                                        delay_ms = (delay_ms * 2)
-                                            .min(RECONNECT_MAX_SECS * 1_000);
+                                    Err(e) => {
+                                        log::error!(
+                                            "[layer] save_session permanently failed after 3 attempts: {e}"
+                                        );
                                     }
                                 }
                             }
                         }
-                        FrameOutcome::Keepalive => {} // PingDelayDisconnect sent; loop again
-                    }
-                }
 
-                // A new connection arrived (DC migration or deliberate reconnect)
-                maybe = new_conn_rx.recv() => {
-                    if let Some((new_rh, new_fk, new_ak, new_sid)) = maybe {
-                        // frame-read future was dropped → old TCP read half is closed
-                        rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
-                        log::info!("[layer] Reader: switched to new connection");
-                    } else {
-                        break; // reconnect_tx dropped → client shutting down
+                        Ok(Err(e)) => {
+                            // TCP connected but init RPC failed (timeout / error).
+                            // Retry immediately with 0 initial delay — no need to
+                            // wait, since the network itself is likely up.
+                            log::warn!("[layer] init_connection failed after reconnect ({e}), re-connecting …");
+                            {
+                                let mut pending = self.inner.pending.lock().await;
+                                let msg = e.to_string();
+                                for (_, tx) in pending.drain() {
+                                    let _ = tx.send(Err(InvocationError::Io(
+                                        std::io::Error::new(
+                                            std::io::ErrorKind::ConnectionReset, msg.clone()))));
+                                }
+                            }
+                            match self.do_reconnect_loop(
+                                0, &mut rh, &mut fk, &mut ak, &mut sid, network_hint_rx,
+                            ).await {
+                                Some(rx) => { init_rx = Some(rx); }
+                                None     => return,
+                            }
+                        }
+
+                        Err(_) => {
+                            // init task was dropped (shouldn't normally happen).
+                            log::warn!("[layer] init_connection task dropped unexpectedly, reconnecting …");
+                            match self.do_reconnect_loop(
+                                RECONNECT_BASE_MS, &mut rh, &mut fk, &mut ak, &mut sid,
+                                network_hint_rx,
+                            ).await {
+                                Some(rx) => { init_rx = Some(rx); }
+                                None     => return,
+                            }
+                        }
                     }
                 }
             }
@@ -1115,6 +1283,87 @@ impl Client {
             }
             // Silently acknowledged service messages — pong, acks, etc.
             _ => {}
+        }
+    }
+
+    /// Loops with exponential backoff until a TCP+DH reconnect succeeds, then
+    /// spawns `init_connection` in a background task and returns a oneshot
+    /// receiver for its result.
+    ///
+    /// - `initial_delay_ms = RECONNECT_BASE_MS` for a fresh disconnect.
+    /// - `initial_delay_ms = 0` when TCP already worked but init failed — we
+    ///   want to retry init immediately rather than waiting another full backoff.
+    ///
+    /// Returns `None` if the shutdown token fires (caller should exit).
+    async fn do_reconnect_loop(
+        &self,
+        initial_delay_ms: u64,
+        rh:  &mut OwnedReadHalf,
+        fk:  &mut FrameKind,
+        ak:  &mut [u8; 256],
+        sid: &mut i64,
+        network_hint_rx: &mut mpsc::UnboundedReceiver<()>,
+    ) -> Option<oneshot::Receiver<Result<(), InvocationError>>> {
+        let mut delay_ms = initial_delay_ms.max(RECONNECT_BASE_MS);
+        loop {
+            log::info!("[layer] Reconnecting in {delay_ms} ms …");
+            tokio::select! {
+                _ = sleep(Duration::from_millis(delay_ms)) => {}
+                hint = network_hint_rx.recv() => {
+                    if hint.is_none() { return None; } // shutdown
+                    log::info!("[layer] Network hint → skipping backoff, reconnecting now");
+                }
+            }
+
+            match self.do_reconnect(ak, fk).await {
+                Ok((new_rh, new_fk, new_ak, new_sid)) => {
+                    *rh = new_rh; *fk = new_fk; *ak = new_ak; *sid = new_sid;
+                    log::info!("[layer] TCP reconnected ✓ — initialising session …");
+
+                    // Spawn init_connection. MUST NOT be awaited inline — the
+                    // reader loop must resume so it can route the RPC response.
+                    // We give back a oneshot so the reader can act on failure.
+                    let (init_tx, init_rx) = oneshot::channel();
+                    let c   = self.clone();
+                    let utx = self.inner.update_tx.clone();
+                    tokio::spawn(async move {
+                        // Respect FLOOD_WAIT before sending the result back.
+                        // Without this, a FLOOD_WAIT from Telegram during init
+                        // would immediately re-trigger another reconnect attempt,
+                        // which would itself hit FLOOD_WAIT — a ban spiral.
+                        let result = loop {
+                            match c.init_connection().await {
+                                Ok(()) => break Ok(()),
+                                Err(InvocationError::Rpc(ref r))
+                                    if r.flood_wait_seconds().is_some() =>
+                                {
+                                    let secs = r.flood_wait_seconds().unwrap();
+                                    log::warn!(
+                                        "[layer] init_connection FLOOD_WAIT_{secs} —                                          waiting before retry"
+                                    );
+                                    sleep(Duration::from_secs(secs + 1)).await;
+                                    // loop and retry init_connection
+                                }
+                                Err(e) => break Err(e),
+                            }
+                        };
+                        if result.is_ok() {
+                            // Replay any updates missed during the outage.
+                            if let Ok(missed) = c.get_difference().await {
+                                for u in missed { let _ = utx.send(u); }
+                            }
+                        }
+                        let _ = init_tx.send(result);
+                    });
+                    return Some(init_rx);
+                }
+                Err(e) => {
+                    log::warn!("[layer] Reconnect attempt failed: {e}");
+                    // Cap at max, then apply ±20 % jitter to avoid thundering herd.
+                    let next = (delay_ms * 2).min(RECONNECT_MAX_SECS * 1_000);
+                    delay_ms = jitter_delay(next).as_millis() as u64;
+                }
+            }
         }
     }
 
@@ -2217,14 +2466,43 @@ impl Client {
             entry.auth_key = Some(new_key);
         }
 
-        // Split the new connection and replace writer + reader
+        // Split the new connection and replace writer + reader.
         let (new_writer, new_read, new_fk) = conn.into_writer();
         let new_ak  = new_writer.enc.auth_key_bytes();
         let new_sid = new_writer.enc.session_id();
         *self.inner.writer.lock().await = new_writer;
-        let _ = self.inner.reconnect_tx.send((new_read, new_fk, new_ak, new_sid));
         *self.inner.home_dc_id.lock().await = new_dc_id;
-        self.init_connection().await?;
+
+        // Hand the new read half to the reader task FIRST so it can route
+        // the upcoming init_connection RPC response.
+        let _ = self.inner.reconnect_tx.send((new_read, new_fk, new_ak, new_sid));
+
+        // migrate_to() is called from user-facing methods (bot_sign_in,
+        // request_login_code, sign_in) — NOT from inside the reader loop.
+        // The reader task is a separate tokio task running concurrently, so
+        // awaiting init_connection() here is safe: the reader is free to route
+        // the RPC response while we wait. We must await before returning so
+        // the caller can safely retry the original request on the new DC.
+        //
+        // Respect FLOOD_WAIT: if Telegram rate-limits init, wait and retry
+        // rather than returning an error that would abort the whole auth flow.
+        loop {
+            match self.init_connection().await {
+                Ok(()) => break,
+                Err(InvocationError::Rpc(ref r))
+                    if r.flood_wait_seconds().is_some() =>
+                {
+                    let secs = r.flood_wait_seconds().unwrap();
+                    log::warn!(
+                        "[layer] migrate_to DC{new_dc_id}: init FLOOD_WAIT_{secs} — waiting"
+                    );
+                    sleep(Duration::from_secs(secs + 1)).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        self.save_session().await.ok();
         log::info!("[layer] Now on DC{new_dc_id} ✓");
         Ok(())
     }
@@ -2693,7 +2971,28 @@ impl Connection {
     ) -> Result<(TcpStream, FrameKind), InvocationError> {
         let stream = match socks5 {
             Some(proxy) => proxy.connect(addr).await?,
-            None        => TcpStream::connect(addr).await?,
+            None => {
+                // Let tokio do the TCP handshake properly (await until connected),
+                // then apply socket2 keepalive options to the live socket.
+                let stream = TcpStream::connect(addr).await
+                    .map_err(InvocationError::Io)?;
+
+                // TCP-level keepalive: OS sends probes independently of our
+                // application-level pings. Catches cases where the network
+                // disappears without a TCP RST (e.g. mobile data switching,
+                // NAT table expiry) faster than a 15 s application ping would.
+                // We use socket2 only for the setsockopt call, not for connect.
+                {
+                    let sock = socket2::SockRef::from(&stream);
+                    let keepalive = TcpKeepalive::new()
+                        .with_time(Duration::from_secs(TCP_KEEPALIVE_IDLE_SECS))
+                        .with_interval(Duration::from_secs(TCP_KEEPALIVE_INTERVAL_SECS));
+                    #[cfg(not(target_os = "windows"))]
+                    let keepalive = keepalive.with_retries(TCP_KEEPALIVE_PROBES);
+                    sock.set_tcp_keepalive(&keepalive).ok();
+                }
+                stream
+            }
         };
         Self::apply_transport_init(stream, transport).await
     }
@@ -2885,10 +3184,10 @@ async fn recv_frame_with_keepalive(
     match tokio::time::timeout(Duration::from_secs(PING_DELAY_SECS), recv_frame_read(rh, fk)).await {
         Ok(Ok(raw)) => FrameOutcome::Frame(raw),
         Ok(Err(e))  => FrameOutcome::Error(e),
-        Err(_)      => {
-            // Send PingDelayDisconnect: tells Telegram to close the connection
-            // if it hears nothing for NO_PING_DISCONNECT seconds, giving us a
-            // clean EOF we can detect instead of a silent stale connection.
+        Err(_) => {
+            // Keepalive timeout: send PingDelayDisconnect so Telegram closes the
+            // connection cleanly (EOF) if it hears nothing for NO_PING_DISCONNECT
+            // seconds, rather than leaving a silently stale socket.
             let ping_req = tl::functions::PingDelayDisconnect {
                 ping_id:          random_i64(),
                 disconnect_delay: NO_PING_DISCONNECT,
@@ -2896,8 +3195,13 @@ async fn recv_frame_with_keepalive(
             let mut w = client.inner.writer.lock().await;
             let wire = w.enc.pack(&ping_req);
             let fk = w.frame_kind.clone();
-            let _ = send_frame_write(&mut w.write_half, &wire, &fk).await;
-            FrameOutcome::Keepalive
+            match send_frame_write(&mut w.write_half, &wire, &fk).await {
+                Ok(()) => FrameOutcome::Keepalive,
+                // If the write itself fails the connection is already dead.
+                // Return Error so the reader immediately enters the reconnect loop
+                // instead of sitting silent for another PING_DELAY_SECS.
+                Err(e) => FrameOutcome::Error(e),
+            }
         }
     }
 }
@@ -3116,6 +3420,18 @@ fn random_i64() -> i64 {
     let mut b = [0u8; 8];
     getrandom::getrandom(&mut b).expect("getrandom");
     i64::from_le_bytes(b)
+}
+
+/// Apply ±20 % random jitter to a backoff delay.
+/// Prevents thundering-herd when many clients reconnect simultaneously
+/// (e.g. after a server restart or a shared network outage).
+fn jitter_delay(base_ms: u64) -> Duration {
+    // Use two random bytes for the jitter factor (0..=65535 → 0.80 … 1.20).
+    let mut b = [0u8; 2];
+    getrandom::getrandom(&mut b).unwrap_or(());
+    let rand_frac = u16::from_le_bytes(b) as f64 / 65535.0; // 0.0 … 1.0
+    let factor    = 0.80 + rand_frac * 0.40;                 // 0.80 … 1.20
+    Duration::from_millis((base_ms as f64 * factor) as u64)
 }
 
 fn tl_read_bytes(data: &[u8]) -> Option<Vec<u8>> {
