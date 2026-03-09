@@ -83,6 +83,21 @@ const ID_UPDATE_SHORT_MSG:      u32 = 0x313bc7f8;
 const ID_UPDATE_SHORT_CHAT_MSG: u32 = 0x4d6deea5;
 const ID_UPDATES_TOO_LONG:      u32 = 0xe317af7e;
 
+// ─── Keepalive / reconnect tuning ─────────────────────────────────────────────
+
+/// How often to send a keepalive ping (mirrors grammers PING_DELAY).
+const PING_DELAY_SECS: u64 = 60;
+
+/// Tell Telegram to close the connection if it hears nothing for this many
+/// seconds.  Must be > PING_DELAY_SECS so a single missed ping doesn't drop us.
+const NO_PING_DISCONNECT: i32 = 75;
+
+/// Initial backoff before the first reconnect attempt.
+const RECONNECT_BASE_MS: u64 = 500;
+
+/// Maximum backoff between reconnect attempts (mirrors Telegram official clients).
+const RECONNECT_MAX_SECS: u64 = 30;
+
 // ─── PeerCache ────────────────────────────────────────────────────────────────
 
 /// Caches access hashes for users and channels so every API call carries the
@@ -404,6 +419,9 @@ struct ClientInner {
     /// Channel used to hand a new (OwnedReadHalf, FrameKind, auth_key, session_id)
     /// to the reader task after a reconnect.
     reconnect_tx:    mpsc::UnboundedSender<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
+    /// Send `()` here to wake the reader's reconnect backoff loop immediately.
+    /// Used by [`Client::signal_network_restored`].
+    network_hint_tx: mpsc::UnboundedSender<()>,
     home_dc_id:      Mutex<i32>,
     dc_options:      Mutex<HashMap<i32, DcEntry>>,
     pub(crate) peer_cache:    Mutex<PeerCache>,
@@ -489,10 +507,15 @@ impl Client {
         let (reconnect_tx, reconnect_rx) =
             mpsc::unbounded_channel::<(OwnedReadHalf, FrameKind, [u8; 256], i64)>();
 
+        // Channel for external "network restored" hints — lets Android/iOS callbacks
+        // skip the reconnect backoff and attempt immediately.
+        let (network_hint_tx, network_hint_rx) = mpsc::unbounded_channel::<()>();
+
         let inner = Arc::new(ClientInner {
             writer:          Mutex::new(writer),
             pending:         pending.clone(),
             reconnect_tx,
+            network_hint_tx,
             home_dc_id:      Mutex::new(home_dc_id),
             dc_options:      Mutex::new(dc_opts),
             peer_cache:      Mutex::new(PeerCache::default()),
@@ -519,7 +542,7 @@ impl Client {
             let client_r = client.clone();
             tokio::spawn(async move {
                 client_r.run_reader_task(
-                    read_half, frame_kind, auth_key, session_id, reconnect_rx,
+                    read_half, frame_kind, auth_key, session_id, reconnect_rx, network_hint_rx,
                 ).await;
             });
         }
@@ -785,12 +808,31 @@ impl Client {
         UpdateStream { rx }
     }
 
+    // ── Network hint ───────────────────────────────────────────────────────
+
+    /// Signal that network connectivity has been restored.
+    ///
+    /// Call this from platform network-change callbacks — Android's
+    /// `ConnectivityManager`, iOS `NWPathMonitor`, or any other OS hook —
+    /// to make the client attempt an immediate reconnect instead of waiting
+    /// for the exponential backoff timer to expire.
+    ///
+    /// Safe to call at any time: if the connection is healthy the hint is
+    /// silently ignored by the reader task; if it is in a backoff loop it
+    /// wakes up and tries again right away.
+    pub fn signal_network_restored(&self) {
+        let _ = self.inner.network_hint_tx.send(());
+    }
+
     // ── Reader task ────────────────────────────────────────────────────────
-    // Started once inside connect(). Owns the TCP read half forever.
     // Decrypts frames without holding any lock, then routes:
     //   rpc_result  → pending map (oneshot to waiting RPC caller)
     //   update      → update_tx  (delivered to stream_updates consumers)
     //   bad_server_salt → updates writer salt
+    //
+    // On error: drains pending with Io errors (so AutoSleep retries callers),
+    // then loops with exponential backoff until reconnect succeeds.
+    // network_hint_rx lets external callers (Android/iOS) skip the backoff.
     //
     // DC migration / reconnect: the new read half arrives via new_conn_rx.
     // The select! between recv_frame_owned and new_conn_rx.recv() ensures we
@@ -803,9 +845,10 @@ impl Client {
         frame_kind:  FrameKind,
         auth_key:    [u8; 256],
         session_id:  i64,
-        mut new_conn_rx: mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
+        mut new_conn_rx:     mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
+        mut network_hint_rx: mpsc::UnboundedReceiver<()>,
     ) {
-        self.reader_loop(read_half, frame_kind, auth_key, session_id, &mut new_conn_rx).await;
+        self.reader_loop(read_half, frame_kind, auth_key, session_id, &mut new_conn_rx, &mut network_hint_rx).await;
     }
 
     async fn reader_loop(
@@ -815,6 +858,7 @@ impl Client {
         mut ak:          [u8; 256],
         mut sid:         i64,
         new_conn_rx:     &mut mpsc::UnboundedReceiver<(OwnedReadHalf, FrameKind, [u8; 256], i64)>,
+        network_hint_rx: &mut mpsc::UnboundedReceiver<()>,
     ) {
         loop {
             // Race the frame-read against an incoming new-connection signal.
@@ -835,32 +879,69 @@ impl Client {
                             self.route_frame(msg.body).await;
                         }
                         FrameOutcome::Error(e) => {
-                            log::warn!("[layer] Reader: error: {e} — reconnecting …");
-                            self.inner.pending.lock().await.clear();
-                            sleep(Duration::from_secs(1)).await;
-                            match self.do_reconnect(&ak, &fk).await {
-                                Ok((new_rh, new_fk, new_ak, new_sid)) => {
-                                    rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
-                                    // Spawn init_connection + get_difference in a separate task.
-                                    // This MUST NOT be awaited inline — the reader loop must
-                                    // resume first so it can route the init_connection RPC
-                                    // response back to the pending caller. Awaiting inline
-                                    // causes a self-deadlock → 30 s timeout.
-                                    let c = self.clone();
-                                    let utx = self.inner.update_tx.clone();
-                                    tokio::spawn(async move {
-                                        if let Err(e) = c.init_connection().await {
-                                            log::warn!("[layer] init_connection after reconnect failed: {e}");
-                                        }
-                                        if let Ok(missed) = c.get_difference().await {
-                                            for u in missed { let _ = utx.send(u); }
-                                        }
-                                    });
+                            log::warn!("[layer] Reader: connection error: {e}");
+
+                            // Fail all in-flight RPCs immediately with an I/O error.
+                            // This ensures AutoSleep retries them (it only retries Io errors)
+                            // rather than leaving callers hanging for the full 30 s timeout.
+                            {
+                                let mut pending = self.inner.pending.lock().await;
+                                let msg = e.to_string();
+                                for (_, tx) in pending.drain() {
+                                    let _ = tx.send(Err(InvocationError::Io(
+                                        std::io::Error::new(
+                                            std::io::ErrorKind::ConnectionReset,
+                                            msg.clone(),
+                                        )
+                                    )));
                                 }
-                                Err(e2) => { log::error!("[layer] Reconnect failed: {e2}"); break; }
+                            }
+
+                            // Reconnect loop with exponential backoff + network-hint fast-path.
+                            // Mirrors Telegram official client behaviour:
+                            //   500 ms → 1 s → 2 s → 4 s → … → 30 s cap, then retry forever.
+                            let mut delay_ms = RECONNECT_BASE_MS;
+                            loop {
+                                log::info!("[layer] Reconnecting in {delay_ms} ms …");
+
+                                // Race the back-off sleep against an external "network restored"
+                                // hint so Android/iOS callbacks can skip the wait entirely.
+                                tokio::select! {
+                                    _ = sleep(Duration::from_millis(delay_ms)) => {}
+                                    hint = network_hint_rx.recv() => {
+                                        if hint.is_none() { return; } // channel closed → shutdown
+                                        log::info!("[layer] Network hint → attempting reconnect now");
+                                    }
+                                }
+
+                                match self.do_reconnect(&ak, &fk).await {
+                                    Ok((new_rh, new_fk, new_ak, new_sid)) => {
+                                        rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
+                                        // Spawn init_connection + get_difference in a separate task.
+                                        // MUST NOT be awaited inline: the reader loop must resume
+                                        // first so it can route the init_connection RPC response.
+                                        // Awaiting here causes a self-deadlock → 30 s timeout.
+                                        let c = self.clone();
+                                        let utx = self.inner.update_tx.clone();
+                                        tokio::spawn(async move {
+                                            if let Err(e) = c.init_connection().await {
+                                                log::warn!("[layer] init_connection after reconnect failed: {e}");
+                                            }
+                                            if let Ok(missed) = c.get_difference().await {
+                                                for u in missed { let _ = utx.send(u); }
+                                            }
+                                        });
+                                        break; // reconnected successfully — resume outer loop
+                                    }
+                                    Err(e2) => {
+                                        log::warn!("[layer] Reconnect attempt failed: {e2}");
+                                        delay_ms = (delay_ms * 2)
+                                            .min(RECONNECT_MAX_SECS * 1_000);
+                                    }
+                                }
                             }
                         }
-                        FrameOutcome::Keepalive => {} // ping was sent; loop again
+                        FrameOutcome::Keepalive => {} // PingDelayDisconnect sent; loop again
                     }
                 }
 
@@ -2555,20 +2636,29 @@ enum FrameOutcome {
     Keepalive,  // timeout elapsed but ping was sent; caller should loop
 }
 
-/// Read one frame with a 25-second keepalive timeout.
-/// If the timeout fires, send a ping (using the writer) and return Keepalive.
+/// Read one frame with a 60-second keepalive timeout (PING_DELAY_SECS).
+///
+/// If the timeout fires we send a `PingDelayDisconnect` — this tells Telegram
+/// to forcibly close the connection after `NO_PING_DISCONNECT` seconds of
+/// silence, giving us a clean EOF to detect rather than a silently stale socket.
+/// That mirrors what both grammers and the official Telegram clients do.
 async fn recv_frame_with_keepalive(
     rh:      &mut OwnedReadHalf,
     fk:      &FrameKind,
     client:  &Client,
     _ak:     &[u8; 256],
 ) -> FrameOutcome {
-    match tokio::time::timeout(Duration::from_secs(25), recv_frame_read(rh, fk)).await {
+    match tokio::time::timeout(Duration::from_secs(PING_DELAY_SECS), recv_frame_read(rh, fk)).await {
         Ok(Ok(raw)) => FrameOutcome::Frame(raw),
         Ok(Err(e))  => FrameOutcome::Error(e),
         Err(_)      => {
-            // Send keepalive ping
-            let ping_req = tl::functions::Ping { ping_id: random_i64() };
+            // Send PingDelayDisconnect: tells Telegram to close the connection
+            // if it hears nothing for NO_PING_DISCONNECT seconds, giving us a
+            // clean EOF we can detect instead of a silent stale connection.
+            let ping_req = tl::functions::PingDelayDisconnect {
+                ping_id:          random_i64(),
+                disconnect_delay: NO_PING_DISCONNECT,
+            };
             let mut w = client.inner.writer.lock().await;
             let wire = w.enc.pack(&ping_req);
             let fk = w.frame_kind.clone();
