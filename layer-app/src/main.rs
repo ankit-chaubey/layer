@@ -1,4 +1,4 @@
-//! layer-app — Interactive login + update stream demo.
+//! layer-app — Interactive login + update stream demo with Ping test.
 //!
 //! Supports both user accounts and bot tokens.
 //!
@@ -10,6 +10,7 @@
 use std::io::{self, BufRead, Write};
 
 use layer_client::{Client, Config, SignInError, update::Update};
+use layer_tl_types as tl;
 
 // ── Fill in your credentials ──────────────────────────────────────────────────
 const API_ID:    i32  = 0;                  // https://my.telegram.org
@@ -20,12 +21,10 @@ const BOT_TOKEN: &str = "";                 // leave empty for user login
 
 #[tokio::main]
 async fn main() {
-    // Enable logging: RUST_LOG=layer_client=info,layer_app=info cargo run
     if std::env::var("RUST_LOG").is_err() {
-        // SAFETY: single-threaded at this point, no other threads reading env
         unsafe { std::env::set_var("RUST_LOG", "layer_client=info,layer_app=info"); }
-    env_logger::init();
     }
+    env_logger::init();
 
     if let Err(e) = run().await {
         eprintln!("\n✗ {e}");
@@ -34,14 +33,14 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    if API_ID == 0 || API_HASH == "YOUR_API_HASH" {
+    if API_ID == 0 || API_HASH.is_empty() {
         eprintln!("Edit API_ID and API_HASH at the top of layer-app/src/main.rs");
         std::process::exit(1);
     }
 
     let (client, _shutdown) = Client::connect(Config {
-        api_id:       API_ID,
-        api_hash:     API_HASH.to_string(),
+        api_id:   API_ID,
+        api_hash: API_HASH.to_string(),
         ..Default::default()
     }).await?;
 
@@ -81,9 +80,32 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         println!("✅ Already logged in");
     }
 
+    // ── Ping tests ─────────────────────────────────────────────────────
+    println!("\n🧪 Test 1 — ping_id = 0x0");
+    test_ping(&client, 0).await;
+
+    println!("\n🧪 Test 2 — ping_id = 0xdeadbeef12345678");
+    test_ping(&client, 0xDEAD_BEEF_1234_5678_u64 as i64).await;
+
+    println!("\n🧪 Test 3 — cloned client");
+    let client2 = client.clone();
+    match client2.invoke(&tl::functions::Ping { ping_id: 42 }).await {
+        Ok(tl::enums::Pong::Pong(p)) => println!("  ✅ ping_id={}  msg_id={}", p.ping_id, p.msg_id),
+        Err(e) => println!("  ❌ {e}"),
+    }
+
+    println!("\n🧪 Test 4 — rapid-fire 3 pings");
+    for i in 1i64..=3 {
+        let t = std::time::Instant::now();
+        match client.invoke(&tl::functions::Ping { ping_id: i }).await {
+            Ok(tl::enums::Pong::Pong(p)) => println!("  ✅ #{i}  rtt={}ms  ping_id={}  msg_id={}", t.elapsed().as_millis(), p.ping_id, p.msg_id),
+            Err(e) => println!("  ❌ #{i} {e}"),
+        }
+    }
+
     // ── Send a test message ────────────────────────────────────────────
     client.send_to_self("Hello from layer! 👋").await?;
-    println!("💬 Sent test message to Saved Messages");
+    println!("\n💬 Sent test message to Saved Messages");
 
     // ── Update stream loop ─────────────────────────────────────────────
     println!("\n👂 Listening for updates (Ctrl+C to quit) …\n");
@@ -98,7 +120,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         msg.id(),
                         msg.text().unwrap_or("")
                     );
-                    // Echo back
                     if let Some(peer) = msg.peer_id() {
                         let _ = client.send_message_to_peer(
                             peer.clone(),
@@ -114,12 +135,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 println!("🗑️  Messages deleted: {:?}", del.message_ids);
             }
             Update::CallbackQuery(cb) => {
-                println!(
-                    "🔘 Callback query [id={}]: {:?}",
-                    cb.query_id,
-                    cb.data()
-                );
-                // Answer the callback
+                println!("🔘 Callback query [id={}]: {:?}", cb.query_id, cb.data());
                 let _ = client.answer_callback_query(cb.query_id, Some("Got it!"), false).await;
             }
             Update::InlineQuery(iq) => {
@@ -133,6 +149,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+async fn test_ping(client: &Client, ping_id: i64) {
+    match client.invoke(&tl::functions::Ping { ping_id }).await {
+        Ok(tl::enums::Pong::Pong(p)) if p.ping_id == ping_id => {
+            println!("  ✅ ping_id={:#x}  msg_id={}", p.ping_id, p.msg_id);
+        }
+        Ok(tl::enums::Pong::Pong(p)) => {
+            println!("  ⚠️  mismatch — sent {ping_id:#x}, got {:#x}", p.ping_id);
+        }
+        Err(e) => println!("  ❌ {e}"),
+    }
 }
 
 fn prompt(msg: &str) -> io::Result<String> {

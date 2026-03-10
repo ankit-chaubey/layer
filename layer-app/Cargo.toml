@@ -14,6 +14,7 @@ name = "layer-app"
 path = "src/main.rs"
 
 [dependencies]
-layer-client = { workspace = true }
-tokio        = { version = "1", features = ["full"] }
-env_logger   = "0.11"
+layer-client   = { workspace = true }
+layer-tl-types = { workspace = true }
+tokio          = { version = "1", features = ["full"] }
+env_logger     = "0.11"
