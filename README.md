@@ -10,6 +10,8 @@
 [![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/schema)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![Docs](https://img.shields.io/badge/docs-online-5865F2?style=flat-square&logo=mdbook)](https://github.ankitchaubey.in/layer/)
+[![Channel](https://img.shields.io/badge/Telegram-@layer__rs-2CA5E0?logo=telegram)](https://t.me/layer_rs)
+[![Chat](https://img.shields.io/badge/Telegram%20Chat-@layer__chat-2CA5E0?logo=telegram)](https://t.me/layer_chat)
 
 *Written from the ground up to understand Telegram's internals at the lowest level.*
 
@@ -19,12 +21,36 @@
 
 ## 🧩 What is layer?
 
-**layer** is a hand-written, bottom-up async Rust implementation of the
-[Telegram MTProto](https://core.telegram.org/mtproto) protocol. Every component —
-from the `.tl` schema parser, to the AES-IGE cipher, to the Diffie-Hellman key
-exchange, to the async update stream — is written and owned by this project.
+**layer** is a hand-crafted, bottom-up async Rust implementation of the
+[Telegram MTProto](https://core.telegram.org/mtproto) protocol - built not to
+reinvent the wheel, but to *understand* it.
 
-No black boxes. No magic. Just Rust, all the way down.
+The core protocol pieces - the `.tl` schema parser, the AES-IGE cipher, the
+Diffie-Hellman key exchange, the MTProto session, the async update stream - are
+all written from scratch. The async runtime and a handful of well-known utilities
+(`tokio`, `flate2`, `getrandom`) are borrowed from the ecosystem, because that's
+just good engineering. The architecture draws inspiration from the excellent
+[grammers](https://codeberg.org/Lonami/grammers) library.
+
+The goal was never "yet another Telegram SDK." It was: *what happens if you sit
+down and build every piece yourself, and actually understand why it works?*
+
+> **🎓 Personal use & learning project** - layer was built as a personal exploration:
+> *learning by building*. The goal is to deeply understand Telegram's protocol by
+> implementing every layer from scratch, not to ship a polished production SDK.
+> Feel free to explore, learn from it, or hack on it!
+
+> **⚠️ Pre-production (0.x.x)** - This library is still in early development.
+> APIs **will** change without notice. **Not production-ready - use at your own risk!**
+
+---
+
+## 💬 Community
+
+| | Link |
+|---|---|
+| 📢 **Channel** (updates & releases) | [@layer_rs](https://t.me/layer_rs) |
+| 💬 **Chat** (questions & discussion) | [@layer_chat](https://t.me/layer_chat) |
 
 ---
 
@@ -37,7 +63,7 @@ No black boxes. No magic. Just Rust, all the way down.
 | [`layer-tl-types`](./layer-tl-types) | All Layer 223 constructors, functions and enums |
 | [`layer-crypto`](./layer-crypto) | AES-IGE, RSA, SHA, DH key derivation |
 | [`layer-mtproto`](./layer-mtproto) | MTProto session, DH exchange, message framing |
-| [`layer-client`](./layer-client) | High-level async client — auth, bots, updates, 2FA |
+| [`layer-client`](./layer-client) | High-level async client - auth, bots, updates, 2FA |
 | `layer-app` | Interactive demo binary (not published) |
 | `layer-connect` | Raw DH connection demo (not published) |
 
@@ -61,7 +87,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-layer-client = "0.1.2"
+layer-client = "0.2.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -160,13 +186,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 📦 TL Type System
 - Full `.tl` schema parser
 - Build-time Rust code generation
-- All Layer 223 constructors — 2,295 definitions
+- All Layer 223 constructors - 2,295 definitions
 - `Serializable` / `Deserializable` traits for all types
 - `RemoteCall` trait for all RPC functions
 - Optional: `Debug`, `serde`, `name_for_id(u32)`
 
 ### 👤 Client
-- `Client::connect()` — async TCP + DH + initConnection
+- `Client::connect()` - async TCP + DH + initConnection
 - Session persistence across restarts
 - Phone code login + 2FA SRP
 - Bot token login
@@ -200,7 +226,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # 1. Replace the schema
 cp new-api.tl layer-tl-types/tl/api.tl
 
-# 2. Build — types regenerate automatically
+# 2. Build - types regenerate automatically
 cargo build
 ```
 
@@ -218,25 +244,29 @@ cargo test --workspace
 
 Licensed under either of, at your option:
 
-- **MIT License** — see [LICENSE-MIT](LICENSE-MIT)
-- **Apache License, Version 2.0** — see [LICENSE-APACHE](LICENSE-APACHE)
+- **MIT License** - see [LICENSE-MIT](LICENSE-MIT)
+- **Apache License, Version 2.0** - see [LICENSE-APACHE](LICENSE-APACHE)
 
 ---
 
 ## 👤 Author
 
-<table>
-<tr>
-<td align="center">
-<strong>Ankit Chaubey</strong><br/>
-<a href="https://github.com/ankit-chaubey">github.com/ankit-chaubey</a><br/>
-<a href="https://ankitchaubey.in">ankitchaubey.in</a><br/>
-<a href="mailto:ankitchaubey.dev@gmail.com">ankitchaubey.dev@gmail.com</a>
-</td>
-</tr>
-</table>
+<div align="center">
 
-📦 Project: [github.com/ankit-chaubey/layer](https://github.com/ankit-chaubey/layer)
+### Ankit Chaubey
+
+*Built with curiosity, caffeine, and a lot of Rust compiler errors. 🦀*
+
+| | |
+|:---:|:---|
+| 🐙 **GitHub** | [github.com/ankit-chaubey](https://github.com/ankit-chaubey) |
+| 🌐 **Website** | [ankitchaubey.in](https://ankitchaubey.in) |
+| 📬 **Email** | [ankitchaubey.dev@gmail.com](mailto:ankitchaubey.dev@gmail.com) |
+| 📦 **Project** | [github.com/ankit-chaubey/layer](https://github.com/ankit-chaubey/layer) |
+| 📢 **Channel** | [@layer_rs](https://t.me/layer_rs) |
+| 💬 **Chat** | [@layer_chat](https://t.me/layer_chat) |
+
+</div>
 
 ---
 
