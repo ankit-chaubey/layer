@@ -1274,6 +1274,17 @@ impl Client {
                     self.inner.writer.lock().await.enc.salt = new_salt;
                 }
             }
+            ID_PONG => {
+                // Bare Pong is the server's reply to our Ping — NOT wrapped in rpc_result.
+                // pong#347773c5 msg_id:long ping_id:long
+                //   body[4..12] = msg_id of the original Ping → key in pending map
+                if body.len() >= 20 {
+                    let ping_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
+                    if let Some(tx) = self.inner.pending.lock().await.remove(&ping_msg_id) {
+                        let _ = tx.send(Ok(body));
+                    }
+                }
+            }
             ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED
             | ID_UPDATE_SHORT_MSG | ID_UPDATE_SHORT_CHAT_MSG
             | ID_UPDATES_TOO_LONG => {
@@ -3388,9 +3399,12 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
             let bytes = tl_read_bytes(&body[4..]).unwrap_or_default();
             unwrap_envelope(gz_inflate(&bytes)?)
         }
-        // MTProto service messages — all silently acknowledged, no payload extracted
-        ID_PONG | ID_MSGS_ACK | ID_NEW_SESSION | ID_BAD_SERVER_SALT | ID_BAD_MSG_NOTIFY
-        // Grammers also silences these; we do the same to avoid routing them as payloads
+        // MTProto service messages — silently acknowledged, no payload extracted.
+        // NOTE: ID_PONG is intentionally NOT listed here. Pong arrives as a bare
+        // top-level frame (never inside rpc_result), so it is handled in route_frame
+        // directly. Silencing it here would drop it before invoke() can resolve it.
+        ID_MSGS_ACK | ID_NEW_SESSION | ID_BAD_SERVER_SALT | ID_BAD_MSG_NOTIFY
+        // These are correctly silenced (grammers silences these too)
         | 0xd33b5459  // MsgsStateReq
         | 0x04deb57d  // MsgsStateInfo
         | 0x8cc0d131  // MsgsAllInfo
