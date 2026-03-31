@@ -1176,9 +1176,20 @@ impl Client {
 
                         Ok(Err(e)) => {
                             // TCP connected but init RPC failed (timeout / error).
-                            // Retry immediately with 0 initial delay — no need to
-                            // wait, since the network itself is likely up.
-                            log::warn!("[layer] init_connection failed after reconnect ({e}), re-connecting …");
+                            // The most common cause is a stale auth key — the server
+                            // accepted the TCP connection but rejected the encrypted
+                            // session, sending an early EOF or silently dropping our
+                            // frames.  Clear the saved key so do_reconnect falls back
+                            // to a fresh DH handshake instead of looping forever with
+                            // the same bad key.
+                            log::warn!("[layer] init_connection failed after reconnect ({e}) — clearing saved auth key, reconnecting with fresh DH …");
+                            {
+                                let home_dc_id = *self.inner.home_dc_id.lock().await;
+                                let mut opts = self.inner.dc_options.lock().await;
+                                if let Some(entry) = opts.get_mut(&home_dc_id) {
+                                    entry.auth_key = None;
+                                }
+                            }
                             {
                                 let mut pending = self.inner.pending.lock().await;
                                 let msg = e.to_string();
@@ -1315,7 +1326,13 @@ impl Client {
         sid: &mut i64,
         network_hint_rx: &mut mpsc::UnboundedReceiver<()>,
     ) -> Option<oneshot::Receiver<Result<(), InvocationError>>> {
-        let mut delay_ms = initial_delay_ms.max(RECONNECT_BASE_MS);
+        let mut delay_ms = if initial_delay_ms == 0 {
+            // Caller explicitly requests an immediate first attempt (e.g. init
+            // failed but TCP is up — no reason to wait before the next try).
+            0
+        } else {
+            initial_delay_ms.max(RECONNECT_BASE_MS)
+        };
         loop {
             log::info!("[layer] Reconnecting in {delay_ms} ms …");
             tokio::select! {
@@ -1371,7 +1388,10 @@ impl Client {
                 Err(e) => {
                     log::warn!("[layer] Reconnect attempt failed: {e}");
                     // Cap at max, then apply ±20 % jitter to avoid thundering herd.
-                    let next = (delay_ms * 2).min(RECONNECT_MAX_SECS * 1_000);
+                    // Ensure the delay always advances by at least RECONNECT_BASE_MS
+                    // so a 0 initial delay on the first attempt doesn't spin-loop.
+                    let next = (delay_ms.saturating_mul(2).max(RECONNECT_BASE_MS))
+                        .min(RECONNECT_MAX_SECS * 1_000);
                     delay_ms = jitter_delay(next).as_millis() as u64;
                 }
             }
