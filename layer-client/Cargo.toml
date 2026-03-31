@@ -14,7 +14,7 @@ categories           = ["api-bindings", "network-programming", "asynchronous"]
 [dependencies]
 layer-tl-types = { workspace = true, features = ["tl-api", "tl-mtproto"] }
 layer-mtproto  = { workspace = true }
-tokio          = { version = "1",  features = ["net", "io-util", "sync", "time", "rt", "rt-multi-thread", "macros"] }
+tokio          = { version = "1",  features = ["net", "io-util", "sync", "time", "rt", "fs", "rt-multi-thread", "macros"] }
 tokio-util     = { version = "0.7", features = ["rt"] }
 getrandom      = "0.2"
 flate2         = "1"
