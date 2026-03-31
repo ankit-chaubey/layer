@@ -1089,6 +1089,11 @@ impl Client {
         // response can reach its oneshot sender (otherwise → 30 s self-deadlock).
         // If init fails we re-enter the reconnect loop immediately.
         let mut init_rx: Option<oneshot::Receiver<Result<(), InvocationError>>> = initial_init_rx;
+        // How many consecutive init_connection failures have occurred on the
+        // *current* auth key.  We retry with the same key up to 2 times before
+        // assuming the key is stale and clearing it for a fresh DH handshake.
+        // This prevents a transient 30 s timeout from nuking a valid session.
+        let mut init_fail_count: u32 = 0;
 
         loop {
             tokio::select! {
@@ -1151,6 +1156,7 @@ impl Client {
                     init_rx = None;
                     match init_result {
                         Ok(Ok(())) => {
+                            init_fail_count = 0;
                             // Fully initialised. Persist updated DC/session state.
                             // Retry up to 3 times — a transient I/O error (e.g. the
                             // filesystem briefly unavailable on Android) should not
@@ -1175,20 +1181,41 @@ impl Client {
                         }
 
                         Ok(Err(e)) => {
-                            // TCP connected but init RPC failed (timeout / error).
-                            // The most common cause is a stale auth key — the server
-                            // accepted the TCP connection but rejected the encrypted
-                            // session, sending an early EOF or silently dropping our
-                            // frames.  Clear the saved key so do_reconnect falls back
-                            // to a fresh DH handshake instead of looping forever with
-                            // the same bad key.
-                            log::warn!("[layer] init_connection failed after reconnect ({e}) — clearing saved auth key, reconnecting with fresh DH …");
-                            {
+                            // TCP connected but init RPC failed.
+                            //
+                            // Grammers' approach: only treat the key as stale when
+                            // Telegram sends a definitive "bad auth key" signal —
+                            // a -404 transport error code.  A 30 s timeout is almost
+                            // always a transient network issue and must NOT clear the
+                            // session (doing so creates a brand-new session in Telegram's
+                            // active devices list and orphans the old one).
+                            let key_is_stale = match &e {
+                                // Telegram's abridged-transport error code for invalid key
+                                InvocationError::Rpc(r) if r.code == -404 => true,
+                                // Early EOF immediately after connecting = server rejected key
+                                InvocationError::Io(io) if io.kind() == std::io::ErrorKind::UnexpectedEof
+                                    || io.kind() == std::io::ErrorKind::ConnectionReset => true,
+                                // 30 s timeout → transient; keep the key and retry
+                                _ => false,
+                            };
+
+                            if key_is_stale {
+                                log::warn!(
+                                    "[layer] init_connection failed with definitive bad-key signal ({e}) \
+                                     — clearing auth key for fresh DH …"
+                                );
+                                init_fail_count = 0;
                                 let home_dc_id = *self.inner.home_dc_id.lock().await;
                                 let mut opts = self.inner.dc_options.lock().await;
                                 if let Some(entry) = opts.get_mut(&home_dc_id) {
                                     entry.auth_key = None;
                                 }
+                            } else {
+                                init_fail_count += 1;
+                                log::warn!(
+                                    "[layer] init_connection failed transiently (attempt {init_fail_count}, {e}) \
+                                     — retrying with same key …"
+                                );
                             }
                             {
                                 let mut pending = self.inner.pending.lock().await;
