@@ -15,7 +15,7 @@ use std::time::Instant;
 use layer_tl_types as tl;
 use layer_tl_types::{Cursor, Deserializable};
 
-use crate::{Client, InvocationError, update};
+use crate::{Client, InvocationError, RpcError, update};
 
 // ─── PossibleGapBuffer (G-17) ─────────────────────────────────────────────────
 
@@ -306,8 +306,41 @@ impl Client {
         let local_pts = self.inner.pts_state.lock().await
             .channel_pts.get(&channel_id).copied().unwrap_or(0);
 
-        let access_hash = self.inner.peer_cache.read().await
+        let mut access_hash = self.inner.peer_cache.read().await
             .channels.get(&channel_id).copied().unwrap_or(0);
+
+        // If access_hash is missing, try to resolve it via channels.GetChannels.
+        // Without a valid access_hash, Telegram always returns CHANNEL_INVALID.
+        if access_hash == 0 {
+            log::debug!("[layer] channel {channel_id}: access_hash missing, attempting resolve via GetChannels");
+            let input = tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                channel_id,
+                access_hash: 0,
+            });
+            let req = tl::functions::channels::GetChannels { id: vec![input] };
+            if let Ok(body) = self.rpc_call_raw_pub(&req).await {
+                    let mut cur = Cursor::from_slice(&body);
+                    if let Ok(chats) = tl::enums::messages::Chats::deserialize(&mut cur) {
+                    let chat_list = match chats {
+                        tl::enums::messages::Chats::Chats(c) => c.chats,
+                        tl::enums::messages::Chats::Slice(c) => c.chats,
+                    };
+                    self.cache_chats_slice_pub(&chat_list).await;
+                    access_hash = self.inner.peer_cache.read().await
+                        .channels.get(&channel_id).copied().unwrap_or(0);
+                }
+            }
+        }
+
+        // Still no access_hash — nothing we can do, bail out early.
+        if access_hash == 0 {
+            log::warn!("[layer] channel {channel_id}: access_hash unknown, cannot call getChannelDifference");
+            return Err(InvocationError::Rpc(RpcError {
+                code: 400,
+                name: "CHANNEL_INVALID".into(),
+                value: None,
+            }));
+        }
 
         log::info!("[layer] getChannelDifference channel_id={channel_id} pts={local_pts}");
 

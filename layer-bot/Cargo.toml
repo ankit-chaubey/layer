@@ -14,8 +14,8 @@ name = "layer-bot"
 path = "src/main.rs"
 
 [dependencies]
-layer-client   = { path = "../layer-client",  version = "0.4.1" }
-layer-tl-types = { path = "../layer-tl-types", version = "0.4.1", features = ["tl-api", "tl-mtproto"] }
+layer-client   = { path = "../layer-client",  version = "0.4.2" }
+layer-tl-types = { path = "../layer-tl-types", version = "0.4.2", features = ["tl-api", "tl-mtproto"] }
 tokio          = { version = "1", features = ["full"] }
 env_logger     = "0.11"
 log            = "0.4"
