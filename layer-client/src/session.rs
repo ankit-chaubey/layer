@@ -98,7 +98,8 @@ pub struct PersistedSession {
 impl PersistedSession {
     // ── Serialise (v2) ────────────────────────────────────────────────────
 
-    pub fn save(&self, path: &Path) -> io::Result<()> {
+    /// Encode the session to raw bytes (v2 binary format).
+    pub fn to_bytes(&self) -> Vec<u8> {
         let mut b = Vec::with_capacity(512);
 
         b.push(0x02u8); // version
@@ -139,15 +140,26 @@ impl PersistedSession {
             b.push(p.is_channel as u8);
         }
 
-        std::fs::write(path, b)
+        b
+    }
+
+    /// Encode the session to a URL-safe base64 string (no padding).
+    /// This is the portable "string session" format, similar to Pyrogram/Telethon.
+    pub fn to_string(&self) -> String {
+        use base64::Engine as _;
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(self.to_bytes())
+    }
+
+    pub fn save(&self, path: &Path) -> io::Result<()> {
+        std::fs::write(path, self.to_bytes())
     }
 
     // ── Deserialise (v1 + v2) ─────────────────────────────────────────────
 
-    pub fn load(path: &Path) -> io::Result<Self> {
-        let buf = std::fs::read(path)?;
+    /// Decode a session from raw bytes (v1 or v2 binary format).
+    pub fn from_bytes(buf: &[u8]) -> io::Result<Self> {
         if buf.is_empty() {
-            return Err(io::Error::new(ErrorKind::InvalidData, "empty session file"));
+            return Err(io::Error::new(ErrorKind::InvalidData, "empty session data"));
         }
 
         let mut p = 0usize;
@@ -169,12 +181,9 @@ impl PersistedSession {
 
         let first_byte = r_u8!();
 
-        // Detect version.  v2 starts with 0x02.  v1 (legacy) started with the
-        // raw i32 home_dc_id; typical values are 1–5 (single byte already consumed).
         let (home_dc_id, is_v2) = if first_byte == 0x02 {
             (r_i32!(), true)
         } else {
-            // first_byte is byte 0 of the old i32
             let rest = r!(3);
             let mut bytes = [0u8; 4];
             bytes[0] = first_byte;
@@ -210,7 +219,6 @@ impl PersistedSession {
             });
         }
 
-        // v2: update state
         let pts      = r_i32!();
         let qts      = r_i32!();
         let date     = r_i32!();
@@ -223,7 +231,6 @@ impl PersistedSession {
             channels.push((cid, cpts));
         }
 
-        // v2: peer cache
         let peer_count = r_u16!() as usize;
         let mut peers  = Vec::with_capacity(peer_count);
         for _ in 0..peer_count {
@@ -239,6 +246,20 @@ impl PersistedSession {
             updates_state: UpdatesStateSnap { pts, qts, date, seq, channels },
             peers,
         })
+    }
+
+    /// Decode a session from a URL-safe base64 string produced by [`to_string`].
+    pub fn from_string(s: &str) -> io::Result<Self> {
+        use base64::Engine as _;
+        let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(s.trim())
+            .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+        Self::from_bytes(&bytes)
+    }
+
+    pub fn load(path: &Path) -> io::Result<Self> {
+        let buf = std::fs::read(path)?;
+        Self::from_bytes(&buf)
     }
 }
 

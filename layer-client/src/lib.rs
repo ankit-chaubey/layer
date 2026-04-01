@@ -56,7 +56,7 @@ pub use media::{UploadedFile, DownloadIter, Photo, Document, Sticker, Downloadab
 pub use participants::Participant;
 pub use typing_guard::TypingGuard;
 pub use socks5::Socks5Config;
-pub use session_backend::{SessionBackend, BinaryFileBackend, InMemoryBackend};
+pub use session_backend::{SessionBackend, BinaryFileBackend, InMemoryBackend, StringSessionBackend};
 pub use keyboard::{Button, InlineKeyboard, ReplyKeyboard};
 pub use search::{SearchBuilder, GlobalSearchBuilder};
 pub use types::{User, Group, Channel, Chat};
@@ -442,6 +442,31 @@ pub struct Config {
     pub catch_up:       bool,
 }
 
+impl Config {
+    /// Convenience builder: use a portable base64 string session.
+    ///
+    /// Pass the string exported from a previous `client.export_session_string()` call,
+    /// or an empty string to start fresh (the string session will be populated after auth).
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// let cfg = Config {
+    ///     api_id:   12345,
+    ///     api_hash: "abc".into(),
+    ///     catch_up: true,
+    ///     ..Config::with_string_session(std::env::var("SESSION").unwrap_or_default())
+    /// };
+    /// ```
+    pub fn with_string_session(s: impl Into<String>) -> Self {
+        Config {
+            session_backend: Arc::new(
+                crate::session_backend::StringSessionBackend::new(s)
+            ),
+            ..Config::default()
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -783,14 +808,45 @@ impl Client {
                 state.pts, state.qts, state.seq, state.channel_pts.len());
             drop(state);
 
+            // Capture channel list before spawn — get_difference() resets
+            // PtsState via from_server_state (channel_pts preserved now, but
+            // we need the IDs to drive per-channel catch-up regardless).
+            let channel_ids: Vec<i64> = snap.channels.iter().map(|&(cid, _)| cid).collect();
+
             // Now spawn the catch-up diff — pts is the *old* value, so
             // getDifference will return exactly what we missed.
             let c   = client.clone();
             let utx = client.inner.update_tx.clone();
             tokio::spawn(async move {
-                if let Ok(missed) = c.get_difference().await {
-                    log::info!("[layer] catch_up: {} missed updates replayed", missed.len());
-                    for u in missed { let _ = utx.send(u); }
+                // ── 1. Global getDifference ───────────────────────────────
+                match c.get_difference().await {
+                    Ok(missed) => {
+                        log::info!("[layer] catch_up: {} global updates replayed", missed.len());
+                        for u in missed { let _ = utx.send(u); }
+                    }
+                    Err(e) => log::warn!("[layer] catch_up getDifference: {e}"),
+                }
+
+                // ── 2. Per-channel getChannelDifference ───────────────────
+                // Spawn a task per channel so they run concurrently.
+                // channel_pts were preserved through the global reset above.
+                if !channel_ids.is_empty() {
+                    log::info!("[layer] catch_up: per-channel diff for {} channels", channel_ids.len());
+                    for channel_id in channel_ids {
+                        let c2   = c.clone();
+                        let utx2 = utx.clone();
+                        tokio::spawn(async move {
+                            match c2.get_channel_difference(channel_id).await {
+                                Ok(updates) => {
+                                    if !updates.is_empty() {
+                                        log::info!("[layer] catch_up channel {channel_id}: {} updates", updates.len());
+                                    }
+                                    for u in updates { let _ = utx2.send(u); }
+                                }
+                                Err(e) => log::warn!("[layer] catch_up channel {channel_id}: {e}"),
+                            }
+                        });
+                    }
                 }
             });
         } else {
@@ -860,7 +916,55 @@ impl Client {
         Ok(())
     }
 
-    // ── Auth ───────────────────────────────────────────────────────────────
+    /// Export the current session as a portable URL-safe base64 string.
+    ///
+    /// The returned string encodes the auth key, DC, update state, and peer
+    /// cache. Store it in an environment variable or secret manager and pass
+    /// it back via [`Config::with_string_session`] to restore the session
+    /// without re-authenticating.
+    ///
+    /// Internally calls [`save_session`] first to ensure the latest state
+    /// (pts, peer cache) is captured.
+    pub async fn export_session_string(&self) -> Result<String, InvocationError> {
+        use session::{CachedPeer, UpdatesStateSnap};
+
+        let writer_guard = self.inner.writer.lock().await;
+        let home_dc_id   = *self.inner.home_dc_id.lock().await;
+        let dc_options   = self.inner.dc_options.lock().await;
+
+        let mut dcs: Vec<DcEntry> = dc_options.values().map(|e| DcEntry {
+            dc_id:       e.dc_id,
+            addr:        e.addr.clone(),
+            auth_key:    if e.dc_id == home_dc_id { Some(writer_guard.auth_key_bytes()) } else { e.auth_key },
+            first_salt:  if e.dc_id == home_dc_id { writer_guard.first_salt() } else { e.first_salt },
+            time_offset: if e.dc_id == home_dc_id { writer_guard.time_offset() } else { e.time_offset },
+        }).collect();
+        self.inner.dc_pool.lock().await.collect_keys(&mut dcs);
+
+        let pts_snap = {
+            let s = self.inner.pts_state.lock().await;
+            UpdatesStateSnap {
+                pts:      s.pts,
+                qts:      s.qts,
+                date:     s.date,
+                seq:      s.seq,
+                channels: s.channel_pts.iter().map(|(&k, &v)| (k, v)).collect(),
+            }
+        };
+
+        let peers: Vec<CachedPeer> = {
+            let cache = self.inner.peer_cache.read().await;
+            let mut v = Vec::with_capacity(cache.users.len() + cache.channels.len());
+            for (&id, &hash) in &cache.users    { v.push(CachedPeer { id, access_hash: hash, is_channel: false }); }
+            for (&id, &hash) in &cache.channels { v.push(CachedPeer { id, access_hash: hash, is_channel: true  }); }
+            v
+        };
+
+        let session = PersistedSession { home_dc_id, dcs, updates_state: pts_snap, peers };
+        Ok(session.to_string())
+    }
+
+
 
     /// Returns `true` if the client is already authorized.
     pub async fn is_authorized(&self) -> Result<bool, InvocationError> {

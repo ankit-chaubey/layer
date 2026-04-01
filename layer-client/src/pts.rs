@@ -268,7 +268,18 @@ impl Client {
                     updates.extend(update::from_single_update_pub(upd));
                 }
                 let tl::enums::updates::State::State(ns) = d.state;
-                *self.inner.pts_state.lock().await = PtsState::from_server_state(&ns);
+                // Preserve channel_pts across the global reset — from_server_state
+                // produces an empty channel_pts map, but we may have restored
+                // per-channel pts from the session for catch-up.
+                let saved_channel_pts = {
+                    let s = self.inner.pts_state.lock().await;
+                    s.channel_pts.clone()
+                };
+                let mut new_state = PtsState::from_server_state(&ns);
+                for (cid, cpts) in saved_channel_pts {
+                    new_state.channel_pts.entry(cid).or_insert(cpts);
+                }
+                *self.inner.pts_state.lock().await = new_state;
             }
             tl::enums::updates::Difference::Slice(d) => {
                 log::info!("[layer] getDifference slice: {} messages, {} updates",
@@ -284,7 +295,15 @@ impl Client {
                     updates.extend(update::from_single_update_pub(upd));
                 }
                 let tl::enums::updates::State::State(ns) = d.intermediate_state;
-                *self.inner.pts_state.lock().await = PtsState::from_server_state(&ns);
+                let saved_channel_pts = {
+                    let s = self.inner.pts_state.lock().await;
+                    s.channel_pts.clone()
+                };
+                let mut new_state = PtsState::from_server_state(&ns);
+                for (cid, cpts) in saved_channel_pts {
+                    new_state.channel_pts.entry(cid).or_insert(cpts);
+                }
+                *self.inner.pts_state.lock().await = new_state;
             }
             tl::enums::updates::Difference::TooLong(d) => {
                 log::warn!("[layer] getDifference: TooLong (pts={}) — re-syncing", d.pts);
@@ -571,6 +590,18 @@ impl Client {
                                 e.name
                             );
                             // Fix #4: diff complete (errored out), allow future gaps.
+                            self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
+                            self.inner.pts_state.lock().await.advance_channel(channel_id, got);
+                            Ok(buffered)
+                        }
+                        Err(InvocationError::Deserialize(ref msg)) => {
+                            // Unrecognised constructor (e.g. 0x0000000e) — Telegram returned
+                            // something we can't parse for this channel.  Treat the same as
+                            // CHANNEL_INVALID: advance pts to `got` so we don't retry on every
+                            // subsequent update and flood the logs.
+                            log::warn!(
+                                "[layer] channel {channel_id}: deserialize error ({msg}) — skipping gap, advancing pts to {got}"
+                            );
                             self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
                             self.inner.pts_state.lock().await.advance_channel(channel_id, got);
                             Ok(buffered)
