@@ -57,7 +57,7 @@ let entities = vec![
 let msg = InputMessage::text(text).entities(entities);
 ```
 
-## All entity types (Layer 223)
+## All entity types (Layer 224)
 
 | Enum variant | Description |
 |---|---|
@@ -102,7 +102,7 @@ tl::enums::MessageEntity::MentionName(tl::types::MessageEntityMentionName {
 })
 ```
 
-## FormattedDate — Layer 223
+## FormattedDate — Layer 224
 
 A new entity that automatically formats a unix timestamp into the user's local timezone and locale:
 

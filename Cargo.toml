@@ -14,13 +14,14 @@ members = [
 ]
 
 [workspace.package]
-version     = "0.4.0"
-edition     = "2024"
-license     = "MIT OR Apache-2.0"
-readme      = "README.md"
-authors     = ["Ankit Chaubey <ankitchaubey.dev@gmail.com>"]
-repository  = "https://github.com/ankit-chaubey/layer"
-homepage    = "https://github.com/ankit-chaubey/layer"
+version       = "0.4.0"
+edition       = "2024"
+license       = "MIT OR Apache-2.0"
+readme        = "README.md"
+authors       = ["Ankit Chaubey <ankitchaubey.dev@gmail.com>"]
+repository    = "https://github.com/ankit-chaubey/layer"
+homepage      = "https://github.com/ankit-chaubey/layer"
+documentation = "https://docs.rs/layer-client"
 
 [workspace.dependencies]
 layer-tl-parser = { path = "layer-tl-parser", version = "0.4.0" }
