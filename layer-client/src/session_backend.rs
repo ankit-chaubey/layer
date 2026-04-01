@@ -1,9 +1,10 @@
 //! Pluggable session storage backend.
 //!
-//! Two built-in backends:
-//! * [`BinaryFileBackend`] — compact binary file (default).
-//! * [`SqliteBackend`]     — SQLite (`sqlite-session` feature).
-//! * [`InMemoryBackend`]   — ephemeral, for tests / fresh-start bots.
+//! Built-in backends:
+//! * [`BinaryFileBackend`]  — compact binary file (default).
+//! * [`StringSessionBackend`] — portable base64 string (env vars, Docker, CI).
+//! * [`SqliteBackend`]      — SQLite (`sqlite-session` feature).
+//! * [`InMemoryBackend`]    — ephemeral, for tests / fresh-start bots.
 
 use std::io;
 use std::path::PathBuf;
@@ -96,6 +97,63 @@ impl SessionBackend for InMemoryBackend {
         Ok(())
     }
     fn name(&self) -> &str { "in-memory" }
+}
+
+// ─── StringSessionBackend ─────────────────────────────────────────────────────
+
+/// Portable base64 string session backend — Pyrogram/Telethon style.
+///
+/// The session is stored as a single URL-safe base64 string with no padding.
+/// Useful for deployment pipelines, Docker, environment variables, and CI bots.
+///
+/// # Example
+/// ```rust,no_run
+/// let session_str = std::env::var("SESSION").unwrap();
+/// let backend = StringSessionBackend::new(&session_str);
+/// // ... pass to Config::session_backend
+///
+/// // Later, export the updated session:
+/// let updated = backend.current();
+/// println!("SESSION={updated}");
+/// ```
+pub struct StringSessionBackend {
+    data: std::sync::Mutex<String>,
+}
+
+impl StringSessionBackend {
+    /// Create a backend pre-loaded from an existing session string.
+    /// Pass an empty string to start a fresh session.
+    pub fn new(s: impl Into<String>) -> Self {
+        Self { data: std::sync::Mutex::new(s.into()) }
+    }
+
+    /// Return the current encoded session string.
+    /// Call after `client.save_session()` to get the latest value.
+    pub fn current(&self) -> String {
+        self.data.lock().unwrap().clone()
+    }
+}
+
+impl SessionBackend for StringSessionBackend {
+    fn save(&self, session: &PersistedSession) -> io::Result<()> {
+        *self.data.lock().unwrap() = session.to_string();
+        Ok(())
+    }
+
+    fn load(&self) -> io::Result<Option<PersistedSession>> {
+        let s = self.data.lock().unwrap().clone();
+        if s.trim().is_empty() {
+            return Ok(None);
+        }
+        PersistedSession::from_string(&s).map(Some)
+    }
+
+    fn delete(&self) -> io::Result<()> {
+        *self.data.lock().unwrap() = String::new();
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "string-session" }
 }
 
 // ─── SqliteBackend ────────────────────────────────────────────────────────────
