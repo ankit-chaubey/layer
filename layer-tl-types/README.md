@@ -2,14 +2,14 @@
 
 # 📦 layer-tl-types
 
-**Auto-generated Rust types for all Telegram API Layer 223 constructors, functions and enums.**
+**Auto-generated Rust types for all Telegram API Layer 224 constructors, functions and enums.**
 
 [![Crates.io](https://img.shields.io/crates/v/layer-tl-types?color=fc8d62)](https://crates.io/crates/layer-tl-types)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
-[![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/schema)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-224-8b5cf6)](https://core.telegram.org/schema)
 
-*2,295 TL constructors. Every Telegram type, function and enum — as idiomatic Rust.*
+*2,329 TL constructors. Every Telegram type, function and enum — as idiomatic Rust.*
 
 </div>
 
@@ -19,10 +19,10 @@
 
 ```toml
 [dependencies]
-layer-tl-types = "0.1.1"
+layer-tl-types = "0.4.0"
 
 # With MTProto low-level types too:
-layer-tl-types = { version = "0.1.1", features = ["tl-mtproto"] }
+layer-tl-types = { version = "0.4.0", features = ["tl-mtproto"] }
 ```
 
 ---
@@ -31,7 +31,7 @@ layer-tl-types = { version = "0.1.1", features = ["tl-mtproto"] }
 
 `layer-tl-types` is the type system for the entire layer stack. It takes Telegram's `.tl` schema file (the source of truth for every type and function in the Telegram API) and, at **build time**, generates idiomatic Rust structs, enums, and trait implementations for all of them.
 
-The result is a fully type-safe, zero-surprise Rust representation of 2,295 Telegram API definitions, with `Serialize` / `Deserialize` support baked in.
+The result is a fully type-safe, zero-surprise Rust representation of 2,329 Telegram API definitions, with `Serialize` / `Deserialize` support baked in.
 
 ---
 

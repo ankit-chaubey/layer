@@ -7,7 +7,7 @@
 [![Crates.io](https://img.shields.io/crates/v/layer-mtproto?color=fc8d62)](https://crates.io/crates/layer-mtproto)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
-[![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/mtproto)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-224-8b5cf6)](https://core.telegram.org/mtproto)
 
 *A complete, from-scratch implementation of Telegram's MTProto 2.0 session layer.*
 
@@ -19,8 +19,8 @@
 
 ```toml
 [dependencies]
-layer-mtproto = "0.1.2"
-layer-tl-types = { version = "0.1.1", features = ["tl-mtproto"] }
+layer-mtproto = "0.4.0"
+layer-tl-types = { version = "0.4.0", features = ["tl-mtproto"] }
 ```
 
 ---
@@ -150,11 +150,24 @@ payload         (N bytes) — serialized TL object
 ```
 Plus 32 bytes of AES-IGE overhead.
 
-### Containers
-`msg_container` (multiple messages in one frame) is supported both for packing and unpacking.
+### Containers & Compression
+- `msg_container` (multiple messages in one frame) supported for both packing and unpacking
+- `gzip_packed` outgoing compression for large requests
+- `gzip_packed` response decompression
 
-### Salt Management
-When the server responds with `bad_server_salt`, the session automatically records the corrected salt for future messages.
+### Salt & Time Management
+- `bad_server_salt` — session automatically records the corrected salt
+- `future_salts` prefetch — salts are requested in advance and rotated before expiry
+- `time_offset` correction — clock skew applied to all outgoing `msg_id` values
+
+### Error Recovery
+- `bad_msg_notification` handling — messages are auto-resent with corrected framing
+- `seq_no` correction for error codes 32 and 33
+- `msg_resend_req` fulfilment from a sent-body cache
+
+### Acknowledgements
+- Outgoing `MsgsAck` handling — received content-related messages are acknowledged on a timer
+- `pending_ack` system tracks which message IDs still need flushing
 
 ---
 

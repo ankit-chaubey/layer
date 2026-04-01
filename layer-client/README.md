@@ -7,7 +7,7 @@
 [![Crates.io](https://img.shields.io/crates/v/layer-client?color=fc8d62)](https://crates.io/crates/layer-client)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
-[![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/schema)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-224-8b5cf6)](https://core.telegram.org/schema)
 
 *The friendly face of the layer stack — connect, authenticate, send messages, and stream updates with a clean async API.*
 
@@ -19,7 +19,7 @@
 
 ```toml
 [dependencies]
-layer-client = "0.1.2"
+layer-client = "0.4.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -47,7 +47,7 @@ use layer_client::{Client, Config, SignInError};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = Client::connect(Config {
+    let (mut client, _shutdown) = Client::connect(Config {
         session_path: "my.session".into(),
         api_id:       12345,          // https://my.telegram.org
         api_hash:     "abc123".into(),
@@ -86,7 +86,7 @@ use layer_client::{Client, Config, update::Update};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::connect(Config {
+    let (client, _shutdown) = Client::connect(Config {
         session_path: "bot.session".into(),
         api_id:       12345,
         api_hash:     "abc123".into(),
@@ -197,11 +197,14 @@ while let Some(update) = stream.next().await {
 ### IncomingMessage
 
 ```rust
-msg.id()          // → i32
-msg.text()        // → Option<&str>
-msg.peer_id()     // → Option<&Peer>
-msg.sender_id()   // → Option<&Peer>
-msg.outgoing()    // → bool
+msg.id()              // → i32
+msg.text()            // → Option<&str>
+msg.markdown_text()   // → Option<String>  (text with entities as Markdown)
+msg.html_text()       // → Option<String>  (text with entities as HTML)
+msg.date()            // → i32
+msg.peer_id()         // → Option<&Peer>
+msg.sender_id()       // → Option<&Peer>
+msg.outgoing()        // → bool
 msg.reply(&mut client, "text").await?;
 ```
 
@@ -225,6 +228,51 @@ client.answer_inline_query(iq.query_id, results, 300, false, None).await?;
 client.resolve_peer("me").await?;
 client.resolve_peer("@username").await?;
 client.resolve_peer("123456789").await?;
+```
+
+### Reactions, Admin & Participants
+
+```rust
+// Send a reaction
+client.send_reaction("@chat", msg_id, "👍").await?;
+
+// Promote a user
+use layer_client::AdminRightsBuilder;
+client.set_admin_rights(peer, user, AdminRightsBuilder::new().can_post_messages(true)).await?;
+
+// Restrict a user
+use layer_client::BanRights;
+client.set_banned_rights(peer, user, BanRights::default()).await?;
+
+// Iterate participants
+let mut iter = client.iter_participants(peer);
+while let Some(p) = iter.next().await? { println!("{:?}", p); }
+
+// Profile photos
+let photos = client.get_profile_photos(user).await?;
+
+// Effective permissions
+let perms = client.get_permissions(peer, user).await?;
+```
+
+### Search
+
+```rust
+// Per-peer search
+let results = client
+    .search_messages(peer)
+    .query("hello")
+    .limit(20)
+    .collect()
+    .await?;
+
+// Global search
+let results = client
+    .search_global()
+    .query("rust")
+    .limit(50)
+    .collect()
+    .await?;
 ```
 
 ### Raw API
