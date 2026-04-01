@@ -81,39 +81,53 @@ layer/
 
 ---
 
-## 🆕 What's New in v0.4.0 (Layer 224)
+## 🆕 What's New in v0.4.0
 
 ### TL Schema — Layer 223 → 224
 - Updated `api.tl` from Layer 223 to **Layer 224** (2,329 definitions, up from 2,295)
 - All generated types, functions and enums in `layer-tl-types` reflect Layer 224
 
-### Clippy / Code Quality
-A full pass of `cargo clippy` warnings was resolved across the entire workspace:
+### MTProto Core Fixes
+- `bad_msg` auto-resend — messages rejected by the server are automatically re-queued
+- `seq_no` correction for error codes 32/33
+- Outgoing `MsgsAck` handling with periodic flush
+- Message container batching for lower round-trip overhead
+- `gzip_packed` support for large outgoing requests
+- `future_salts` prefetch and rotation before expiry
+- `time_offset` correction applied to all outgoing `msg_id` values
+- `msg_resend_req` handling from a sent-body cache
 
-| Fix | Locations |
-|---|---|
-| `collapsible_if` — merged nested `if let` + `if` with `&&` | `codegen.rs`, `build.rs`, `retry.rs`, `lib.rs` ×5, `errors.rs`, `media.rs` ×3 |
-| `manual_repeat_n` — `repeat(x).take(n)` → `repeat_n(x, n)` | `deque_buffer.rs`, `serialize.rs` |
-| `manual_is_multiple_of` — `% n == 0` → `.is_multiple_of(n)` | `factorize.rs`, `lib.rs` (crypto) |
-| `infallible_destructuring_match` — single-variant match → `let` destructure | `authentication.rs`, `participants.rs` ×5, `pts.rs` ×3 |
-| `ptr_arg` — `&mut Vec<T>` → `&mut [T]` | `encrypted.rs` ×2, `dc_pool.rs` |
-| `redundant_field_names` — `field: field` → `field` | `participants.rs`, `lib.rs` ×3 |
-| `large_enum_variant` — boxed large variants | `SignInError::PasswordRequired(Box<PasswordToken>)`, `Chat::Channel(Box<Channel>)` |
-| `manual_div_ceil` — `(a + b - 1) / b` → `.div_ceil(b)` | `media.rs` ×3 |
-| `io_other_error` — `Error::new(ErrorKind::Other, …)` → `Error::other(…)` | `media.rs` ×2, `socks5.rs` ×2 |
-| `needless_borrows_for_generic_args` — `&self.key` → `self.key` | `transport_obfuscated.rs` ×2 |
-| `double_ended_iterator_last` — `.last()` → `.next_back()` | `media.rs` |
-| `manual_strip` — `starts_with` + manual slice → `.strip_prefix()` | `parsers.rs` ×4 |
-| `doc_overindented_list_items` — fixed doc comment list indentation | `parsers.rs`, `typing_guard.rs` |
-| `derivable_impls` — removed manual `Default`, added `#[derive(Default)]` | `pts.rs` (`PtsState`) |
-| `unnecessary_map_or` — `.map_or(false, …)` → `.is_some_and(…)` | `lib.rs` |
-| `question_mark` — `if x.is_none() { return None; }` → `x?;` | `lib.rs` |
-| `manual_clamp` — `.max(a).min(b)` → `.clamp(a, b)` | `lib.rs` |
-| `filter_map` → `map` — iterator closure always returned `Some` | `lib.rs` |
-| `too_many_arguments` — `#[allow]` on internal reader task fns | `lib.rs` ×2 |
-| `type_complexity` — `#[allow]` on internal pending-map fields | `lib.rs` ×2 |
+### Connection / Session
+- Sent message body tracking for resend
+- `pending_ack` batching system
+- `new_session_created` / `DestroySession` lifecycle handling
+- New `disconnect()` method for graceful teardown
 
-> `cargo build` and `cargo clippy` pass with zero errors and minimal warnings.
+### Update Engine
+- pts / seq / qts tracking with gap detection
+- Per-channel `getChannelDifference` loop
+- Update deadline detection triggers `getDifference` on stale sequences
+- `PossibleGapBuffer` for out-of-order update recovery
+
+### New Client APIs
+- `send_reaction()` — send a message reaction
+- `set_admin_rights()` — promote a user with `AdminRightsBuilder`
+- `set_banned_rights()` — restrict a user with `BanRights`
+- `iter_participants()` — lazy async iterator over all members
+- `get_profile_photos()` — fetch a user's profile photo list
+- `get_permissions()` — retrieve effective permissions of a user
+- `edit_inline_message()` — edit a message sent via inline mode
+
+### Search
+- `SearchBuilder` — fluent per-peer message search with date filters and limits
+- `GlobalSearchBuilder` — search across all dialogs
+
+### Updates & Keyboard
+- `IncomingMessage`: new `markdown_text()`, `html_text()`, and extended accessors
+- `CallbackQuery`: typed helpers for `game_short_name`, `chat_instance`, `data`
+- `InlineSend::edit_message()` support
+- Keyboard: added `request_phone`, `request_geo`, `request_poll`, `request_quiz`, `game`, `buy`, `copy_text` button constructors
+- Typing: topic typing via optional `top_msg_id` in `send_chat_action`
 
 ---
 
@@ -341,7 +355,7 @@ Use `client.invoke::<R>()` with raw TL types as a workaround for any of these.
 | **Voice / video calls** | No call signalling or media transport |
 | **Payments** | `SentCode::PaymentRequired` returns an error; payment flow not implemented |
 | **Group / channel creation** | `createChat`, `createChannel` not wrapped |
-| **Channel admin tooling** | No channel creation, migration, linking, statistics |
+| **Channel admin tooling** | No channel creation, migration, linking, or statistics — admin/ban rights are supported via `set_admin_rights` / `set_banned_rights` |
 | **Sticker set management** | No `getStickerSet`, `uploadStickerFile`, etc. |
 | **Account settings** | No profile update, privacy settings, notification preferences |
 | **Contact management** | No `importContacts`, `deleteContacts` |
