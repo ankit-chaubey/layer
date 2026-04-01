@@ -5,9 +5,18 @@
 | Feature | Default | Description |
 |---|---|---|
 | `sqlite-session` | ❌ | SQLite-backed session storage via `rusqlite` |
+| `html` | ❌ | Built-in hand-rolled HTML parser (`parse_html`, `generate_html`) |
+| `html5ever` | ❌ | Spec-compliant html5ever tokenizer — overrides the built-in `html` parser |
 
 ```toml
-layer-client = { version = "0.2.2", features = ["sqlite-session"] }
+# SQLite session only
+layer-client = { version = "0.4.0", features = ["sqlite-session"] }
+
+# HTML parsing (minimal, no extra deps)
+layer-client = { version = "0.4.0", features = ["html"] }
+
+# HTML parsing (spec-compliant, adds html5ever dep)
+layer-client = { version = "0.4.0", features = ["html5ever"] }
 ```
 
 ---
@@ -28,7 +37,7 @@ layer-client = { version = "0.2.2", features = ["sqlite-session"] }
 ### Example: enable serde
 
 ```toml
-layer-tl-types = { version = "0.2.2", features = ["tl-api", "impl-serde"] }
+layer-tl-types = { version = "0.4.0", features = ["tl-api", "impl-serde"] }
 ```
 
 Then:
@@ -40,7 +49,7 @@ let json = serde_json::to_string(&some_tl_type)?;
 ### Example: name_for_id (debugging)
 
 ```toml
-layer-tl-types = { version = "0.2.2", features = ["tl-api", "name-for-id"] }
+layer-tl-types = { version = "0.4.0", features = ["tl-api", "name-for-id"] }
 ```
 
 ```rust
@@ -54,7 +63,7 @@ if let Some(name) = name_for_id(0x74ae4240) {
 ### Example: minimal (no Debug, no conversions)
 
 ```toml
-layer-tl-types = { version = "0.2.2", default-features = false, features = ["tl-api"] }
+layer-tl-types = { version = "0.4.0", default-features = false, features = ["tl-api"] }
 ```
 
 This reduces compile time if you don't need the convenience traits.

@@ -79,3 +79,10 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 });
+
+  // Force mdBook's font-size slider to start at a comfortable level (3 = medium-large)
+  // mdBook stores the value in localStorage under 'mdbook-font-size'
+  if (!localStorage.getItem('mdbook-font-size')) {
+    localStorage.setItem('mdbook-font-size', '2');
+  }
+
