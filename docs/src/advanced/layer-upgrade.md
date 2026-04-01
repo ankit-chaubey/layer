@@ -14,7 +14,7 @@ build.rs           (reads api.tl, invokes layer-tl-gen)
     │
     ▼
 $OUT_DIR/
-  generated_common.rs     ← pub const LAYER: i32 = 224;
+  generated_common.rs     ← pub const LAYER: i32 = 223;
   generated_types.rs      ← pub mod types { ... }
   generated_enums.rs      ← pub mod enums { ... }
   generated_functions.rs  ← pub mod functions { ... }
@@ -86,7 +86,7 @@ _ => {}
 
 ```bash
 # In Cargo.toml workspace section
-version = "0.4.0"
+version = "0.2.3"
 ```
 
 Then publish in dependency order (see [Publishing](../installation.md)).

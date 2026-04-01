@@ -40,7 +40,7 @@ With an in-memory session, login is required on every run.
 Enable the feature flag:
 
 ```toml
-layer-client = { version = "0.4.0", features = ["sqlite-session"] }
+layer-client = { version = "0.2.2", features = ["sqlite-session"] }
 ```
 
 ```rust

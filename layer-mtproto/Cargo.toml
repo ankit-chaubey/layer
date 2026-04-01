@@ -19,6 +19,3 @@ log            = "0.4"
 num-bigint     = "0.4.6"
 num-traits     = "0.2.19"
 sha1           = "0.10.6"
-
-[package.metadata.docs.rs]
-rustdoc-args = ["--cfg", "docsrs"]
