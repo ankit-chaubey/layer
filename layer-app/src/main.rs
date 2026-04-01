@@ -79,7 +79,7 @@ async fn login(client: &Client) -> Result<bool, Box<dyn std::error::Error>> {
         Err(SignInError::PasswordRequired(pw_token)) => {
             let hint = pw_token.hint().unwrap_or("(no hint)");
             let pw   = prompt(&format!("2FA password (hint: {hint}): "))?;
-            client.check_password(pw_token, pw.trim()).await?;
+            client.check_password(*pw_token, pw.trim()).await?;
             println!("✅ 2FA complete");
         }
         Err(SignInError::SignUpRequired) => {
@@ -120,7 +120,16 @@ async fn listen(client: &Client, my_id: i64, is_bot: bool) {
 
                 match text {
                     "/ping" => {
-                        let _ = client.send_message_to_peer(peer.clone(), "🏓 pong").await;
+                        let t = std::time::Instant::now();
+                        match client.invoke(&tl::functions::Ping { ping_id: 0xDEAD_BEEF }).await {
+                            Ok(_) => {
+                                let rtt = t.elapsed().as_millis();
+                                let _ = client.send_message_to_peer(peer.clone(), &format!("🏓 pong | {rtt}ms")).await;
+                            }
+                            Err(_) => {
+                                let _ = client.send_message_to_peer(peer.clone(), "🏓 pong | timeout").await;
+                            }
+                        }
                     }
                     "/me" if !is_bot => {
                         if let Ok(me) = client.get_me().await {

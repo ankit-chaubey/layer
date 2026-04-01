@@ -7,7 +7,7 @@
 [![Crates.io](https://img.shields.io/crates/v/layer-client?color=fc8d62&label=layer-client)](https://crates.io/crates/layer-client)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00)](https://www.rust-lang.org/)
-[![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6)](https://core.telegram.org/schema)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-224-8b5cf6)](https://core.telegram.org/schema)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![Docs](https://img.shields.io/badge/docs-online-5865F2?style=flat-square&logo=mdbook)](https://github.ankitchaubey.in/layer/)
 [![Channel](https://img.shields.io/badge/Telegram-@layer__rs-2CA5E0?logo=telegram)](https://t.me/layer_rs)
@@ -22,11 +22,11 @@
 ## 🧩 What is layer?
 
 **layer** is a hand-crafted, bottom-up async Rust implementation of the
-[Telegram MTProto](https://core.telegram.org/mtproto) protocol - built not to
+[Telegram MTProto](https://core.telegram.org/mtproto) protocol — built not to
 reinvent the wheel, but to *understand* it.
 
-The core protocol pieces - the `.tl` schema parser, the AES-IGE cipher, the
-Diffie-Hellman key exchange, the MTProto session, the async update stream - are
+The core protocol pieces — the `.tl` schema parser, the AES-IGE cipher, the
+Diffie-Hellman key exchange, the MTProto session, the async update stream — are
 all written from scratch. The async runtime and a handful of well-known utilities
 (`tokio`, `flate2`, `getrandom`) are borrowed from the ecosystem, because that's
 just good engineering. The architecture draws inspiration from the excellent
@@ -35,13 +35,13 @@ just good engineering. The architecture draws inspiration from the excellent
 The goal was never "yet another Telegram SDK." It was: *what happens if you sit
 down and build every piece yourself, and actually understand why it works?*
 
-> **🎓 Personal use & learning project** - layer was built as a personal exploration:
+> **🎓 Personal use & learning project** — layer was built as a personal exploration:
 > *learning by building*. The goal is to deeply understand Telegram's protocol by
 > implementing every layer from scratch, not to ship a polished production SDK.
 > Feel free to explore, learn from it, or hack on it!
 
-> **⚠️ Pre-production (0.x.x)** - This library is still in early development.
-> APIs **will** change without notice. **Not production-ready - use at your own risk!**
+> **⚠️ Pre-production (0.x.x)** — This library is still in early development.
+> APIs **will** change without notice. **Not production-ready — use at your own risk!**
 
 ---
 
@@ -60,10 +60,10 @@ down and build every piece yourself, and actually understand why it works?*
 |---|---|
 | [`layer-tl-parser`](./layer-tl-parser) | Parses `.tl` schema text into an AST |
 | [`layer-tl-gen`](./layer-tl-gen) | Generates Rust code from the AST at build time |
-| [`layer-tl-types`](./layer-tl-types) | All Layer 223 constructors, functions and enums |
+| [`layer-tl-types`](./layer-tl-types) | All Layer **224** constructors, functions and enums |
 | [`layer-crypto`](./layer-crypto) | AES-IGE, RSA, SHA, DH key derivation |
 | [`layer-mtproto`](./layer-mtproto) | MTProto session, DH exchange, message framing |
-| [`layer-client`](./layer-client) | High-level async client - auth, bots, updates, 2FA |
+| [`layer-client`](./layer-client) | High-level async client — auth, bots, updates, 2FA, media |
 | `layer-app` | Interactive demo binary (not published) |
 | `layer-connect` | Raw DH connection demo (not published) |
 
@@ -71,7 +71,7 @@ down and build every piece yourself, and actually understand why it works?*
 layer/
 ├── layer-tl-parser/   ── Parses .tl schema text → AST
 ├── layer-tl-gen/      ── AST → Rust source (build-time)
-├── layer-tl-types/    ── Auto-generated types, functions & enums (Layer 223)
+├── layer-tl-types/    ── Auto-generated types, functions & enums (Layer 224)
 ├── layer-crypto/      ── AES-IGE, RSA, SHA, auth key derivation
 ├── layer-mtproto/     ── MTProto session, DH, framing, transport
 ├── layer-client/      ── High-level async Client API
@@ -81,13 +81,49 @@ layer/
 
 ---
 
+## 🆕 What's New in v0.4.0 (Layer 224)
+
+### TL Schema — Layer 223 → 224
+- Updated `api.tl` from Layer 223 to **Layer 224** (2,329 definitions, up from 2,295)
+- All generated types, functions and enums in `layer-tl-types` reflect Layer 224
+
+### Clippy / Code Quality
+A full pass of `cargo clippy` warnings was resolved across the entire workspace:
+
+| Fix | Locations |
+|---|---|
+| `collapsible_if` — merged nested `if let` + `if` with `&&` | `codegen.rs`, `build.rs`, `retry.rs`, `lib.rs` ×5, `errors.rs`, `media.rs` ×3 |
+| `manual_repeat_n` — `repeat(x).take(n)` → `repeat_n(x, n)` | `deque_buffer.rs`, `serialize.rs` |
+| `manual_is_multiple_of` — `% n == 0` → `.is_multiple_of(n)` | `factorize.rs`, `lib.rs` (crypto) |
+| `infallible_destructuring_match` — single-variant match → `let` destructure | `authentication.rs`, `participants.rs` ×5, `pts.rs` ×3 |
+| `ptr_arg` — `&mut Vec<T>` → `&mut [T]` | `encrypted.rs` ×2, `dc_pool.rs` |
+| `redundant_field_names` — `field: field` → `field` | `participants.rs`, `lib.rs` ×3 |
+| `large_enum_variant` — boxed large variants | `SignInError::PasswordRequired(Box<PasswordToken>)`, `Chat::Channel(Box<Channel>)` |
+| `manual_div_ceil` — `(a + b - 1) / b` → `.div_ceil(b)` | `media.rs` ×3 |
+| `io_other_error` — `Error::new(ErrorKind::Other, …)` → `Error::other(…)` | `media.rs` ×2, `socks5.rs` ×2 |
+| `needless_borrows_for_generic_args` — `&self.key` → `self.key` | `transport_obfuscated.rs` ×2 |
+| `double_ended_iterator_last` — `.last()` → `.next_back()` | `media.rs` |
+| `manual_strip` — `starts_with` + manual slice → `.strip_prefix()` | `parsers.rs` ×4 |
+| `doc_overindented_list_items` — fixed doc comment list indentation | `parsers.rs`, `typing_guard.rs` |
+| `derivable_impls` — removed manual `Default`, added `#[derive(Default)]` | `pts.rs` (`PtsState`) |
+| `unnecessary_map_or` — `.map_or(false, …)` → `.is_some_and(…)` | `lib.rs` |
+| `question_mark` — `if x.is_none() { return None; }` → `x?;` | `lib.rs` |
+| `manual_clamp` — `.max(a).min(b)` → `.clamp(a, b)` | `lib.rs` |
+| `filter_map` → `map` — iterator closure always returned `Some` | `lib.rs` |
+| `too_many_arguments` — `#[allow]` on internal reader task fns | `lib.rs` ×2 |
+| `type_complexity` — `#[allow]` on internal pending-map fields | `lib.rs` ×2 |
+
+> `cargo build` and `cargo clippy` pass with zero errors and minimal warnings.
+
+---
+
 ## 🚀 Quick Start
 
 Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-layer-client = "0.2.2"
+layer-client = "0.4.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -98,7 +134,7 @@ use layer_client::{Client, Config, SignInError};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::connect(Config {
+    let (client, _shutdown) = Client::connect(Config {
         session_path: "my.session".into(),
         api_id:       12345,          // https://my.telegram.org
         api_hash:     "abc123".into(),
@@ -112,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match client.sign_in(&token, code).await {
             Ok(name) => println!("Welcome, {name}!"),
             Err(SignInError::PasswordRequired(t)) => {
-                client.check_password(t, "my_2fa_password").await?;
+                client.check_password(*t, "my_2fa_password").await?;
             }
             Err(e) => return Err(e.into()),
         }
@@ -131,7 +167,7 @@ use layer_client::{Client, Config, update::Update};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::connect(Config {
+    let (client, _shutdown) = Client::connect(Config {
         session_path: "bot.session".into(),
         api_id:       12345,
         api_hash:     "abc123".into(),
@@ -164,7 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-## ✅ Features
+## ✅ What Is Supported
 
 ### 🔐 Cryptography
 - AES-IGE encryption / decryption (MTProto 2.0)
@@ -178,35 +214,148 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - Full 3-step DH key exchange handshake
 - MTProto 2.0 encrypted sessions
 - Proper message framing (salt, session_id, msg_id, seq_no)
-- Abridged TCP transport
 - `msg_container` (multi-message) unpacking
 - gzip-packed response decompression
-- Server salt tracking, pong, bad_server_salt handling
+- Server salt tracking, pong, `bad_server_salt` handling
+- `bad_msg_notification` handling
+- Reconnect with exponential backoff + ±20% jitter
+- Network hint channel (`signal_network_restored()`) to skip backoff immediately
+
+### 🚂 Transports
+- **Abridged** — default, single-byte length prefix (lowest overhead)
+- **Intermediate** — 4-byte LE length prefix, better proxy compat
+- **Obfuscated2** — XOR stream cipher over Abridged, bypasses DPI / MTProxy
 
 ### 📦 TL Type System
 - Full `.tl` schema parser
 - Build-time Rust code generation
-- All Layer 223 constructors - 2,295 definitions
+- All **Layer 224** constructors — **2,329** definitions
 - `Serializable` / `Deserializable` traits for all types
 - `RemoteCall` trait for all RPC functions
 - Optional: `Debug`, `serde`, `name_for_id(u32)`
 
-### 👤 Client
-- `Client::connect()` - async TCP + DH + initConnection
-- Session persistence across restarts
-- Phone code login + 2FA SRP
-- Bot token login
-- DC migration (PHONE_MIGRATE, USER_MIGRATE)
-- FLOOD_WAIT auto-retry with configurable policy
-- Async update stream with typed events
-- Send / delete / fetch messages
-- Dialogs list
-- Username / peer resolution
-- Raw `RemoteCall` escape hatch for any API method
+### 👤 Auth
+- Phone code login (`request_login_code` → `sign_in`)
+- 2FA SRP password (`check_password`)
+- Bot token login (`bot_sign_in`)
+- Sign out (`sign_out`)
+- DC migration — `PHONE_MIGRATE_*`, `USER_MIGRATE_*`, `NETWORK_MIGRATE_*`
+- FLOOD_WAIT auto-retry with configurable policy (`RetryPolicy` trait)
+- Configurable I/O error retry treated as a flood-equivalent delay
+
+### 💬 Messaging
+- Send text message by username/peer (`send_message`, `send_message_to_peer`)
+- Send with full options — reply_to, silent, schedule, no_webpage, entities, markup via `InputMessage` builder
+- Send to Saved Messages (`send_to_self`)
+- Edit message (`edit_message`)
+- Edit inline bot message (`edit_inline_message`)
+- Forward messages (`forward_messages`)
+- Delete messages (`delete_messages`)
+- Get messages by ID (`get_messages_by_id`)
+- Get / delete scheduled messages
+- Pin / unpin message, unpin all messages
+- Get pinned message
+- Send chat action / typing indicator (`send_chat_action`)
+- `TypingGuard` — RAII wrapper, keeps typing alive on an interval, auto-cancels on drop
+- Send reactions (`send_reaction`)
+- Mark as read, clear mentions
+
+### 📎 Media
+- Upload file from bytes — sequential (`upload_file`) and concurrent parallel-parts (`upload_file_concurrent`)
+- Upload from async `AsyncRead` stream (`upload_stream`)
+- Send file as document or photo (`send_file`)
+- Send multiple media in one album (`send_multi_media`)
+- Download media to file (`download_media_to_file`)
+- Chunked streaming download (`DownloadIter`)
+- `Photo`, `Document`, `Sticker` ergonomic wrappers with accessors
+- `Downloadable` trait for generic media location handling
+
+### ⌨️ Keyboards & Reply Markup
+- `InlineKeyboard` row builder
+- Button types: callback, url, url_auth, switch_inline, switch_elsewhere, webview, simple_webview, request_phone, request_geo, request_poll, request_quiz, game, buy, copy_text
+- Reply keyboard (standard keyboard) builder
+- Answer callback query, answer inline query
+
+### 📋 Text Parsing
+- Markdown parser → `(plain_text, Vec<MessageEntity>)`
+- HTML parser → `(plain_text, Vec<MessageEntity>)` (feature `html`)
+- spec-compliant html5ever tokenizer replacing `parse_html` (feature `html5ever`)
+- HTML generator (`generate_html`) always available, hand-rolled
+
+### 👥 Participants & Chat Management
+- Get participants, kick, ban with `BanRights` builder, promote with `AdminRightsBuilder`
+- Get profile photos
+- Search peer members
+- Join chat / accept invite link
+- Delete dialog
+
+### 🔍 Search
+- Search messages in a peer (`SearchBuilder`)
+- Global search across all chats (`GlobalSearchBuilder`)
+
+### 📜 Dialogs & Iteration
+- List dialogs (`get_dialogs`)
+- Lazy dialog iterator (`iter_dialogs`)
+- Lazy message iterator per peer (`iter_messages`)
+
+### 🔗 Peer Resolution
+- Resolve username → peer (`resolve_username`)
+- Resolve peer string (username, phone, `"me"`) → `InputPeer` (`resolve_peer`)
+- Access-hash cache, restored from session across restarts
+
+### 💾 Session Persistence
+- Binary file session (`BinaryFileBackend`) — default
+- In-memory session (`InMemoryBackend`) — testing / ephemeral bots
+- SQLite session (`SqliteBackend`) — feature `sqlite`
+- `SessionBackend` trait — plug in any custom backend
+- Catch-up mode (`Config::catch_up`) — replay missed updates via `getDifference` on reconnect
+
+### 🌐 Networking
+- SOCKS5 proxy (`Config::socks5`, optional username/password auth)
+- Multi-DC pool — auth keys stored per DC, connections created on demand
+- `invoke_on_dc` — send a request to a specific DC
+- Raw escape hatch: `client.invoke::<R>()` for any Layer 224 method not yet wrapped
+
+### 🔔 Updates
+- Typed update stream (`stream_updates()`)
+- `Update::NewMessage` / `MessageEdited` / `MessageDeleted`
+- `Update::CallbackQuery` / `InlineQuery` / `InlineSend`
+- `Update::Raw` — unmapped TL update passthrough
+- PTS / QTS / seq / date gap detection and fill via `getDifference`
+- Per-channel PTS tracking
+
+### 🛑 Shutdown
+- `ShutdownToken` returned from `Client::connect` — call `.cancel()` to begin graceful shutdown
+- `client.disconnect()` — disconnect without token
 
 ---
 
-## 🔧 Feature Flags (`layer-tl-types`)
+## ❌ What Is NOT Supported
+
+These are high level gaps, not planned omissions, just not built yet.
+Use `client.invoke::<R>()` with raw TL types as a workaround for any of these.
+
+| Feature | Notes |
+|---|---|
+| **Secret chats (E2E)** | MTProto layer-2 secret chats not implemented |
+| **Voice / video calls** | No call signalling or media transport |
+| **Payments** | `SentCode::PaymentRequired` returns an error; payment flow not implemented |
+| **Group / channel creation** | `createChat`, `createChannel` not wrapped |
+| **Channel admin tooling** | No channel creation, migration, linking, statistics |
+| **Sticker set management** | No `getStickerSet`, `uploadStickerFile`, etc. |
+| **Account settings** | No profile update, privacy settings, notification preferences |
+| **Contact management** | No `importContacts`, `deleteContacts` |
+| **Poll / quiz creation** | No `InputMediaPoll` wrapper |
+| **Live location** | Not wrapped |
+| **Bot menu / command registration** | `setMyCommands`, `setBotInfo` not wrapped |
+| **IPv6** | Config flag exists (`allow_ipv6: false`) but not tested |
+| **MTProxy with proxy secret** | Obfuscated2 transport works; MTProxy secret mode untested |
+
+---
+
+## 🔧 Feature Flags
+
+### `layer-tl-types`
 
 | Feature | Default | Description |
 |---|---|---|
@@ -218,6 +367,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `name-for-id` | ❌ | `name_for_id(u32) -> Option<&'static str>` |
 | `impl-serde` | ❌ | `serde::Serialize` / `Deserialize` |
 
+### `layer-client`
+
+| Feature | Default | Description |
+|---|---|---|
+| `html` | ❌ | Built-in hand-rolled HTML parser (`parse_html`, `generate_html`) |
+| `html5ever` | ❌ | spec-compliant html5ever tokenizer replaces `parse_html` |
+| `sqlite` | ❌ | SQLite session backend (`SqliteBackend`) |
+
 ---
 
 ## 📐 Updating to a New TL Layer
@@ -226,7 +383,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # 1. Replace the schema
 cp new-api.tl layer-tl-types/tl/api.tl
 
-# 2. Build - types regenerate automatically
+# 2. Build — types regenerate automatically
 cargo build
 ```
 
@@ -244,8 +401,8 @@ cargo test --workspace
 
 Licensed under either of, at your option:
 
-- **MIT License** - see [LICENSE-MIT](LICENSE-MIT)
-- **Apache License, Version 2.0** - see [LICENSE-APACHE](LICENSE-APACHE)
+- **MIT License** — see [LICENSE-MIT](LICENSE-MIT)
+- **Apache License, Version 2.0** — see [LICENSE-APACHE](LICENSE-APACHE)
 
 ---
 
@@ -282,19 +439,19 @@ Licensed under either of, at your option:
 
 - [**Telegram**](https://core.telegram.org/mtproto) for the detailed MTProto specification.
 
-- The Rust async ecosystem `tokio`, `getrandom`, `flate2`, and friends.
+- The Rust async ecosystem — `tokio`, `getrandom`, `flate2`, and friends.
 
 - 🤖 AI tools used for clearer documentation and better comments across the repo
   (2026 is a good year to use AI).  
   Even regrets 😁 after making these docs through AI. iykyk.
   Too lazy to revert and type again, so it stays as is!
-  
+
 ---
 
 ## ⚠️ Telegram Terms of Service
 
 As with any third-party Telegram library, please ensure that your usage
-complies with [Telegram’s Terms of Service](https://core.telegram.org/api/terms).
+complies with [Telegram's Terms of Service](https://core.telegram.org/api/terms).
 Misuse or abuse of the Telegram API may result in temporary limitations or
 permanent bans of Telegram accounts.
 

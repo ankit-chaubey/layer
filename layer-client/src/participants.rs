@@ -120,9 +120,7 @@ impl Client {
         let req  = tl::functions::messages::GetFullChat { chat_id };
         let body = self.rpc_call_raw_pub(&req).await?;
         let mut cur = Cursor::from_slice(&body);
-        let full: tl::types::messages::ChatFull = match tl::enums::messages::ChatFull::deserialize(&mut cur)? {
-            tl::enums::messages::ChatFull::ChatFull(c) => c,
-        };
+        let tl::enums::messages::ChatFull::ChatFull(full) = tl::enums::messages::ChatFull::deserialize(&mut cur)?;
 
         let user_map: std::collections::HashMap<i64, tl::types::User> = full.users.into_iter()
             .filter_map(|u| match u { tl::enums::User::User(u) => Some((u.id, u)), _ => None })
@@ -199,7 +197,7 @@ impl Client {
 
         let req = tl::functions::channels::EditBanned {
             channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
-                channel_id: channel_id, access_hash: ch_hash,
+                channel_id, access_hash: ch_hash,
             }),
             participant: tl::enums::InputPeer::User(tl::types::InputPeerUser {
                 user_id, access_hash: user_hash,
@@ -351,9 +349,7 @@ impl Client {
         };
         let body = self.rpc_call_raw_pub(&req).await?;
         let mut cur = Cursor::from_slice(&body);
-        let found = match tl::enums::contacts::Found::deserialize(&mut cur)? {
-            tl::enums::contacts::Found::Found(f) => f,
-        };
+        let tl::enums::contacts::Found::Found(found) = tl::enums::contacts::Found::deserialize(&mut cur)?;
 
         self.cache_users_slice_pub(&found.users).await;
         self.cache_chats_slice_pub(&found.chats).await;
@@ -411,5 +407,384 @@ impl PeerUserIdExt for tl::enums::Peer {
             tl::enums::Peer::User(u) => u.user_id,
             _ => default,
         }
+    }
+}
+
+// ─── G-26: BannedRightsBuilder ────────────────────────────────────────────────
+
+/// Fluent builder for granular channel ban rights.
+///
+/// ```rust,no_run
+/// # async fn f(client: layer_client::Client, channel: layer_tl_types::enums::Peer) -> Result<(), Box<dyn std::error::Error>> {
+/// client.set_banned_rights(channel, 12345678, |b| b
+///     .send_messages(true)
+///     .send_media(true)
+///     .until_date(0))
+///     .await?;
+/// # Ok(()) }
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct BannedRightsBuilder {
+    pub view_messages:  bool,
+    pub send_messages:  bool,
+    pub send_media:     bool,
+    pub send_stickers:  bool,
+    pub send_gifs:      bool,
+    pub send_games:     bool,
+    pub send_inline:    bool,
+    pub embed_links:    bool,
+    pub send_polls:     bool,
+    pub change_info:    bool,
+    pub invite_users:   bool,
+    pub pin_messages:   bool,
+    pub until_date:     i32,
+}
+
+impl BannedRightsBuilder {
+    pub fn new() -> Self { Self::default() }
+    pub fn view_messages(mut self, v: bool)  -> Self { self.view_messages  = v; self }
+    pub fn send_messages(mut self, v: bool)  -> Self { self.send_messages  = v; self }
+    pub fn send_media(mut self, v: bool)     -> Self { self.send_media     = v; self }
+    pub fn send_stickers(mut self, v: bool)  -> Self { self.send_stickers  = v; self }
+    pub fn send_gifs(mut self, v: bool)      -> Self { self.send_gifs      = v; self }
+    pub fn send_games(mut self, v: bool)     -> Self { self.send_games     = v; self }
+    pub fn send_inline(mut self, v: bool)    -> Self { self.send_inline    = v; self }
+    pub fn embed_links(mut self, v: bool)    -> Self { self.embed_links    = v; self }
+    pub fn send_polls(mut self, v: bool)     -> Self { self.send_polls     = v; self }
+    pub fn change_info(mut self, v: bool)    -> Self { self.change_info    = v; self }
+    pub fn invite_users(mut self, v: bool)   -> Self { self.invite_users   = v; self }
+    pub fn pin_messages(mut self, v: bool)   -> Self { self.pin_messages   = v; self }
+    /// Ban until a Unix timestamp. `0` = permanent.
+    pub fn until_date(mut self, ts: i32)     -> Self { self.until_date     = ts; self }
+
+    /// Full ban (all rights revoked, permanent).
+    pub fn full_ban() -> Self {
+        Self {
+            view_messages: true, send_messages: true, send_media: true,
+            send_stickers: true, send_gifs: true, send_games: true,
+            send_inline: true, embed_links: true, send_polls: true,
+            change_info: true, invite_users: true, pin_messages: true,
+            until_date: 0,
+        }
+    }
+
+    pub(crate) fn into_tl(self) -> tl::enums::ChatBannedRights {
+        tl::enums::ChatBannedRights::ChatBannedRights(tl::types::ChatBannedRights {
+            view_messages:   self.view_messages,
+            send_messages:   self.send_messages,
+            send_media:      self.send_media,
+            send_stickers:   self.send_stickers,
+            send_gifs:       self.send_gifs,
+            send_games:      self.send_games,
+            send_inline:     self.send_inline,
+            embed_links:     self.embed_links,
+            send_polls:      self.send_polls,
+            change_info:     self.change_info,
+            invite_users:    self.invite_users,
+            pin_messages:    self.pin_messages,
+            manage_topics:   false,
+            send_photos:     false,
+            send_videos:     false,
+            send_roundvideos: false,
+            send_audios:     false,
+            send_voices:     false,
+            send_docs:       false,
+            send_plain:      false,
+            edit_rank:       false,
+            until_date:      self.until_date,
+        })
+    }
+}
+
+// ─── G-27: AdminRightsBuilder ─────────────────────────────────────────────────
+
+/// Fluent builder for granular admin rights.
+#[derive(Debug, Clone, Default)]
+pub struct AdminRightsBuilder {
+    pub change_info:     bool,
+    pub post_messages:   bool,
+    pub edit_messages:   bool,
+    pub delete_messages: bool,
+    pub ban_users:       bool,
+    pub invite_users:    bool,
+    pub pin_messages:    bool,
+    pub add_admins:      bool,
+    pub anonymous:       bool,
+    pub manage_call:     bool,
+    pub manage_topics:   bool,
+    pub rank:            Option<String>,
+}
+
+impl AdminRightsBuilder {
+    pub fn new() -> Self { Self::default() }
+    pub fn change_info(mut self, v: bool)     -> Self { self.change_info     = v; self }
+    pub fn post_messages(mut self, v: bool)   -> Self { self.post_messages   = v; self }
+    pub fn edit_messages(mut self, v: bool)   -> Self { self.edit_messages   = v; self }
+    pub fn delete_messages(mut self, v: bool) -> Self { self.delete_messages = v; self }
+    pub fn ban_users(mut self, v: bool)       -> Self { self.ban_users       = v; self }
+    pub fn invite_users(mut self, v: bool)    -> Self { self.invite_users    = v; self }
+    pub fn pin_messages(mut self, v: bool)    -> Self { self.pin_messages    = v; self }
+    pub fn add_admins(mut self, v: bool)      -> Self { self.add_admins      = v; self }
+    pub fn anonymous(mut self, v: bool)       -> Self { self.anonymous       = v; self }
+    pub fn manage_call(mut self, v: bool)     -> Self { self.manage_call     = v; self }
+    pub fn manage_topics(mut self, v: bool)   -> Self { self.manage_topics   = v; self }
+    /// Custom admin title (max 16 chars).
+    pub fn rank(mut self, r: impl Into<String>) -> Self { self.rank = Some(r.into()); self }
+
+    /// Full admin (all standard rights).
+    pub fn full_admin() -> Self {
+        Self {
+            change_info: true, post_messages: true, edit_messages: true,
+            delete_messages: true, ban_users: true, invite_users: true,
+            pin_messages: true, add_admins: false, anonymous: false,
+            manage_call: true, manage_topics: true, rank: None,
+        }
+    }
+
+    pub(crate) fn into_tl_rights(self) -> tl::enums::ChatAdminRights {
+        tl::enums::ChatAdminRights::ChatAdminRights(tl::types::ChatAdminRights {
+            change_info:            self.change_info,
+            post_messages:          self.post_messages,
+            edit_messages:          self.edit_messages,
+            delete_messages:        self.delete_messages,
+            ban_users:              self.ban_users,
+            invite_users:           self.invite_users,
+            pin_messages:           self.pin_messages,
+            add_admins:             self.add_admins,
+            anonymous:              self.anonymous,
+            manage_call:            self.manage_call,
+            other:                  false,
+            manage_topics:          self.manage_topics,
+            post_stories:           false,
+            edit_stories:           false,
+            delete_stories:         false,
+            manage_direct_messages: false,
+            manage_ranks:           false,
+        })
+    }
+}
+
+// ─── G-30: ParticipantPermissions ────────────────────────────────────────────
+
+/// The effective permissions/rights of a specific participant.
+#[derive(Debug, Clone)]
+pub struct ParticipantPermissions {
+    pub is_creator:  bool,
+    pub is_admin:    bool,
+    pub is_banned:   bool,
+    pub is_left:     bool,
+    pub can_send_messages: bool,
+    pub can_send_media:    bool,
+    pub can_pin_messages:  bool,
+    pub can_add_admins:    bool,
+    pub admin_rank:        Option<String>,
+}
+
+impl ParticipantPermissions {
+    pub fn is_creator(&self)  -> bool { self.is_creator }
+    pub fn is_admin(&self)    -> bool { self.is_admin }
+    pub fn is_banned(&self)   -> bool { self.is_banned }
+    pub fn is_member(&self)   -> bool { !self.is_banned && !self.is_left }
+}
+
+// ─── Client: new participant methods ──────────────────────────────────────────
+
+impl Client {
+    // ── G-26: set_banned_rights ───────────────────────────────────────────
+
+    /// Apply granular ban rights to a user in a channel or supergroup.
+    ///
+    /// Use [`BannedRightsBuilder`] to specify which rights to restrict.
+    pub async fn set_banned_rights(
+        &self,
+        channel: tl::enums::Peer,
+        user_id: i64,
+        build:   impl FnOnce(BannedRightsBuilder) -> BannedRightsBuilder,
+    ) -> Result<(), InvocationError> {
+        let rights = build(BannedRightsBuilder::new()).into_tl();
+        let (channel_id, ch_hash) = match &channel {
+            tl::enums::Peer::Channel(c) => {
+                let h = self.inner.peer_cache.lock().await.channels.get(&c.channel_id).copied().unwrap_or(0);
+                (c.channel_id, h)
+            }
+            _ => return Err(InvocationError::Deserialize("set_banned_rights: must be a channel".into())),
+        };
+        let user_hash = self.inner.peer_cache.lock().await.users.get(&user_id).copied().unwrap_or(0);
+        let req = tl::functions::channels::EditBanned {
+            channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                channel_id, access_hash: ch_hash,
+            }),
+            participant: tl::enums::InputPeer::User(tl::types::InputPeerUser {
+                user_id, access_hash: user_hash,
+            }),
+            banned_rights: rights,
+        };
+        self.rpc_call_raw_pub(&req).await?;
+        Ok(())
+    }
+
+    // ── G-27: set_admin_rights ────────────────────────────────────────────
+
+    /// Apply granular admin rights to a user in a channel or supergroup.
+    ///
+    /// Use [`AdminRightsBuilder`] to specify which rights to grant.
+    pub async fn set_admin_rights(
+        &self,
+        channel: tl::enums::Peer,
+        user_id: i64,
+        build:   impl FnOnce(AdminRightsBuilder) -> AdminRightsBuilder,
+    ) -> Result<(), InvocationError> {
+        let b = build(AdminRightsBuilder::new());
+        let rank = b.rank.clone();
+        let rights = b.into_tl_rights();
+        let (channel_id, ch_hash) = match &channel {
+            tl::enums::Peer::Channel(c) => {
+                let h = self.inner.peer_cache.lock().await.channels.get(&c.channel_id).copied().unwrap_or(0);
+                (c.channel_id, h)
+            }
+            _ => return Err(InvocationError::Deserialize("set_admin_rights: must be a channel".into())),
+        };
+        let user_hash = self.inner.peer_cache.lock().await.users.get(&user_id).copied().unwrap_or(0);
+        let req = tl::functions::channels::EditAdmin {
+            channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                channel_id, access_hash: ch_hash,
+            }),
+            user_id: tl::enums::InputUser::InputUser(tl::types::InputUser { user_id, access_hash: user_hash }),
+            admin_rights: rights,
+            rank,
+        };
+        self.rpc_call_raw_pub(&req).await?;
+        Ok(())
+    }
+
+    // ── G-28: iter_participants with filter ───────────────────────────────
+
+    /// Fetch participants with an optional filter, paginated.
+    ///
+    /// `filter` defaults to `ChannelParticipantsRecent` when `None`.
+    pub async fn iter_participants(
+        &self,
+        peer:   tl::enums::Peer,
+        filter: Option<tl::enums::ChannelParticipantsFilter>,
+        limit:  i32,
+    ) -> Result<Vec<Participant>, InvocationError> {
+        match &peer {
+            tl::enums::Peer::Channel(c) => {
+                let access_hash = self.inner.peer_cache.lock().await
+                    .channels.get(&c.channel_id).copied().unwrap_or(0);
+                let filter = filter.unwrap_or(tl::enums::ChannelParticipantsFilter::ChannelParticipantsRecent);
+                let limit  = if limit <= 0 { 200 } else { limit };
+                let req = tl::functions::channels::GetParticipants {
+                    channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                        channel_id: c.channel_id, access_hash,
+                    }),
+                    filter,
+                    offset: 0,
+                    limit,
+                    hash: 0,
+                };
+                let body = self.rpc_call_raw_pub(&req).await?;
+                let mut cur = Cursor::from_slice(&body);
+                let raw = match tl::enums::channels::ChannelParticipants::deserialize(&mut cur)? {
+                    tl::enums::channels::ChannelParticipants::ChannelParticipants(p) => p,
+                    tl::enums::channels::ChannelParticipants::NotModified => return Ok(vec![]),
+                };
+                let user_map: std::collections::HashMap<i64, tl::types::User> = raw.users.into_iter()
+                    .filter_map(|u| match u { tl::enums::User::User(u) => Some((u.id, u)), _ => None })
+                    .collect();
+                {
+                    let mut cache = self.inner.peer_cache.lock().await;
+                    for u in user_map.values() {
+                        if let Some(h) = u.access_hash { cache.users.insert(u.id, h); }
+                    }
+                }
+                Ok(raw.participants.into_iter().filter_map(|p| {
+                    let (uid, status) = match &p {
+                        tl::enums::ChannelParticipant::ChannelParticipant(x) => (x.user_id, ParticipantStatus::Member),
+                        tl::enums::ChannelParticipant::ParticipantSelf(x) => (x.user_id, ParticipantStatus::Member),
+                        tl::enums::ChannelParticipant::Creator(x) => (x.user_id, ParticipantStatus::Creator),
+                        tl::enums::ChannelParticipant::Admin(x) => (x.user_id, ParticipantStatus::Admin),
+                        tl::enums::ChannelParticipant::Banned(x) => {
+                            if let tl::enums::Peer::User(u) = &x.peer { (u.user_id, ParticipantStatus::Banned) } else { return None; }
+                        }
+                        tl::enums::ChannelParticipant::Left(x) => {
+                            if let tl::enums::Peer::User(u) = &x.peer { (u.user_id, ParticipantStatus::Left) } else { return None; }
+                        }
+                    };
+                    user_map.get(&uid).map(|u| Participant { user: u.clone(), status })
+                }).collect())
+            }
+            tl::enums::Peer::Chat(c) => self.get_chat_participants(c.chat_id).await,
+            _ => Err(InvocationError::Deserialize("iter_participants: must be chat or channel".into())),
+        }
+    }
+
+    // ── G-30: get_permissions ─────────────────────────────────────────────
+
+    /// Get the effective permissions of a specific user in a channel.
+    pub async fn get_permissions(
+        &self,
+        channel: tl::enums::Peer,
+        user_id: i64,
+    ) -> Result<ParticipantPermissions, InvocationError> {
+        let (channel_id, ch_hash) = match &channel {
+            tl::enums::Peer::Channel(c) => {
+                let h = self.inner.peer_cache.lock().await.channels.get(&c.channel_id).copied().unwrap_or(0);
+                (c.channel_id, h)
+            }
+            _ => return Err(InvocationError::Deserialize("get_permissions: must be a channel".into())),
+        };
+        let user_hash = self.inner.peer_cache.lock().await.users.get(&user_id).copied().unwrap_or(0);
+        let req = tl::functions::channels::GetParticipant {
+            channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                channel_id, access_hash: ch_hash,
+            }),
+            participant: tl::enums::InputPeer::User(tl::types::InputPeerUser {
+                user_id, access_hash: user_hash,
+            }),
+        };
+        let body = self.rpc_call_raw_pub(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let tl::enums::channels::ChannelParticipant::ChannelParticipant(raw) = tl::enums::channels::ChannelParticipant::deserialize(&mut cur)?;
+
+        let perms = match raw.participant {
+            tl::enums::ChannelParticipant::Creator(_) => ParticipantPermissions {
+                is_creator: true, is_admin: true, is_banned: false, is_left: false,
+                can_send_messages: true, can_send_media: true, can_pin_messages: true,
+                can_add_admins: true, admin_rank: None,
+            },
+            tl::enums::ChannelParticipant::Admin(a) => {
+                let tl::enums::ChatAdminRights::ChatAdminRights(rights) = a.admin_rights;
+                ParticipantPermissions {
+                    is_creator: false, is_admin: true, is_banned: false, is_left: false,
+                    can_send_messages: true, can_send_media: true,
+                    can_pin_messages: rights.pin_messages,
+                    can_add_admins: rights.add_admins,
+                    admin_rank: a.rank,
+                }
+            }
+            tl::enums::ChannelParticipant::Banned(b) => {
+                let tl::enums::ChatBannedRights::ChatBannedRights(rights) = b.banned_rights;
+                ParticipantPermissions {
+                    is_creator: false, is_admin: false, is_banned: true, is_left: false,
+                    can_send_messages: !rights.send_messages,
+                    can_send_media: !rights.send_media,
+                    can_pin_messages: !rights.pin_messages,
+                    can_add_admins: false, admin_rank: None,
+                }
+            }
+            tl::enums::ChannelParticipant::Left(_) => ParticipantPermissions {
+                is_creator: false, is_admin: false, is_banned: false, is_left: true,
+                can_send_messages: false, can_send_media: false, can_pin_messages: false,
+                can_add_admins: false, admin_rank: None,
+            },
+            _ => ParticipantPermissions {
+                is_creator: false, is_admin: false, is_banned: false, is_left: false,
+                can_send_messages: true, can_send_media: true, can_pin_messages: false,
+                can_add_admins: false, admin_rank: None,
+            },
+        };
+
+        Ok(perms)
     }
 }

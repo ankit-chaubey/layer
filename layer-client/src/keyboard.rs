@@ -91,6 +91,134 @@ impl Button {
         }
     }
 
+    /// A button that switches to inline mode in a different (user-chosen) chat.
+    pub fn switch_elsewhere(text: impl Into<String>, query: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::SwitchInline(
+                tl::types::KeyboardButtonSwitchInline {
+                    same_peer:  false,
+                    peer_types: None,
+                    text:       text.into(),
+                    query:      query.into(),
+                    style:      None,
+                },
+            ),
+        }
+    }
+
+    /// A button that opens a mini-app WebView.
+    pub fn webview(text: impl Into<String>, url: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::WebView(
+                tl::types::KeyboardButtonWebView {
+                    text:  text.into(),
+                    url:   url.into(),
+                    style: None,
+                },
+            ),
+        }
+    }
+
+    /// A button that opens a simple WebView (no JS bridge).
+    pub fn simple_webview(text: impl Into<String>, url: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::SimpleWebView(
+                tl::types::KeyboardButtonSimpleWebView {
+                    text:  text.into(),
+                    url:   url.into(),
+                    style: None,
+                },
+            ),
+        }
+    }
+
+    /// A button that requests the user's phone number (reply keyboards only).
+    pub fn request_phone(text: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::RequestPhone(
+                tl::types::KeyboardButtonRequestPhone {
+                    text:  text.into(),
+                    style: None,
+                },
+            ),
+        }
+    }
+
+    /// A button that requests the user's location (reply keyboards only).
+    pub fn request_geo(text: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::RequestGeoLocation(
+                tl::types::KeyboardButtonRequestGeoLocation {
+                    text:  text.into(),
+                    style: None,
+                },
+            ),
+        }
+    }
+
+    /// A button that requests the user to create/share a poll.
+    pub fn request_poll(text: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::RequestPoll(
+                tl::types::KeyboardButtonRequestPoll {
+                    quiz:  None,
+                    text:  text.into(),
+                    style: None,
+                },
+            ),
+        }
+    }
+
+    /// A button that requests the user to create/share a quiz.
+    pub fn request_quiz(text: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::RequestPoll(
+                tl::types::KeyboardButtonRequestPoll {
+                    quiz:  Some(true),
+                    text:  text.into(),
+                    style: None,
+                },
+            ),
+        }
+    }
+
+    /// A button that launches a game (bots only).
+    pub fn game(text: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::Game(
+                tl::types::KeyboardButtonGame {
+                    text:  text.into(),
+                    style: None,
+                },
+            ),
+        }
+    }
+
+    /// A buy button for payments (bots only).
+    pub fn buy(text: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::Buy(
+                tl::types::KeyboardButtonBuy {
+                    text:  text.into(),
+                    style: None,
+                },
+            ),
+        }
+    }
+
+    /// A copy-to-clipboard button.
+    pub fn copy_text(text: impl Into<String>, copy_text: impl Into<String>) -> Self {
+        Self {
+            inner: tl::enums::KeyboardButton::Copy(
+                tl::types::KeyboardButtonCopy {
+                    text:      text.into(),
+                    copy_text: copy_text.into(),
+                    style:     None,
+                },
+            ),
+        }
+    }
+
     /// Consume into the raw TL type.
     pub fn into_raw(self) -> tl::enums::KeyboardButton {
         self.inner

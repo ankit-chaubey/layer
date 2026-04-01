@@ -20,7 +20,7 @@ fn modpow(mut n: u128, mut e: u128, m: u128) -> u128 {
 fn abs_sub(a: u128, b: u128) -> u128 { a.max(b) - a.min(b) }
 
 fn factorize_with(pq: u128, c: u128) -> (u64, u64) {
-    if pq % 2 == 0 { return (2, (pq / 2) as u64); }
+    if pq.is_multiple_of(2) { return (2, (pq / 2) as u64); }
 
     let mut y = 3 * (pq / 7);
     let m = 7 * (pq / 13);

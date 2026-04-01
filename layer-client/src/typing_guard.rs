@@ -45,8 +45,27 @@ impl TypingGuard {
         peer:   tl::enums::Peer,
         action: tl::enums::SendMessageAction,
     ) -> Result<Self, InvocationError> {
+        Self::start_ex(client, peer, action, None, Duration::from_secs(4)).await
+    }
+
+    /// Like [`start`](Self::start) but also accepts a forum **topic id**
+    /// (`top_msg_id`) and a custom **repeat delay**.
+    ///
+    /// # Arguments
+    /// * `topic_id`     — `Some(msg_id)` for a forum topic thread; `None` for
+    ///   the main chat.
+    /// * `repeat_delay` — How often to re-send the action to keep it alive.
+    ///   Telegram drops the indicator after ~5 s; ≤ 4 s is
+    ///   recommended.
+    pub async fn start_ex(
+        client:       &Client,
+        peer:         tl::enums::Peer,
+        action:       tl::enums::SendMessageAction,
+        topic_id:     Option<i32>,
+        repeat_delay: Duration,
+    ) -> Result<Self, InvocationError> {
         // Send once immediately so the indicator appears without delay.
-        client.send_chat_action(peer.clone(), action.clone()).await?;
+        client.send_chat_action_ex(peer.clone(), action.clone(), topic_id).await?;
 
         let stop   = Arc::new(Notify::new());
         let stop2  = stop.clone();
@@ -55,8 +74,8 @@ impl TypingGuard {
         let task = tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_secs(4)) => {
-                        if let Err(e) = client.send_chat_action(peer.clone(), action.clone()).await {
+                    _ = tokio::time::sleep(repeat_delay) => {
+                        if let Err(e) = client.send_chat_action_ex(peer.clone(), action.clone(), topic_id).await {
                             log::warn!("[typing_guard] Failed to refresh typing action: {e}");
                             break;
                         }
@@ -66,7 +85,7 @@ impl TypingGuard {
             }
             // Cancel the action
             let cancel = tl::enums::SendMessageAction::SendMessageCancelAction;
-            let _ = client.send_chat_action(peer.clone(), cancel).await;
+            let _ = client.send_chat_action_ex(peer.clone(), cancel, topic_id).await;
         });
 
         Ok(Self { stop, task: Some(task) })
@@ -81,10 +100,8 @@ impl TypingGuard {
 impl Drop for TypingGuard {
     fn drop(&mut self) {
         self.stop.notify_one();
-        // Detach the task — it will see the notify, send a cancel action, then exit.
-        // We don't abort it because we want the cancel action to reach Telegram.
         if let Some(t) = self.task.take() {
-            t.abort(); // abort is fine since notify already fired — cancel fires in select
+            t.abort();
         }
     }
 }
@@ -100,6 +117,22 @@ impl Client {
         peer: tl::enums::Peer,
     ) -> Result<TypingGuard, InvocationError> {
         TypingGuard::start(self, peer, tl::enums::SendMessageAction::SendMessageTypingAction).await
+    }
+
+    /// Start a scoped typing indicator in a **forum topic** thread.
+    ///
+    /// `topic_id` is the `top_msg_id` of the forum topic.
+    pub async fn typing_in_topic(
+        &self,
+        peer:     tl::enums::Peer,
+        topic_id: i32,
+    ) -> Result<TypingGuard, InvocationError> {
+        TypingGuard::start_ex(
+            self, peer,
+            tl::enums::SendMessageAction::SendMessageTypingAction,
+            Some(topic_id),
+            std::time::Duration::from_secs(4),
+        ).await
     }
 
     /// Start a scoped "uploading document" action that auto-cancels when dropped.
@@ -118,5 +151,21 @@ impl Client {
         peer: tl::enums::Peer,
     ) -> Result<TypingGuard, InvocationError> {
         TypingGuard::start(self, peer, tl::enums::SendMessageAction::SendMessageRecordVideoAction).await
+    }
+
+    /// Send a chat action with optional forum topic support (internal helper).
+    pub(crate) async fn send_chat_action_ex(
+        &self,
+        peer:     tl::enums::Peer,
+        action:   tl::enums::SendMessageAction,
+        topic_id: Option<i32>,
+    ) -> Result<(), InvocationError> {
+        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let req = tl::functions::messages::SetTyping {
+            peer: input_peer,
+            top_msg_id: topic_id,
+            action,
+        };
+        self.rpc_write(&req).await
     }
 }

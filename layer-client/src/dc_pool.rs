@@ -243,7 +243,7 @@ impl DcPool {
     }
 
     /// Save the auth keys from pool connections back into the DC entry list.
-    pub fn collect_keys(&self, entries: &mut Vec<DcEntry>) {
+    pub fn collect_keys(&self, entries: &mut [DcEntry]) {
         for e in entries.iter_mut() {
             if let Some(conn) = self.conns.get(&e.dc_id) {
                 e.auth_key    = Some(conn.auth_key_bytes());

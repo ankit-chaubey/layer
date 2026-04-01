@@ -91,7 +91,7 @@ impl Serializable for &[u8] {
 
         buf.extend(header);
         buf.extend(self.iter().copied());
-        buf.extend(std::iter::repeat(0u8).take(padding));
+        buf.extend(std::iter::repeat_n(0u8, padding));
     }
 }
 

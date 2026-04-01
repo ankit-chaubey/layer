@@ -31,8 +31,8 @@ impl ObfCipher {
     /// Extend the keystream buffer using repeated SHA-256 rounds (simplified).
     pub fn fill(&mut self) {
         let mut h = Sha256::new();
-        h.update(&self.key);
-        h.update(&self.iv);
+        h.update(self.key);
+        h.update(self.iv);
         h.update(&self.buf);
         let block = h.finalize();
         self.buf.extend_from_slice(&block);

@@ -43,17 +43,15 @@ impl Default for AutoSleep {
 
 impl RetryPolicy for AutoSleep {
     fn should_retry(&self, ctx: &RetryContext) -> ControlFlow<(), Duration> {
-        if let Some(secs) = ctx.error.flood_wait_seconds() {
-            if ctx.fail_count.get() == 1 && secs <= self.threshold.as_secs() {
-                log::info!("FLOOD_WAIT_{secs} — sleeping before retry");
-                return ControlFlow::Continue(Duration::from_secs(secs));
-            }
+        if let Some(secs) = ctx.error.flood_wait_seconds()
+            && ctx.fail_count.get() == 1 && secs <= self.threshold.as_secs() {
+            log::info!("FLOOD_WAIT_{secs} — sleeping before retry");
+            return ControlFlow::Continue(Duration::from_secs(secs));
         }
-        if matches!(ctx.error, InvocationError::Io(_)) && ctx.fail_count.get() == 1 {
-            if let Some(d) = self.io_errors_as_flood_of {
-                log::info!("I/O error — sleeping {:?} before retry", d);
-                return ControlFlow::Continue(d);
-            }
+        if matches!(ctx.error, InvocationError::Io(_)) && ctx.fail_count.get() == 1
+            && let Some(d) = self.io_errors_as_flood_of {
+            log::info!("I/O error — sleeping {:?} before retry", d);
+            return ControlFlow::Continue(d);
         }
         ControlFlow::Break(())
     }

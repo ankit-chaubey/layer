@@ -37,12 +37,12 @@ fn main() -> io::Result<()> {
         // Cargo rebuild trigger
         println!("cargo:rerun-if-changed={path}");
 
-        // Extract `// LAYER N` from the first line
-        if let Some(line) = content.lines().next() {
-            if let Some(rest) = line.strip_prefix("// LAYER ") {
-                if let Ok(n) = rest.trim().parse::<i32>() {
-                    layer = layer.max(n);
-                }
+        // Extract `// LAYER N` from anywhere in the file
+        for line in content.lines() {
+            if let Some(rest) = line.strip_prefix("// LAYER ")
+                && let Ok(n) = rest.trim().parse::<i32>() {
+                layer = layer.max(n);
+                break;
             }
         }
 

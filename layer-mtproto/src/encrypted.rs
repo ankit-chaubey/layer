@@ -91,26 +91,124 @@ impl EncryptedSession {
     }
 
     /// Next content-related seq_no (odd) and advance the counter.
+    /// Used for all regular RPC requests.
     fn next_seq_no(&mut self) -> i32 {
         let n = self.sequence * 2 + 1;
         self.sequence += 1;
         n
     }
 
-    /// Serialize and encrypt a TL function into a wire-ready byte vector.
+    // ── G-05: non-content-related seq_no ─────────────────────────────────────
+    /// Return the current even seq_no WITHOUT advancing the counter.
     ///
-    /// Layout of the plaintext before encryption:
-    /// ```text
-    /// salt:       i64
-    /// session_id: i64
-    /// msg_id:     i64
-    /// seq_no:     i32
-    /// body_len:   i32
-    /// body:       [u8; body_len]
-    /// ```
-    /// Like `pack` but only requires `Serializable` (not `RemoteCall`).
-    /// Useful for generic wrapper types like `InvokeWithLayer<InitConnection<X>>`
-    /// where the return type is determined by the inner call, not the wrapper.
+    /// Service messages (MsgsAck, containers, etc.) MUST use an even seqno
+    /// per the MTProto spec so the server does not expect a reply.
+    /// grammers reference: `mtp/encrypted.rs: get_seq_no(content_related: bool)`
+    pub fn next_seq_no_ncr(&self) -> i32 {
+        self.sequence * 2
+    }
+
+    // ── G-03: seq_no correction on bad_msg codes 32/33 ───────────────────────
+    /// Correct the outgoing sequence counter when the server reports a
+    /// `bad_msg_notification` with error codes 32 (seq_no too low) or
+    /// 33 (seq_no too high).
+    ///
+    /// grammers reference: `mtp/encrypted.rs: handle_bad_notification() codes 32/33`
+    pub fn correct_seq_no(&mut self, code: u32) {
+        match code {
+            32 => {
+                // seq_no too low — jump forward so next send is well above server expectation
+                self.sequence += 64;
+                log::debug!("[layer] G-03 seq_no correction: code 32, bumped seq to {}", self.sequence);
+            }
+            33 => {
+                // seq_no too high — step back, but never below 1 to avoid
+                // re-using seq_no=1 which was already sent this session.
+                // Zeroing would make the next content message get seq_no=1,
+                // which the server already saw and will reject again with code 32.
+                self.sequence = self.sequence.saturating_sub(16).max(1);
+                log::debug!("[layer] G-03 seq_no correction: code 33, lowered seq to {}", self.sequence);
+            }
+            _ => {}
+        }
+    }
+
+    // ── G-12: dynamic time_offset correction ─────────────────────────────────
+    /// Re-derive the clock skew from a server-provided `msg_id`.
+    ///
+    /// Called on `bad_msg_notification` error codes 16 (msg_id too low) and
+    /// 17 (msg_id too high) so clock drift is corrected at any point in the
+    /// session, not only at connect time.
+    ///
+    /// grammers reference: `mtp/encrypted.rs: correct_time_offset(msg_id)`
+    pub fn correct_time_offset(&mut self, server_msg_id: i64) {
+        // Upper 32 bits of msg_id = Unix seconds on the server
+        let server_time = (server_msg_id >> 32) as i32;
+        let local_now   = SystemTime::now()
+            .duration_since(UNIX_EPOCH).unwrap()
+            .as_secs() as i32;
+        let new_offset = server_time.wrapping_sub(local_now);
+        log::debug!(
+            "[layer] G-12 time_offset correction: {} → {} (server_time={server_time})",
+            self.time_offset, new_offset
+        );
+        self.time_offset = new_offset;
+        // Also reset last_msg_id so next_msg_id rebuilds from corrected clock
+        self.last_msg_id = 0;
+    }
+
+    // ── G-02 / G-07 helpers ───────────────────────────────────────────────────
+
+    /// Allocate a fresh `(msg_id, seqno)` pair for an inner container message
+    /// WITHOUT encrypting anything.
+    ///
+    /// `content_related = true`  → odd seqno, advances counter  (regular RPCs)
+    /// `content_related = false` → even seqno, no advance       (MsgsAck, container)
+    ///
+    /// grammers reference: `mtp/encrypted.rs: get_seq_no(content_related)`
+    pub fn alloc_msg_seqno(&mut self, content_related: bool) -> (i64, i32) {
+        let msg_id = self.next_msg_id();
+        let seqno  = if content_related { self.next_seq_no() } else { self.next_seq_no_ncr() };
+        (msg_id, seqno)
+    }
+
+    /// Encrypt a pre-serialized TL body into a wire-ready MTProto frame.
+    ///
+    /// `content_related` controls whether the seqno is odd (content, advances
+    /// the counter) or even (service, no advance).
+    ///
+    /// Returns `(encrypted_wire_bytes, msg_id)`.
+    /// Used for G-02 (bad_msg re-send) and G-07 (container inner messages).
+    pub fn pack_body_with_msg_id(&mut self, body: &[u8], content_related: bool) -> (Vec<u8>, i64) {
+        let msg_id = self.next_msg_id();
+        let seq_no = if content_related { self.next_seq_no() } else { self.next_seq_no_ncr() };
+
+        let inner_len = 8 + 8 + 8 + 4 + 4 + body.len();
+        let mut buf = DequeBuffer::with_capacity(inner_len, 32);
+        buf.extend(self.salt.to_le_bytes());
+        buf.extend(self.session_id.to_le_bytes());
+        buf.extend(msg_id.to_le_bytes());
+        buf.extend(seq_no.to_le_bytes());
+        buf.extend((body.len() as u32).to_le_bytes());
+        buf.extend(body.iter().copied());
+
+        encrypt_data_v2(&mut buf, &self.auth_key);
+        (buf.as_ref().to_vec(), msg_id)
+    }
+
+    /// Encrypt a pre-built `msg_container` body (the container itself is
+    /// a non-content-related message with an even seqno).
+    ///
+    /// Returns `encrypted_wire_bytes`.
+    /// Used for G-07 (message container batching).
+    pub fn pack_container(&mut self, container_body: &[u8]) -> Vec<u8> {
+        let (wire, _msg_id) = self.pack_body_with_msg_id(container_body, false);
+        wire
+    }
+
+    // ── Original pack methods (unchanged) ────────────────────────────────────
+
+    /// Serialize and encrypt a TL function into a wire-ready byte vector.
     pub fn pack_serializable<S: layer_tl_types::Serializable>(&mut self, call: &S) -> Vec<u8> {
         let body = call.to_bytes();
         let msg_id = self.next_msg_id();
@@ -129,9 +227,7 @@ impl EncryptedSession {
         buf.as_ref().to_vec()
     }
 
-
-    /// Like [`pack_serializable`] but also returns the `msg_id`.
-    /// Used by the split-writer path for write RPCs (Serializable but not RemoteCall).
+    /// Like `pack_serializable` but also returns the `msg_id`.
     pub fn pack_serializable_with_msg_id<S: layer_tl_types::Serializable>(&mut self, call: &S) -> (Vec<u8>, i64) {
         let body   = call.to_bytes();
         let msg_id = self.next_msg_id();
@@ -149,9 +245,6 @@ impl EncryptedSession {
     }
 
     /// Like [`pack`] but also returns the `msg_id` allocated for this message.
-    ///
-    /// Used by the async client to register a pending RPC reply channel keyed
-    /// by `msg_id` *before* sending the packet.
     pub fn pack_with_msg_id<R: RemoteCall>(&mut self, call: &R) -> (Vec<u8>, i64) {
         let body   = call.to_bytes();
         let msg_id = self.next_msg_id();
@@ -169,16 +262,12 @@ impl EncryptedSession {
     }
 
     /// Encrypt and frame a [`RemoteCall`] into a ready-to-send MTProto message.
-    ///
-    /// Returns the encrypted bytes to pass directly to the transport layer.
     pub fn pack<R: RemoteCall>(&mut self, call: &R) -> Vec<u8> {
         let body = call.to_bytes();
         let msg_id = self.next_msg_id();
         let seq_no = self.next_seq_no();
 
-        // Build plaintext inner payload
         let inner_len = 8 + 8 + 8 + 4 + 4 + body.len();
-        // Front capacity = 32 for auth_key_id + msg_key
         let mut buf = DequeBuffer::with_capacity(inner_len, 32);
         buf.extend(self.salt.to_le_bytes());
         buf.extend(self.session_id.to_le_bytes());
@@ -192,14 +281,10 @@ impl EncryptedSession {
     }
 
     /// Decrypt an encrypted server frame.
-    ///
-    /// `frame` should be a raw frame received from the transport (already
-    /// stripped of the abridged-length prefix).
-    pub fn unpack(&self, frame: &mut Vec<u8>) -> Result<DecryptedMessage, DecryptError> {
+    pub fn unpack(&self, frame: &mut [u8]) -> Result<DecryptedMessage, DecryptError> {
         let plaintext = decrypt_data_v2(frame, &self.auth_key)
             .map_err(DecryptError::Crypto)?;
 
-        // inner: salt(8) + session_id(8) + msg_id(8) + seq_no(4) + len(4) + body
         if plaintext.len() < 32 {
             return Err(DecryptError::FrameTooShort);
         }
@@ -232,7 +317,7 @@ impl EncryptedSession {
     pub fn decrypt_frame(
         auth_key:   &[u8; 256],
         session_id: i64,
-        frame:      &mut Vec<u8>,
+        frame:      &mut [u8],
     ) -> Result<DecryptedMessage, DecryptError> {
         let key = AuthKey::from_bytes(*auth_key);
         let plaintext = decrypt_data_v2(frame, &key)

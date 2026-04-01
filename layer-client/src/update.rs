@@ -19,7 +19,7 @@ pub struct IncomingMessage {
 }
 
 impl IncomingMessage {
-    pub(crate) fn from_raw(raw: tl::enums::Message) -> Self {
+    pub fn from_raw(raw: tl::enums::Message) -> Self {
         Self { raw }
     }
 
@@ -224,6 +224,71 @@ impl IncomingMessage {
         }
     }
 
+    /// `true` if this message was sent from a scheduled one.
+    pub fn from_scheduled(&self) -> bool {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.from_scheduled,
+            _ => false,
+        }
+    }
+
+    /// `true` if the edit date is hidden from recipients.
+    pub fn edit_hide(&self) -> bool {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.edit_hide,
+            _ => false,
+        }
+    }
+
+    /// `true` if the media in this message has not been read yet.
+    pub fn media_unread(&self) -> bool {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.media_unread,
+            tl::enums::Message::Service(m) => m.media_unread,
+            _ => false,
+        }
+    }
+
+    /// ID of the bot that sent this message via inline mode, if any.
+    pub fn via_bot_id(&self) -> Option<i64> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.via_bot_id,
+            _ => None,
+        }
+    }
+
+    /// Signature of the post author in a channel, if set.
+    pub fn post_author(&self) -> Option<&str> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.post_author.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Number of reactions on this message, if any.
+    pub fn reaction_count(&self) -> i32 {
+        match &self.raw {
+            tl::enums::Message::Message(m) => {
+                m.reactions.as_ref().map(|r| match r {
+                    tl::enums::MessageReactions::MessageReactions(x) => {
+                        x.results.iter().map(|res| match res {
+                            tl::enums::ReactionCount::ReactionCount(c) => c.count,
+                        }).sum()
+                    }
+                }).unwrap_or(0)
+            }
+            _ => 0,
+        }
+    }
+
+    /// Restriction reasons (why this message is unavailable in some regions).
+    pub fn restriction_reason(&self) -> Option<&Vec<tl::enums::RestrictionReason>> {
+        match &self.raw {
+            tl::enums::Message::Message(m) => m.restriction_reason.as_ref(),
+            _ => None,
+        }
+    }
+
     /// Reply markup (inline keyboards, etc).
     pub fn reply_markup(&self) -> Option<&tl::enums::ReplyMarkup> {
         match &self.raw {
@@ -246,6 +311,24 @@ impl IncomingMessage {
             tl::enums::Message::Message(m) => m.noforwards,
             _ => false,
         }
+    }
+
+    /// Reconstruct Markdown from the message text and its formatting entities.
+    ///
+    /// Returns plain text if there are no entities.
+    pub fn markdown_text(&self) -> Option<String> {
+        let text = self.text()?;
+        let entities = self.entities().map(|e| e.as_slice()).unwrap_or(&[]);
+        Some(crate::parsers::generate_markdown(text, entities))
+    }
+
+    /// Reconstruct HTML from the message text and its formatting entities.
+    ///
+    /// Returns plain text if there are no entities.
+    pub fn html_text(&self) -> Option<String> {
+        let text = self.text()?;
+        let entities = self.entities().map(|e| e.as_slice()).unwrap_or(&[]);
+        Some(crate::parsers::generate_html(text, entities))
     }
 
     /// Reply to this message with plain text.
@@ -271,6 +354,13 @@ pub struct MessageDeletion {
     pub channel_id:  Option<i64>,
 }
 
+impl MessageDeletion {
+    /// Consume self and return the deleted message IDs without cloning.
+    pub fn into_messages(self) -> Vec<i32> {
+        self.message_ids
+    }
+}
+
 // ─── CallbackQuery ───────────────────────────────────────────────────────────
 
 /// A user pressed an inline keyboard button on a bot message.
@@ -284,6 +374,11 @@ pub struct CallbackQuery {
     pub data_raw:        Option<Vec<u8>>,
     /// Game short name (if a game button was pressed).
     pub game_short_name: Option<String>,
+    /// G-38: The peer (chat/channel/user) where the button was pressed.
+    /// `None` for inline-message callback queries.
+    pub chat_peer:       Option<tl::enums::Peer>,
+    /// G-38: For inline-message callbacks — the message ID token.
+    pub inline_msg_id:   Option<tl::enums::InputBotInlineMessageId>,
 }
 
 impl CallbackQuery {
@@ -341,6 +436,48 @@ pub struct InlineSend {
     pub msg_id:   Option<tl::enums::InputBotInlineMessageId>,
 }
 
+impl InlineSend {
+    /// G-39: Edit the inline message that was sent as a result of this inline query.
+    ///
+    /// Requires that [`msg_id`] is present (i.e. the result had `peer_type` set).
+    /// Returns `Err` with a descriptive message if `msg_id` is `None`.
+    ///
+    /// [`msg_id`]: InlineSend::msg_id
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # async fn f(client: layer_client::Client, send: layer_client::update::InlineSend)
+    /// # -> Result<(), Box<dyn std::error::Error>> {
+    /// send.edit_message(&client, "updated text", None).await?;
+    /// # Ok(()) }
+    /// ```
+    pub async fn edit_message(
+        &self,
+        client:       &Client,
+        new_text:     &str,
+        reply_markup: Option<tl::enums::ReplyMarkup>,
+    ) -> Result<bool, Error> {
+        let msg_id = match self.msg_id.clone() {
+            Some(id) => id,
+            None => return Err(Error::Deserialize(
+                "InlineSend::edit_message — msg_id is None (bot_inline_send had no peer_type)".into()
+            )),
+        };
+        let req = tl::functions::messages::EditInlineBotMessage {
+            no_webpage:   false,
+            invert_media: false,
+            id:           msg_id,
+            message:      Some(new_text.to_string()),
+            media:        None,
+            reply_markup,
+            entities:     None,
+        };
+        let body = client.rpc_call_raw(&req).await?;
+        // Returns Bool
+        Ok(!body.is_empty())
+    }
+}
+
 // ─── RawUpdate ───────────────────────────────────────────────────────────────
 
 /// A TL update that has no dedicated high-level variant yet.
@@ -349,8 +486,6 @@ pub struct RawUpdate {
     /// Constructor ID of the inner update.
     pub constructor_id: u32,
 }
-
-// ─── Update ───────────────────────────────────────────────────────────────────
 
 /// A high-level event received from Telegram.
 #[non_exhaustive]
@@ -474,6 +609,8 @@ fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
             chat_instance:   u.chat_instance,
             data_raw:        u.data,
             game_short_name: u.game_short_name,
+            chat_peer:       Some(u.peer),
+            inline_msg_id:   None,
         })],
         InlineBotCallbackQuery(u) => vec![Update::CallbackQuery(CallbackQuery {
             query_id:        u.query_id,
@@ -482,6 +619,8 @@ fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
             chat_instance:   u.chat_instance,
             data_raw:        u.data,
             game_short_name: u.game_short_name,
+            chat_peer:       None,
+            inline_msg_id:   Some(u.msg_id),
         })],
         BotInlineQuery(u) => vec![Update::InlineQuery(InlineQuery {
             query_id: u.query_id,
@@ -660,6 +799,7 @@ fn tl_constructor_id(upd: &tl::enums::Update) -> u32 {
         WebPage(_) => 0x7f891213,
         WebViewResultSent(_) => 0x1592b79d,
         ChatParticipantRank(_) => 0xbd8367b9,
+        ManagedBot(_) => 0x4880ed9a,
     }
 }
 

@@ -14,7 +14,7 @@ categories           = ["api-bindings", "network-programming", "asynchronous"]
 [dependencies]
 layer-tl-types = { workspace = true, features = ["tl-api", "tl-mtproto"] }
 layer-mtproto  = { workspace = true }
-tokio          = { version = "1",  features = ["net", "io-util", "sync", "time", "rt", "fs", "rt-multi-thread", "macros"] }
+tokio          = { version = "1",  features = ["net", "io-util", "sync", "time", "rt", "rt-multi-thread", "macros"] }
 tokio-util     = { version = "0.7", features = ["rt"] }
 getrandom      = "0.2"
 flate2         = "1"
@@ -27,6 +27,7 @@ log            = "0.4"
 pulldown-cmark = "0.11"
 chrono         = { version = "0.4", features = ["clock"] }
 rusqlite       = { version = "0.31", optional = true }
+html5ever      = { version = "0.38", optional = true }
 tokio-socks    = "0.5"
 socket2        = { version = "0.5", features = ["all"] }
 
@@ -34,3 +35,6 @@ socket2        = { version = "0.5", features = ["all"] }
 sqlite-session = ["rusqlite"]
 ## Enable HTML ↔ entity parsing via the built-in parser (no extra deps required).
 html = []
+## Enable HTML parsing backed by html5ever (spec-compliant tokenizer).
+## When active, overrides the built-in `html` parser.
+html5ever = ["dep:html5ever"]

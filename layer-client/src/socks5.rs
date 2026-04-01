@@ -55,7 +55,7 @@ impl Socks5Config {
             None => {
                 Socks5Stream::connect(self.proxy_addr.as_str(), target)
                     .await
-                    .map_err(|e| InvocationError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+                    .map_err(|e| InvocationError::Io(std::io::Error::other(e)))?
             }
             Some((user, pass)) => {
                 Socks5Stream::connect_with_password(
@@ -65,7 +65,7 @@ impl Socks5Config {
                     pass.as_str(),
                 )
                 .await
-                .map_err(|e| InvocationError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+                .map_err(|e| InvocationError::Io(std::io::Error::other(e)))?
             }
         };
         log::info!("[socks5] Connected ✓");

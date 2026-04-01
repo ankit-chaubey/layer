@@ -32,7 +32,7 @@ impl DequeBuffer {
             self.head -= slice.len();
         } else {
             let shift = slice.len() - self.head;
-            self.buf.extend(std::iter::repeat(0).take(shift));
+            self.buf.extend(std::iter::repeat_n(0, shift));
             self.buf.rotate_right(shift);
             self.head = 0;
         }

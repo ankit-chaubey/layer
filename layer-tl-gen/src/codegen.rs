@@ -223,10 +223,9 @@ fn write_functions_mod<W: Write>(
 fn generic_list(def: &Definition, bounds: &str) -> String {
     let mut params: Vec<&str> = Vec::new();
     for p in &def.params {
-        if let ParameterType::Normal { ty, .. } = &p.ty {
-            if ty.generic_ref && !params.contains(&ty.name.as_str()) {
-                params.push(&ty.name);
-            }
+        if let ParameterType::Normal { ty, .. } = &p.ty
+            && ty.generic_ref && !params.contains(&ty.name.as_str()) {
+            params.push(&ty.name);
         }
     }
     if params.is_empty() {

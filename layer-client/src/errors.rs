@@ -41,11 +41,10 @@ impl RpcError {
         // e.g. "FLOOD_WAIT_30" → name = "FLOOD_WAIT", value = Some(30)
         if let Some(idx) = message.rfind('_') {
             let suffix = &message[idx + 1..];
-            if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
-                if let Ok(v) = suffix.parse::<u32>() {
-                    let name = message[..idx].to_string();
-                    return Self { code, name, value: Some(v) };
-                }
+            if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
+                && let Ok(v) = suffix.parse::<u32>() {
+                let name = message[..idx].to_string();
+                return Self { code, name, value: Some(v) };
             }
         }
         Self { code, name: message.to_string(), value: None }
@@ -142,7 +141,7 @@ pub enum SignInError {
     /// The phone number is new — must sign up via the official Telegram app first.
     SignUpRequired,
     /// 2FA is enabled; the contained token must be passed to [`crate::Client::check_password`].
-    PasswordRequired(PasswordToken),
+    PasswordRequired(Box<PasswordToken>),
     /// The code entered was wrong or has expired.
     InvalidCode,
     /// Any other error.

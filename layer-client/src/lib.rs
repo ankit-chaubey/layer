@@ -39,6 +39,8 @@ pub mod session_backend;
 pub mod inline_iter;
 pub mod typing_guard;
 pub mod keyboard;
+pub mod search;
+pub mod types;
 
 #[macro_use]
 pub mod macros;
@@ -46,12 +48,14 @@ pub mod macros;
 pub use errors::{InvocationError, LoginToken, PasswordToken, RpcError, SignInError};
 pub use retry::{AutoSleep, NoRetries, RetryContext, RetryPolicy};
 pub use update::Update;
-pub use media::{UploadedFile, DownloadIter};
+pub use media::{UploadedFile, DownloadIter, Photo, Document, Sticker, Downloadable};
 pub use participants::Participant;
 pub use typing_guard::TypingGuard;
 pub use socks5::Socks5Config;
 pub use session_backend::{SessionBackend, BinaryFileBackend, InMemoryBackend};
 pub use keyboard::{Button, InlineKeyboard, ReplyKeyboard};
+pub use search::{SearchBuilder, GlobalSearchBuilder};
+pub use types::{User, Group, Channel, Chat};
 
 /// Re-export of `layer_tl_types` — generated TL constructors, functions, and enums.
 /// Users can write `use layer_client::tl` instead of adding a separate `layer-tl-types` dep.
@@ -85,8 +89,15 @@ const ID_PONG:             u32 = 0x347773c5;
 const ID_MSGS_ACK:         u32 = 0x62d6b459;
 const ID_BAD_SERVER_SALT:  u32 = 0xedab447b;
 const ID_NEW_SESSION:      u32 = 0x9ec20908;
-const ID_BAD_MSG_NOTIFY:   u32 = 0xa7eff811;
-const ID_UPDATES:          u32 = 0x74ae4240;
+const ID_BAD_MSG_NOTIFY:      u32 = 0xa7eff811;
+// G-09: FutureSalts arrives as a bare frame (not inside rpc_result)
+const ID_FUTURE_SALTS:        u32 = 0xae500895;
+// G-11: server confirms our message was received; we must ack its answer_msg_id
+const ID_MSG_DETAILED_INFO:   u32 = 0x276d3ec6;
+const ID_MSG_NEW_DETAIL_INFO: u32 = 0x809db6df;
+// G-14: server asks us to re-send a specific message
+const ID_MSG_RESEND_REQ:      u32 = 0x7d861a08;
+const ID_UPDATES:             u32 = 0x74ae4240;
 const ID_UPDATE_SHORT:     u32 = 0x78d4dec1;
 const ID_UPDATES_COMBINED: u32 = 0x725b04c3;
 const ID_UPDATE_SHORT_MSG:      u32 = 0x313bc7f8;
@@ -124,20 +135,22 @@ const TCP_KEEPALIVE_PROBES: u32 = 3;
 
 /// Caches access hashes for users and channels so every API call carries the
 /// correct hash without re-resolving peers.
+///
+/// All fields are `pub` so that `save_session` / `connect` can read/write them
+/// directly, and so that advanced callers can inspect the cache.
 #[derive(Default)]
-pub(crate) struct PeerCache {
+pub struct PeerCache {
     /// user_id → access_hash
-    pub(crate) users:    HashMap<i64, i64>,
+    pub users:    HashMap<i64, i64>,
     /// channel_id → access_hash
-    pub(crate) channels: HashMap<i64, i64>,
+    pub channels: HashMap<i64, i64>,
 }
 
 impl PeerCache {
     fn cache_user(&mut self, user: &tl::enums::User) {
-        if let tl::enums::User::User(u) = user {
-            if let Some(hash) = u.access_hash {
-                self.users.insert(u.id, hash);
-            }
+        if let tl::enums::User::User(u) = user
+            && let Some(hash) = u.access_hash {
+            self.users.insert(u.id, hash);
         }
     }
 
@@ -206,9 +219,16 @@ pub struct InputMessage {
     pub background:   bool,
     pub clear_draft:  bool,
     pub no_webpage:   bool,
+    /// Show media above the caption instead of below (Telegram ≥ 10.3).\
+    pub invert_media: bool,
+    /// Schedule to send when the user goes online (`schedule_date = 0x7FFFFFFE`).\
+    pub schedule_once_online: bool,
     pub entities:     Option<Vec<tl::enums::MessageEntity>>,
     pub reply_markup: Option<tl::enums::ReplyMarkup>,
     pub schedule_date: Option<i32>,
+    /// Attached media to send alongside the message (G-45).
+    /// Use [`InputMessage::copy_media`] to attach media copied from an existing message.
+    pub media: Option<tl::enums::InputMedia>,
 }
 
 impl InputMessage {
@@ -247,6 +267,21 @@ impl InputMessage {
         self.no_webpage = v; self
     }
 
+    /// Show media above the caption rather than below (requires Telegram ≥ 10.3).
+    pub fn invert_media(mut self, v: bool) -> Self {
+        self.invert_media = v; self
+    }
+
+    /// Schedule the message to be sent when the recipient comes online.
+    ///
+    /// Mutually exclusive with `schedule_date` — calling this last wins.
+    /// Uses the Telegram magic value `0x7FFFFFFE`.
+    pub fn schedule_once_online(mut self) -> Self {
+        self.schedule_once_online = true;
+        self.schedule_date = None;
+        self
+    }
+
     /// Attach formatting entities (bold, italic, code, links, etc).
     pub fn entities(mut self, e: Vec<tl::enums::MessageEntity>) -> Self {
         self.entities = Some(e); self
@@ -275,6 +310,30 @@ impl InputMessage {
         self.schedule_date = ts; self
     }
 
+    /// Attach media copied from an existing message (G-45).
+    ///
+    /// Pass the `InputMedia` obtained from [`crate::media::Photo`],
+    /// [`crate::media::Document`], or directly from a raw `MessageMedia`.
+    ///
+    /// When a `media` is set, the message is sent via `messages.SendMedia`
+    /// instead of `messages.SendMessage`.
+    ///
+    /// ```rust,no_run
+    /// # use layer_client::{InputMessage, tl};
+    /// # fn example(media: tl::enums::InputMedia) {
+    /// let msg = InputMessage::text("Here is the file again")
+    ///     .copy_media(media);
+    /// # }
+    /// ```
+    pub fn copy_media(mut self, media: tl::enums::InputMedia) -> Self {
+        self.media = Some(media); self
+    }
+
+    /// Remove any previously attached media.
+    pub fn clear_media(mut self) -> Self {
+        self.media = None; self
+    }
+
     fn reply_header(&self) -> Option<tl::enums::InputReplyTo> {
         self.reply_to.map(|id| {
             tl::enums::InputReplyTo::Message(
@@ -287,6 +346,7 @@ impl InputMessage {
                     quote_offset: None,
                     monoforum_peer_id: None,
                     todo_item_id: None,
+                    poll_option: None,
                 }
             )
         })
@@ -394,6 +454,7 @@ impl Default for Config {
 }
 
 // ─── UpdateStream ─────────────────────────────────────────────────────────────
+// G-56: UpdateStream lives here; next_raw() added.
 
 /// Asynchronous stream of [`Update`]s.
 pub struct UpdateStream {
@@ -404,6 +465,20 @@ impl UpdateStream {
     /// Wait for the next update. Returns `None` when the client has disconnected.
     pub async fn next(&mut self) -> Option<update::Update> {
         self.rx.recv().await
+    }
+
+    /// Wait for the next **raw** (unrecognised) update frame, skipping all
+    /// typed high-level variants. Useful for handling constructor IDs that
+    /// `layer-client` does not yet wrap — dispatch on `constructor_id` yourself.
+    ///
+    /// Returns `None` when the client has disconnected.
+    pub async fn next_raw(&mut self) -> Option<update::RawUpdate> {
+        loop {
+            match self.rx.recv().await? {
+                update::Update::Raw(r) => return Some(r),
+                _ => continue,
+            }
+        }
     }
 }
 
@@ -474,6 +549,7 @@ struct ClientInner {
     /// Pending RPC replies, keyed by MTProto msg_id.
     /// RPC callers insert a oneshot::Sender here before sending; the reader
     /// task routes incoming rpc_result frames to the matching sender.
+    #[allow(clippy::type_complexity)]
     pending:         Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Vec<u8>, InvocationError>>>>>,
     /// Channel used to hand a new (OwnedReadHalf, FrameKind, auth_key, session_id)
     /// to the reader task after a reconnect.
@@ -489,8 +565,10 @@ struct ClientInner {
     catch_up:        bool,
     home_dc_id:      Mutex<i32>,
     dc_options:      Mutex<HashMap<i32, DcEntry>>,
-    pub(crate) peer_cache:    Mutex<PeerCache>,
-    pub(crate) pts_state:     Mutex<pts::PtsState>,
+    pub peer_cache:    Mutex<PeerCache>,
+    pub pts_state:     Mutex<pts::PtsState>,
+    /// G-17: Buffer for updates received during a possible-gap window.
+    pub possible_gap:  Mutex<pts::PossibleGapBuffer>,
     api_id:          i32,
     api_hash:        String,
     retry_policy:    Arc<dyn RetryPolicy>,
@@ -519,7 +597,7 @@ impl Client {
         let socks5    = config.socks5.clone();
         let transport = config.transport.clone();
 
-        let (conn, home_dc_id, dc_opts) =
+        let (conn, home_dc_id, dc_opts, loaded_session) =
             match config.session_backend.load()
                 .map_err(InvocationError::Io)?
             {
@@ -537,21 +615,27 @@ impl Client {
                                         .map(|(id, addr)| (id, DcEntry { dc_id: id, addr, auth_key: None, first_salt: 0, time_offset: 0 }))
                                         .collect::<HashMap<_, _>>();
                                     for d in &s.dcs { opts.insert(d.dc_id, d.clone()); }
-                                    (c, s.home_dc_id, opts)
+                                    (c, s.home_dc_id, opts, Some(s))
                                 }
                                 Err(e) => {
                                     log::warn!("[layer] Session connect failed ({e}), fresh connect …");
-                                    Self::fresh_connect(socks5.as_ref(), &transport).await?
+                                    let (c, dc, opts) = Self::fresh_connect(socks5.as_ref(), &transport).await?;
+                                    (c, dc, opts, None)
                                 }
                             }
                         } else {
-                            Self::fresh_connect(socks5.as_ref(), &transport).await?
+                            let (c, dc, opts) = Self::fresh_connect(socks5.as_ref(), &transport).await?;
+                            (c, dc, opts, None)
                         }
                     } else {
-                        Self::fresh_connect(socks5.as_ref(), &transport).await?
+                        let (c, dc, opts) = Self::fresh_connect(socks5.as_ref(), &transport).await?;
+                        (c, dc, opts, None)
                     }
                 }
-                None => Self::fresh_connect(socks5.as_ref(), &transport).await?,
+                None => {
+                    let (c, dc, opts) = Self::fresh_connect(socks5.as_ref(), &transport).await?;
+                    (c, dc, opts, None)
+                }
             };
 
         // ── Build DC pool ───────────────────────────────────────────────
@@ -565,6 +649,7 @@ impl Client {
         let auth_key   = writer.enc.auth_key_bytes();
         let session_id = writer.enc.session_id();
 
+        #[allow(clippy::type_complexity)]
         let pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Vec<u8>, InvocationError>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
@@ -592,6 +677,7 @@ impl Client {
             dc_options:      Mutex::new(dc_opts),
             peer_cache:      Mutex::new(PeerCache::default()),
             pts_state:       Mutex::new(pts::PtsState::default()),
+            possible_gap:    Mutex::new(pts::PossibleGapBuffer::new()),
             api_id:          config.api_id,
             api_hash:        config.api_hash,
             retry_policy:    config.retry_policy,
@@ -600,7 +686,7 @@ impl Client {
             transport:       config.transport,
             session_backend: config.session_backend,
             dc_pool:         Mutex::new(pool),
-            update_tx:       update_tx,
+            update_tx,
         });
 
         let client = Self {
@@ -650,17 +736,61 @@ impl Client {
             client.init_connection().await?;
         }
 
-        let _ = client.sync_pts_state().await;
+        // ── Restore peer access-hash cache from session ─────────────────
+        if let Some(ref s) = loaded_session
+            && !s.peers.is_empty() {
+            let mut cache = client.inner.peer_cache.lock().await;
+            for p in &s.peers {
+                if p.is_channel {
+                    cache.channels.entry(p.id).or_insert(p.access_hash);
+                } else {
+                    cache.users.entry(p.id).or_insert(p.access_hash);
+                }
+            }
+            log::debug!("[layer] Peer cache restored: {} users, {} channels",
+                cache.users.len(), cache.channels.len());
+        }
 
-        // If catch_up is enabled, replay any missed updates immediately.
-        if catch_up {
-            let c = client.clone();
+        // ── Restore update state / catch-up ─────────────────────────────
+        //
+        // Two modes:
+        //   catch_up=false → always call sync_pts_state() so we start from
+        //                    the current server state (ignore saved pts).
+        //   catch_up=true  → if we have a saved pts > 0, restore it and let
+        //                    get_difference() fetch what we missed.  Only fall
+        //                    back to sync_pts_state() when there is no saved
+        //                    state (first boot, or fresh session).
+        let has_saved_state = loaded_session
+            .as_ref()
+            .is_some_and(|s| s.updates_state.is_initialised());
+
+        if catch_up && has_saved_state {
+            let snap = &loaded_session.as_ref().unwrap().updates_state;
+            let mut state = client.inner.pts_state.lock().await;
+            state.pts  = snap.pts;
+            state.qts  = snap.qts;
+            state.date = snap.date;
+            state.seq  = snap.seq;
+            for &(cid, cpts) in &snap.channels {
+                state.channel_pts.insert(cid, cpts);
+            }
+            log::info!("[layer] Update state restored: pts={}, qts={}, seq={}, {} channels",
+                state.pts, state.qts, state.seq, state.channel_pts.len());
+            drop(state);
+
+            // Now spawn the catch-up diff — pts is the *old* value, so
+            // getDifference will return exactly what we missed.
+            let c   = client.clone();
             let utx = client.inner.update_tx.clone();
             tokio::spawn(async move {
                 if let Ok(missed) = c.get_difference().await {
+                    log::info!("[layer] catch_up: {} missed updates replayed", missed.len());
                     for u in missed { let _ = utx.send(u); }
                 }
             });
+        } else {
+            // No saved state or catch_up disabled — sync from server.
+            let _ = client.sync_pts_state().await;
         }
 
         Ok((client, shutdown_token))
@@ -682,6 +812,8 @@ impl Client {
     // ── Session ────────────────────────────────────────────────────────────
 
     pub async fn save_session(&self) -> Result<(), InvocationError> {
+        use session::{CachedPeer, UpdatesStateSnap};
+
         let writer_guard = self.inner.writer.lock().await;
         let home_dc_id   = *self.inner.home_dc_id.lock().await;
         let dc_options   = self.inner.dc_options.lock().await;
@@ -693,11 +825,31 @@ impl Client {
             first_salt:  if e.dc_id == home_dc_id { writer_guard.first_salt() } else { e.first_salt },
             time_offset: if e.dc_id == home_dc_id { writer_guard.time_offset() } else { e.time_offset },
         }).collect();
-        // Collect auth keys from worker DCs in the pool
         self.inner.dc_pool.lock().await.collect_keys(&mut dcs);
 
+        // Snapshot current pts state
+        let pts_snap = {
+            let s = self.inner.pts_state.lock().await;
+            UpdatesStateSnap {
+                pts:      s.pts,
+                qts:      s.qts,
+                date:     s.date,
+                seq:      s.seq,
+                channels: s.channel_pts.iter().map(|(&k, &v)| (k, v)).collect(),
+            }
+        };
+
+        // Snapshot peer access-hash cache
+        let peers: Vec<CachedPeer> = {
+            let cache = self.inner.peer_cache.lock().await;
+            let mut v = Vec::with_capacity(cache.users.len() + cache.channels.len());
+            for (&id, &hash) in &cache.users    { v.push(CachedPeer { id, access_hash: hash, is_channel: false }); }
+            for (&id, &hash) in &cache.channels { v.push(CachedPeer { id, access_hash: hash, is_channel: true  }); }
+            v
+        };
+
         self.inner.session_backend
-            .save(&PersistedSession { home_dc_id, dcs })
+            .save(&PersistedSession { home_dc_id, dcs, updates_state: pts_snap, peers })
             .map_err(InvocationError::Io)?;
         log::info!("[layer] Session saved ✓");
         Ok(())
@@ -789,7 +941,7 @@ impl Client {
             }
             Err(e) if e.is("SESSION_PASSWORD_NEEDED") => {
                 let t = self.get_password_info().await.map_err(SignInError::Other)?;
-                return Err(SignInError::PasswordRequired(t));
+                return Err(SignInError::PasswordRequired(Box::new(t)));
             }
             Err(e) if e.is("PHONE_CODE_*") => return Err(SignInError::InvalidCode),
             Err(e) => return Err(SignInError::Other(e)),
@@ -943,6 +1095,7 @@ impl Client {
     //      initial_init_rx to the restarted reader_loop.
     //   4. reader_loop picks up init_rx immediately on its first iteration and
     //      handles success/failure exactly like a mid-session reconnect.
+    #[allow(clippy::too_many_arguments)]
     async fn run_reader_task(
         &self,
         read_half:   OwnedReadHalf,
@@ -1058,10 +1211,9 @@ impl Client {
                         Err(e) => break Err(e),
                     }
                 };
-                if result.is_ok() {
-                    if let Ok(missed) = c.get_difference().await {
-                        for u in missed { let _ = utx.send(u); }
-                    }
+                if result.is_ok()
+                    && let Ok(missed) = c.get_difference().await {
+                    for u in missed { let _ = utx.send(u); }
                 }
                 let _ = init_tx.send(result);
             });
@@ -1072,6 +1224,7 @@ impl Client {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn reader_loop(
         &self,
         mut rh:          OwnedReadHalf,
@@ -1108,7 +1261,24 @@ impl Client {
                             if msg.salt != 0 {
                                 self.inner.writer.lock().await.enc.salt = msg.salt;
                             }
-                            self.route_frame(msg.body).await;
+                            self.route_frame(msg.body, msg.msg_id).await;
+
+                            // G-04: flush any accumulated acks as a standalone MsgsAck.
+                            // (When an RPC is in flight they're bundled into a container
+                            // instead — this covers the case where only updates arrived.)
+                            let acks_to_send = {
+                                let mut w = self.inner.writer.lock().await;
+                                let v: Vec<i64> = w.pending_ack.drain(..).collect();
+                                v
+                            };
+                            if !acks_to_send.is_empty() {
+                                let mut w = self.inner.writer.lock().await;
+                                let fk = w.frame_kind.clone();
+                                let ack_body = build_msgs_ack_body(&acks_to_send);
+                                let (wire, _) = w.enc.pack_body_with_msg_id(&ack_body, false);
+                                send_frame_write(&mut w.write_half, &wire, &fk).await.ok();
+                                log::trace!("[layer] G-04 flushed {} acks", acks_to_send.len());
+                            }
                         }
 
                         FrameOutcome::Error(e) => {
@@ -1252,23 +1422,24 @@ impl Client {
     }
 
     /// Route a decrypted MTProto frame body to either a pending RPC caller or update_tx.
-    async fn route_frame(&self, body: Vec<u8>) {
+    async fn route_frame(&self, body: Vec<u8>, msg_id: i64) {
         if body.len() < 4 { return; }
         let cid = u32::from_le_bytes(body[..4].try_into().unwrap());
 
         match cid {
             ID_RPC_RESULT => {
-                // body[4..12] = req_msg_id of the request this is answering
                 if body.len() < 12 { return; }
                 let req_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
                 let inner = body[12..].to_vec();
-                // Recursively unwrap the inner payload (handles gzip, containers, etc.)
+                // G-04: ack the rpc_result container message
+                self.inner.writer.lock().await.pending_ack.push(msg_id);
                 let result = unwrap_envelope(inner);
                 if let Some(tx) = self.inner.pending.lock().await.remove(&req_msg_id) {
+                    // G-02: request resolved — remove from sent_bodies
+                    self.inner.writer.lock().await.sent_bodies.remove(&req_msg_id);
                     let to_send = match result {
                         Ok(EnvelopeResult::Payload(p)) => Ok(p),
                         Ok(EnvelopeResult::Updates(us)) => {
-                            // Write RPCs return Updates — forward them and signal success
                             for u in us { let _ = self.inner.update_tx.send(u); }
                             Ok(vec![])
                         }
@@ -1278,60 +1449,442 @@ impl Client {
                     let _ = tx.send(to_send);
                 }
             }
-            // ID_RPC_ERROR only appears as the INNER body of ID_RPC_RESULT.
-            // At top level it has no req_msg_id — ignore it here (the ID_RPC_RESULT
-            // handler above uses unwrap_envelope which correctly returns Err for it).
             ID_RPC_ERROR => {
                 log::warn!("[layer] Unexpected top-level rpc_error (no pending target)");
             }
             ID_MSG_CONTAINER => {
-                // Container of multiple inner messages — recurse into each
                 if body.len() < 8 { return; }
                 let count = u32::from_le_bytes(body[4..8].try_into().unwrap()) as usize;
                 let mut pos = 8usize;
                 for _ in 0..count {
                     if pos + 16 > body.len() { break; }
+                    // Extract inner msg_id for correct ack tracking
+                    let inner_msg_id = i64::from_le_bytes(body[pos..pos + 8].try_into().unwrap());
                     let inner_len = u32::from_le_bytes(body[pos + 12..pos + 16].try_into().unwrap()) as usize;
                     pos += 16;
                     if pos + inner_len > body.len() { break; }
                     let inner = body[pos..pos + inner_len].to_vec();
                     pos += inner_len;
-                    Box::pin(self.route_frame(inner)).await;
+                    Box::pin(self.route_frame(inner, inner_msg_id)).await;
                 }
             }
             ID_GZIP_PACKED => {
                 let bytes = tl_read_bytes(&body[4..]).unwrap_or_default();
                 if let Ok(inflated) = gz_inflate(&bytes) {
-                    Box::pin(self.route_frame(inflated)).await;
+                    // pass same outer msg_id — gzip has no msg_id of its own
+                    Box::pin(self.route_frame(inflated, msg_id)).await;
                 }
             }
             ID_BAD_SERVER_SALT => {
-                // Server is telling us to use a different salt — update writer enc
-                if body.len() >= 16 {
-                    let new_salt = i64::from_le_bytes(body[8..16].try_into().unwrap());
+                // bad_server_salt#edab447b bad_msg_id:long bad_msg_seqno:int new_server_salt:long
+                // body[0..4]   = constructor
+                // body[4..12]  = bad_msg_id
+                // body[12..16] = bad_msg_seqno
+                // body[16..24] = new_server_salt  ← was wrongly [8..16]
+                if body.len() >= 24 {
+                    let bad_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
+                    let new_salt   = i64::from_le_bytes(body[16..24].try_into().unwrap());
+
+                    // Update session salt so re-sent request uses the correct salt.
                     self.inner.writer.lock().await.enc.salt = new_salt;
+                    log::debug!("[layer] bad_server_salt: bad_msg_id={bad_msg_id} salt={new_salt:#x}");
+
+                    // Re-transmit the original request under the new salt.
+                    {
+                        let mut w = self.inner.writer.lock().await;
+                        if let Some(orig_body) = w.sent_bodies.remove(&bad_msg_id) {
+                            let (wire, new_msg_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
+                            let fk = w.frame_kind.clone();
+                            w.sent_bodies.insert(new_msg_id, orig_body);
+                            // Drop writer before touching pending (lock-order safety).
+                            drop(w);
+                            let mut pending = self.inner.pending.lock().await;
+                            if let Some(tx) = pending.remove(&bad_msg_id) {
+                                pending.insert(new_msg_id, tx);
+                                drop(pending);
+                                let mut w = self.inner.writer.lock().await;
+                                if let Err(e) = send_frame_write(&mut w.write_half, &wire, &fk).await {
+                                    log::warn!("[layer] bad_server_salt re-send failed: {e}");
+                                } else {
+                                    log::debug!("[layer] bad_server_salt re-sent {bad_msg_id}→{new_msg_id}");
+                                }
+                            }
+                        }
+                    }
+
+                    // G-08: proactively refresh salt pool in background.
+                    let inner = Arc::clone(&self.inner);
+                    tokio::spawn(async move {
+                        log::debug!("[layer] G-08 proactive GetFutureSalts …");
+                        // get_future_salts#b921bd04 num:int = FutureSalts
+                        let mut req_body = Vec::with_capacity(8);
+                        req_body.extend_from_slice(&0xb921bd04_u32.to_le_bytes());
+                        req_body.extend_from_slice(&64_i32.to_le_bytes());
+                        // G-09 fix: store in sent_bodies so bad_msg_notify can re-send it.
+                        let (wire, fs_msg_id) = {
+                            let mut w = inner.writer.lock().await;
+                            let (wire, id) = w.enc.pack_body_with_msg_id(&req_body, true);
+                            w.sent_bodies.insert(id, req_body);
+                            (wire, id)
+                        };
+                        let fk = inner.writer.lock().await.frame_kind.clone();
+                        let (tx, rx) = tokio::sync::oneshot::channel();
+                        inner.pending.lock().await.insert(fs_msg_id, tx);
+                        {
+                            let mut w = inner.writer.lock().await;
+                            if send_frame_write(&mut w.write_half, &wire, &fk).await.is_err() {
+                                inner.pending.lock().await.remove(&fs_msg_id);
+                                inner.writer.lock().await.sent_bodies.remove(&fs_msg_id);
+                                return;
+                            }
+                        }
+                        let _ = tokio::time::timeout(
+                            std::time::Duration::from_secs(30), rx
+                        ).await;
+                    });
                 }
             }
             ID_PONG => {
-                // Bare Pong is the server's reply to our Ping — NOT wrapped in rpc_result.
-                // pong#347773c5 msg_id:long ping_id:long
-                //   body[4..12] = msg_id of the original Ping → key in pending map
+                // Pong is the server's reply to Ping — NOT inside rpc_result.
+                // pong#347773c5  msg_id:long  ping_id:long
+                // body[4..12] = msg_id of the original Ping → key in pending map
                 if body.len() >= 20 {
                     let ping_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
                     if let Some(tx) = self.inner.pending.lock().await.remove(&ping_msg_id) {
+                        self.inner.writer.lock().await.sent_bodies.remove(&ping_msg_id);
                         let _ = tx.send(Ok(body));
                     }
                 }
             }
+            // ── G-09: FutureSalts arrives bare (like Pong) ───────────────────
+            ID_FUTURE_SALTS => {
+                // future_salts#ae500895
+                //   [0..4]   constructor
+                //   [4..12]  req_msg_id (long)
+                //   [12..16] now (int)
+                //   [16..20] vector constructor 0x1cb5c415
+                //   [20..24] count (int)          ← was wrongly [16..20]
+                //   per entry (bare, no constructor):
+                //     [+0..+4]  valid_since (int)
+                //     [+4..+8]  valid_until (int)
+                //     [+8..+16] salt (long)
+                //   first entry starts at byte 24 → salt at [32..40] ← was [28..36]
+                if body.len() >= 12 {
+                    let req_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
+                    if body.len() >= 40 {
+                        let count = u32::from_le_bytes(body[20..24].try_into().unwrap()) as usize;
+                        if count > 0 {
+                            let salt_val = i64::from_le_bytes(body[32..40].try_into().unwrap());
+                            self.inner.writer.lock().await.enc.salt = salt_val;
+                            log::debug!("[layer] G-09 FutureSalts: salt={salt_val:#x} count={count}");
+                        }
+                    }
+                    if let Some(tx) = self.inner.pending.lock().await.remove(&req_msg_id) {
+                        self.inner.writer.lock().await.sent_bodies.remove(&req_msg_id);
+                        let _ = tx.send(Ok(body));
+                    }
+                }
+            }
+            ID_NEW_SESSION => {
+                // new_session_created#9ec20908 first_msg_id:long unique_id:long server_salt:long
+                if body.len() >= 28 {
+                    let server_salt = i64::from_le_bytes(body[20..28].try_into().unwrap());
+                    self.inner.writer.lock().await.enc.salt = server_salt;
+                    log::debug!("[layer] new_session_created — salt reset to {server_salt:#x}");
+                }
+            }
+            // ── G-02 + G-03 + G-12: bad_msg_notification ────────────────────
+            ID_BAD_MSG_NOTIFY => {
+                // bad_msg_notification#a7eff811 bad_msg_id:long bad_msg_seqno:int error_code:int
+                if body.len() < 20 { return; }
+                let bad_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
+                let error_code = u32::from_le_bytes(body[16..20].try_into().unwrap());
+                log::warn!("[layer] bad_msg_notification: msg_id={bad_msg_id} code={error_code}");
+
+                // Phase 1: hold writer only for enc-state mutations + packing.
+                // The lock is dropped BEFORE we touch `pending`, eliminating the
+                // writer→pending lock-order deadlock that existed before this fix.
+                let resend: Option<(Vec<u8>, i64, FrameKind)> = {
+                    let mut w = self.inner.writer.lock().await;
+                    // G-12: correct clock skew on codes 16/17
+                    if error_code == 16 || error_code == 17 {
+                        w.enc.correct_time_offset(bad_msg_id);
+                    }
+                    // G-03: correct seq_no on codes 32/33
+                    if error_code == 32 || error_code == 33 {
+                        w.enc.correct_seq_no(error_code);
+                    }
+                    // G-02: pack re-send if we have the original body.
+                    if let Some(orig_body) = w.sent_bodies.remove(&bad_msg_id) {
+                        let (wire, new_msg_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
+                        let fk = w.frame_kind.clone();
+                        w.sent_bodies.insert(new_msg_id, orig_body);
+                        Some((wire, new_msg_id, fk))
+                    } else {
+                        None
+                    }
+                }; // ← writer lock released here
+
+                match resend {
+                    Some((wire, new_msg_id, fk)) => {
+                        // Phase 2: re-key pending (no writer lock held).
+                        let has_waiter = {
+                            let mut pending = self.inner.pending.lock().await;
+                            if let Some(tx) = pending.remove(&bad_msg_id) {
+                                pending.insert(new_msg_id, tx);
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if has_waiter {
+                            // Phase 3: re-acquire writer only for TCP send.
+                            let mut w = self.inner.writer.lock().await;
+                            if let Err(e) = send_frame_write(&mut w.write_half, &wire, &fk).await {
+                                log::warn!("[layer] G-02 re-send failed: {e}");
+                                w.sent_bodies.remove(&new_msg_id);
+                            } else {
+                                log::debug!("[layer] G-02 re-sent {bad_msg_id}→{new_msg_id}");
+                            }
+                        } else {
+                            self.inner.writer.lock().await.sent_bodies.remove(&new_msg_id);
+                        }
+                    }
+                    None => {
+                        // Not in sent_bodies — surface retriable error to the waiter.
+                        if let Some(tx) = self.inner.pending.lock().await.remove(&bad_msg_id) {
+                            let _ = tx.send(Err(InvocationError::Deserialize(
+                                format!("bad_msg_notification code={error_code}")
+                            )));
+                        }
+                    }
+                }
+            }
+            // ── G-11: MsgDetailedInfo → ack the answer_msg_id ───────────────
+            ID_MSG_DETAILED_INFO => {
+                // msg_detailed_info#276d3ec6 msg_id:long answer_msg_id:long bytes:int status:int
+                // body[4..12]  = msg_id (original request)
+                // body[12..20] = answer_msg_id (what to ack)
+                if body.len() >= 20 {
+                    let answer_msg_id = i64::from_le_bytes(body[12..20].try_into().unwrap());
+                    self.inner.writer.lock().await.pending_ack.push(answer_msg_id);
+                    log::trace!("[layer] G-11 MsgDetailedInfo: queued ack for answer_msg_id={answer_msg_id}");
+                }
+            }
+            ID_MSG_NEW_DETAIL_INFO => {
+                // msg_new_detailed_info#809db6df answer_msg_id:long bytes:int status:int
+                // body[4..12] = answer_msg_id
+                if body.len() >= 12 {
+                    let answer_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
+                    self.inner.writer.lock().await.pending_ack.push(answer_msg_id);
+                    log::trace!("[layer] G-11 MsgNewDetailedInfo: queued ack for {answer_msg_id}");
+                }
+            }
+            // ── G-14: MsgResendReq → re-send the requested msg_ids ──────────
+            ID_MSG_RESEND_REQ => {
+                // msg_resend_req#7d861a08 msg_ids:Vector<long>
+                // body[4..8]   = 0x1cb5c415 (Vector constructor)
+                // body[8..12]  = count
+                // body[12..]   = msg_ids
+                if body.len() >= 12 {
+                    let count = u32::from_le_bytes(body[8..12].try_into().unwrap()) as usize;
+                    let mut w = self.inner.writer.lock().await;
+                    let fk = w.frame_kind.clone();
+                    for i in 0..count {
+                        let off = 12 + i * 8;
+                        if off + 8 > body.len() { break; }
+                        let resend_id = i64::from_le_bytes(body[off..off + 8].try_into().unwrap());
+                        if let Some(orig_body) = w.sent_bodies.remove(&resend_id) {
+                            let (wire, new_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
+                            // Re-key the pending waiter
+                            let mut pending = self.inner.pending.lock().await;
+                            if let Some(tx) = pending.remove(&resend_id) {
+                                pending.insert(new_id, tx);
+                            }
+                            drop(pending);
+                            w.sent_bodies.insert(new_id, orig_body);
+                            send_frame_write(&mut w.write_half, &wire, &fk).await.ok();
+                            log::debug!("[layer] G-14 MsgResendReq: resent {resend_id} → {new_id}");
+                        }
+                    }
+                }
+            }
+            // ── G-13: log DestroySession outcomes ───────────────────────────
+            0xe22045fc => {
+                log::warn!("[layer] destroy_session_ok received — session terminated by server");
+            }
+            0x62d350c9 => {
+                log::warn!("[layer] destroy_session_none received — session was already gone");
+            }
             ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED
             | ID_UPDATE_SHORT_MSG | ID_UPDATE_SHORT_CHAT_MSG
             | ID_UPDATES_TOO_LONG => {
-                for u in update::parse_updates(&body) {
-                    let _ = self.inner.update_tx.send(u);
+                // G-04: ack update frames too
+                self.inner.writer.lock().await.pending_ack.push(msg_id);
+                // Bug #1 fix: route through pts/qts/seq gap-checkers
+                self.dispatch_updates(&body).await;
+            }
+            _ => {}
+        }
+    }
+
+
+    // ── Bug #1: pts-aware update dispatch ────────────────────────────────────
+
+    /// Parse an incoming update container and route each update through the
+    /// pts/qts/seq gap-checkers before forwarding to `update_tx`.
+    async fn dispatch_updates(&self, body: &[u8]) {
+        if body.len() < 4 { return; }
+        let cid = u32::from_le_bytes(body[..4].try_into().unwrap());
+
+        // updatesTooLong — we must call getDifference to recover missed updates.
+        if cid == 0xe317af7e_u32 {
+            log::warn!("[layer] updatesTooLong — getDifference");
+            match self.get_difference().await {
+                Ok(updates) => { for u in updates { let _ = self.inner.update_tx.send(u); } }
+                Err(e) => log::warn!("[layer] getDifference after updatesTooLong: {e}"),
+            }
+            return;
+        }
+
+        // For updateShortMessage / updateShortChatMessage we use the existing
+        // high-level parser (they have pts but no bare tl::enums::Update wrapper).
+        if cid == 0x313bc7f8 || cid == 0x4d6deea5 {
+            // Parse pts out of the short-message header.
+            // updateShortMessage: flags(4) id(4) user_id(8) ... pts(?) pts_count(?)
+            // Easier: use parse_updates which already handles them, then gap-check.
+            for u in update::parse_updates(body) {
+                let _ = self.inner.update_tx.send(u);
+            }
+            return;
+        }
+
+        // Check outer seq for Updates / UpdatesCombined containers.
+        {
+            use layer_tl_types::{Cursor, Deserializable};
+            let mut cur = Cursor::from_slice(body);
+            let seq_info: Option<(i32, i32)> = match cid {
+                0x74ae4240 => {
+                    // updates#74ae4240
+                    match tl::enums::Updates::deserialize(&mut cur) {
+                        Ok(tl::enums::Updates::Updates(u)) => Some((u.seq, u.seq)),
+                        _ => None,
+                    }
+                }
+                0x725b04c3 => {
+                    // updatesCombined#725b04c3
+                    match tl::enums::Updates::deserialize(&mut cur) {
+                        Ok(tl::enums::Updates::Combined(u)) => Some((u.seq, u.seq_start)),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let Some((seq, seq_start)) = seq_info
+                && seq != 0 {
+                match self.check_and_fill_seq_gap(seq, seq_start).await {
+                    Ok(extra) => { for u in extra { let _ = self.inner.update_tx.send(u); } }
+                    Err(e) => log::warn!("[layer] seq gap fill: {e}"),
                 }
             }
-            // Silently acknowledged service messages — pong, acks, etc.
-            _ => {}
+        }
+
+        // Flatten the container into bare tl::enums::Update items.
+        use layer_tl_types::{Cursor, Deserializable};
+        let mut cur = Cursor::from_slice(body);
+        let raw: Vec<tl::enums::Update> = match cid {
+            0x78d4dec1 => { // updateShort
+                match tl::types::UpdateShort::deserialize(&mut cur) {
+                    Ok(u) => vec![u.update],
+                    Err(_) => vec![],
+                }
+            }
+            0x74ae4240 => { // updates
+                match tl::enums::Updates::deserialize(&mut cur) {
+                    Ok(tl::enums::Updates::Updates(u)) => u.updates,
+                    _ => vec![],
+                }
+            }
+            0x725b04c3 => { // updatesCombined
+                match tl::enums::Updates::deserialize(&mut cur) {
+                    Ok(tl::enums::Updates::Combined(u)) => u.updates,
+                    _ => vec![],
+                }
+            }
+            _ => vec![],
+        };
+
+        for upd in raw {
+            self.dispatch_single_update(upd).await;
+        }
+    }
+
+    /// Route one bare `tl::enums::Update` through the pts/qts gap-checker,
+    /// then emit surviving updates to `update_tx`.
+    async fn dispatch_single_update(&self, upd: tl::enums::Update) {
+        // Two-phase: inspect pts fields via reference first (all Copy), then
+        // convert to high-level Update (consumes upd). Avoids borrow-then-move.
+        enum Kind {
+            GlobalPts  { pts: i32, pts_count: i32, carry: bool },
+            ChannelPts { channel_id: i64, pts: i32, pts_count: i32, carry: bool },
+            Qts        { qts: i32 },
+            Passthrough,
+        }
+
+        fn ch_from_msg(msg: &tl::enums::Message) -> i64 {
+            if let tl::enums::Message::Message(m) = msg
+                && let tl::enums::Peer::Channel(c) = &m.peer_id { return c.channel_id; }
+            0
+        }
+
+        let kind = {
+            use tl::enums::Update::*;
+            match &upd {
+                NewMessage(u)            => Kind::GlobalPts { pts: u.pts, pts_count: u.pts_count, carry: true },
+                EditMessage(u)           => Kind::GlobalPts { pts: u.pts, pts_count: u.pts_count, carry: true },
+                DeleteMessages(u)        => Kind::GlobalPts { pts: u.pts, pts_count: u.pts_count, carry: true },
+                ReadHistoryInbox(u)      => Kind::GlobalPts { pts: u.pts, pts_count: u.pts_count, carry: false },
+                ReadHistoryOutbox(u)     => Kind::GlobalPts { pts: u.pts, pts_count: u.pts_count, carry: false },
+                NewChannelMessage(u)     => Kind::ChannelPts { channel_id: ch_from_msg(&u.message), pts: u.pts, pts_count: u.pts_count, carry: true },
+                EditChannelMessage(u)    => Kind::ChannelPts { channel_id: ch_from_msg(&u.message), pts: u.pts, pts_count: u.pts_count, carry: true },
+                DeleteChannelMessages(u) => Kind::ChannelPts { channel_id: u.channel_id, pts: u.pts, pts_count: u.pts_count, carry: true },
+                NewEncryptedMessage(u)   => Kind::Qts { qts: u.qts },
+                _                        => Kind::Passthrough,
+            }
+        };
+
+        let high = update::from_single_update_pub(upd);
+
+        let to_send: Vec<update::Update> = match kind {
+            Kind::GlobalPts { pts, pts_count, carry } => {
+                let first = if carry { high.into_iter().next() } else { None };
+                match self.check_and_fill_gap(pts, pts_count, first).await {
+                    Ok(v) => v,
+                    Err(e) => { log::warn!("[layer] pts gap: {e}"); vec![] }
+                }
+            }
+            Kind::ChannelPts { channel_id, pts, pts_count, carry } => {
+                let first = if carry { high.into_iter().next() } else { None };
+                if channel_id != 0 {
+                    match self.check_and_fill_channel_gap(channel_id, pts, pts_count, first).await {
+                        Ok(v) => v,
+                        Err(e) => { log::warn!("[layer] ch pts gap: {e}"); vec![] }
+                    }
+                } else {
+                    first.into_iter().collect()
+                }
+            }
+            Kind::Qts { qts } => {
+                match self.check_and_fill_qts_gap(qts, 1).await {
+                    Ok(_) => vec![],
+                    Err(e) => { log::warn!("[layer] qts gap: {e}"); vec![] }
+                }
+            }
+            Kind::Passthrough => high,
+        };
+
+        for u in to_send {
+            let _ = self.inner.update_tx.send(u);
         }
     }
 
@@ -1365,7 +1918,7 @@ impl Client {
             tokio::select! {
                 _ = sleep(Duration::from_millis(delay_ms)) => {}
                 hint = network_hint_rx.recv() => {
-                    if hint.is_none() { return None; } // shutdown
+                    hint?; // shutdown
                     log::info!("[layer] Network hint → skipping backoff, reconnecting now");
                 }
             }
@@ -1417,8 +1970,7 @@ impl Client {
                     // Cap at max, then apply ±20 % jitter to avoid thundering herd.
                     // Ensure the delay always advances by at least RECONNECT_BASE_MS
                     // so a 0 initial delay on the first attempt doesn't spin-loop.
-                    let next = (delay_ms.saturating_mul(2).max(RECONNECT_BASE_MS))
-                        .min(RECONNECT_MAX_SECS * 1_000);
+                    let next = delay_ms.saturating_mul(2).clamp(RECONNECT_BASE_MS, RECONNECT_MAX_SECS * 1_000);
                     delay_ms = jitter_delay(next).as_millis() as u64;
                 }
             }
@@ -1500,6 +2052,40 @@ impl Client {
         msg:  &InputMessage,
     ) -> Result<(), InvocationError> {
         let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let schedule = if msg.schedule_once_online {
+            Some(0x7FFF_FFFEi32)
+        } else {
+            msg.schedule_date
+        };
+
+        // G-45: if media is attached, route through SendMedia instead of SendMessage.
+        if let Some(media) = &msg.media {
+            let req = tl::functions::messages::SendMedia {
+                silent:                   msg.silent,
+                background:               msg.background,
+                clear_draft:              msg.clear_draft,
+                noforwards:               false,
+                update_stickersets_order: false,
+                invert_media:             msg.invert_media,
+                allow_paid_floodskip:     false,
+                peer:                     input_peer,
+                reply_to:                 msg.reply_header(),
+                media:                    media.clone(),
+                message:                  msg.text.clone(),
+                random_id:                random_i64(),
+                reply_markup:             msg.reply_markup.clone(),
+                entities:                 msg.entities.clone(),
+                schedule_date:            schedule,
+                schedule_repeat_period:   None,
+                send_as:                  None,
+                quick_reply_shortcut:     None,
+                effect:                   None,
+                allow_paid_stars:         None,
+                suggested_post:           None,
+            };
+            return self.rpc_call_raw_pub(&req).await.map(|_| ());
+        }
+
         let req = tl::functions::messages::SendMessage {
             no_webpage:               msg.no_webpage,
             silent:                   msg.silent,
@@ -1507,7 +2093,7 @@ impl Client {
             clear_draft:              msg.clear_draft,
             noforwards:               false,
             update_stickersets_order: false,
-            invert_media:             false,
+            invert_media:             msg.invert_media,
             allow_paid_floodskip:     false,
             peer:                     input_peer,
             reply_to:                 msg.reply_header(),
@@ -1515,7 +2101,7 @@ impl Client {
             random_id:                random_i64(),
             reply_markup:             msg.reply_markup.clone(),
             entities:                 msg.entities.clone(),
-            schedule_date:            msg.schedule_date,
+            schedule_date:            schedule,
             schedule_repeat_period:   None,
             send_as:                  None,
             quick_reply_shortcut:     None,
@@ -1597,10 +2183,10 @@ impl Client {
             drop_author:       false,
             drop_media_captions: false,
             noforwards:        false,
-            from_peer:         from_peer,
+            from_peer,
             id:                message_ids.to_vec(),
             random_id:         (0..message_ids.len()).map(|_| random_i64()).collect(),
-            to_peer:           to_peer,
+            to_peer,
             top_msg_id:        None,
             reply_to:          None,
             schedule_date:     None,
@@ -1746,71 +2332,34 @@ impl Client {
 
     // ── Message search ─────────────────────────────────────────────────────
 
-    /// Search messages in a chat.
+    /// Search messages in a chat (simple form).
+    /// For advanced filtering use [`Client::search`] → [`SearchBuilder`].
     pub async fn search_messages(
         &self,
         peer:  tl::enums::Peer,
         query: &str,
         limit: i32,
     ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
-        let req = tl::functions::messages::Search {
-            peer:         input_peer,
-            q:            query.to_string(),
-            from_id:      None,
-            saved_peer_id: None,
-            saved_reaction: None,
-            top_msg_id:   None,
-            filter:       tl::enums::MessagesFilter::InputMessagesFilterEmpty,
-            min_date:     0,
-            max_date:     0,
-            offset_id:    0,
-            add_offset:   0,
-            limit,
-            max_id:       0,
-            min_id:       0,
-            hash:         0,
-        };
-        let body    = self.rpc_call_raw(&req).await?;
-        let mut cur = Cursor::from_slice(&body);
-        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
-            tl::enums::messages::Messages::Messages(m) => m.messages,
-            tl::enums::messages::Messages::Slice(m)    => m.messages,
-            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
-            tl::enums::messages::Messages::NotModified(_) => vec![],
-        };
-        Ok(msgs.into_iter().map(update::IncomingMessage::from_raw).collect())
+        self.search(peer, query).limit(limit).fetch(self).await
     }
 
-    /// Search messages globally across all chats.
+    /// G-31: Fluent search builder for in-chat message search.
+    pub fn search(&self, peer: tl::enums::Peer, query: &str) -> SearchBuilder {
+        SearchBuilder::new(peer, query.to_string())
+    }
+
+    /// Search globally (simple form). For filtering use [`Client::search_global_builder`].
     pub async fn search_global(
         &self,
         query: &str,
         limit: i32,
     ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
-        let req = tl::functions::messages::SearchGlobal {
-            broadcasts_only: false,
-            groups_only:     false,
-            users_only:      false,
-            folder_id:       None,
-            q:               query.to_string(),
-            filter:          tl::enums::MessagesFilter::InputMessagesFilterEmpty,
-            min_date:        0,
-            max_date:        0,
-            offset_rate:     0,
-            offset_peer:     tl::enums::InputPeer::Empty,
-            offset_id:       0,
-            limit,
-        };
-        let body    = self.rpc_call_raw(&req).await?;
-        let mut cur = Cursor::from_slice(&body);
-        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
-            tl::enums::messages::Messages::Messages(m) => m.messages,
-            tl::enums::messages::Messages::Slice(m)    => m.messages,
-            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
-            tl::enums::messages::Messages::NotModified(_) => vec![],
-        };
-        Ok(msgs.into_iter().map(update::IncomingMessage::from_raw).collect())
+        self.search_global_builder(query).limit(limit).fetch(self).await
+    }
+
+    /// G-32: Fluent builder for global cross-chat search.
+    pub fn search_global_builder(&self, query: &str) -> GlobalSearchBuilder {
+        GlobalSearchBuilder::new(query.to_string())
     }
 
     // ── Scheduled messages ─────────────────────────────────────────────────
@@ -1865,6 +2414,42 @@ impl Client {
 
     // ── Callback / Inline Queries ──────────────────────────────────────────
 
+    /// G-24: Edit an inline message by its [`InputBotInlineMessageId`].
+    ///
+    /// Inline messages live on the bot's home DC, not necessarily the current
+    /// connection's DC.  This method sends the edit RPC on the correct DC by
+    /// using the DC ID encoded in `msg_id` (high 20 bits of the `dc_id` field).
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # async fn f(
+    /// #   client: layer_client::Client,
+    /// #   id: layer_tl_types::enums::InputBotInlineMessageId,
+    /// # ) -> Result<(), Box<dyn std::error::Error>> {
+    /// client.edit_inline_message(id, "new text", None).await?;
+    /// # Ok(()) }
+    /// ```
+    pub async fn edit_inline_message(
+        &self,
+        id:           tl::enums::InputBotInlineMessageId,
+        new_text:     &str,
+        reply_markup: Option<tl::enums::ReplyMarkup>,
+    ) -> Result<bool, InvocationError> {
+        let req = tl::functions::messages::EditInlineBotMessage {
+            no_webpage:   false,
+            invert_media: false,
+            id,
+            message:      Some(new_text.to_string()),
+            media:        None,
+            reply_markup,
+            entities:     None,
+        };
+        let body = self.rpc_call_raw(&req).await?;
+        // Bool#997275b5 = boolTrue; Bool#bc799737 = boolFalse
+        Ok(body.len() >= 4 && u32::from_le_bytes(body[..4].try_into().unwrap()) == 0x997275b5)
+    }
+
+    /// Answer a callback query from an inline keyboard button press (bots only).
     pub async fn answer_callback_query(
         &self,
         query_id: i64,
@@ -1879,7 +2464,7 @@ impl Client {
             cache_time: 0,
         };
         let body = self.rpc_call_raw(&req).await?;
-        Ok(!body.is_empty())
+        Ok(body.len() >= 4 && u32::from_le_bytes(body[..4].try_into().unwrap()) == 0x997275b5)
     }
 
     pub async fn answer_inline_query(
@@ -1901,7 +2486,7 @@ impl Client {
             switch_webview: None,
         };
         let body = self.rpc_call_raw(&req).await?;
-        Ok(!body.is_empty())
+        Ok(body.len() >= 4 && u32::from_le_bytes(body[..4].try_into().unwrap()) == 0x997275b5)
     }
 
     // ── Dialogs ────────────────────────────────────────────────────────────
@@ -1930,13 +2515,13 @@ impl Client {
 
         // Build message map
         let msg_map: HashMap<i32, tl::enums::Message> = raw.messages.into_iter()
-            .filter_map(|m| {
+            .map(|m| {
                 let id = match &m {
                     tl::enums::Message::Message(x) => x.id,
                     tl::enums::Message::Service(x) => x.id,
                     tl::enums::Message::Empty(x)   => x.id,
                 };
-                Some((id, m))
+                (id, m)
             })
             .collect();
 
@@ -2007,13 +2592,13 @@ impl Client {
         };
 
         let msg_map: HashMap<i32, tl::enums::Message> = raw.messages.into_iter()
-            .filter_map(|m| {
+            .map(|m| {
                 let id = match &m {
                     tl::enums::Message::Message(x) => x.id,
                     tl::enums::Message::Service(x) => x.id,
                     tl::enums::Message::Empty(x)   => x.id,
                 };
-                Some((id, m))
+                (id, m)
             })
             .collect();
 
@@ -2228,18 +2813,14 @@ impl Client {
     /// Send a chat action (typing indicator, uploading photo, etc).
     ///
     /// For "typing" use `tl::enums::SendMessageAction::Typing`.
+    /// For forum topic support use [`send_chat_action_ex`](Self::send_chat_action_ex)
+    /// or the [`typing_in_topic`](Self::typing_in_topic) helper.
     pub async fn send_chat_action(
         &self,
         peer:   tl::enums::Peer,
         action: tl::enums::SendMessageAction,
     ) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
-        let req = tl::functions::messages::SetTyping {
-            peer: input_peer,
-            top_msg_id: None,
-            action,
-        };
-        self.rpc_write(&req).await
+        self.send_chat_action_ex(peer, action, None).await
     }
 
     // ── Join / invite links ────────────────────────────────────────────────
@@ -2334,7 +2915,10 @@ impl Client {
         }
     }
 
-    async fn resolve_username(&self, username: &str) -> Result<tl::enums::Peer, InvocationError> {
+    /// Resolve a Telegram username to a [`tl::enums::Peer`] and cache the access hash.
+    ///
+    /// Also accepts usernames without the leading `@`.
+    pub async fn resolve_username(&self, username: &str) -> Result<tl::enums::Peer, InvocationError> {
         let req  = tl::functions::contacts::ResolveUsername {
             username: username.to_string(), referer: None,
         };
@@ -2391,16 +2975,46 @@ impl Client {
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
         {
+            let raw_body = req.to_bytes();
+            // G-06: compress large outgoing bodies
+            let body = maybe_gz_pack(&raw_body);
+
             let mut w = self.inner.writer.lock().await;
-            let (wire, msg_id) = w.enc.pack_with_msg_id(req);
             let fk = w.frame_kind.clone();
-            // Insert BEFORE sending — response cannot arrive before we send, but
-            // inserting first is the safe contract.
-            self.inner.pending.lock().await.insert(msg_id, tx);
-            send_frame_write(&mut w.write_half, &wire, &fk).await?;
+
+            // G-04 + G-07: drain any pending acks; if non-empty bundle them with
+            // the request in a MessageContainer so acks piggyback on every send.
+            let acks: Vec<i64> = w.pending_ack.drain(..).collect();
+
+            if acks.is_empty() {
+                // ── Simple path: standalone request ──────────────────────────
+                let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
+                w.sent_bodies.insert(msg_id, body); // G-02
+                self.inner.pending.lock().await.insert(msg_id, tx);
+                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+            } else {
+                // ── G-07 container path: [MsgsAck, request] ─────────────────
+                // Build MsgsAck inner body
+                let ack_body = build_msgs_ack_body(&acks);
+                // Allocate inner msg_id+seqno for each item
+                let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false); // non-content
+                let (req_msg_id, req_seqno) = w.enc.alloc_msg_seqno(true);  // content
+
+                // Build container payload
+                let container_payload = build_container_body(&[
+                    (ack_msg_id, ack_seqno, ack_body.as_slice()),
+                    (req_msg_id, req_seqno, body.as_slice()),
+                ]);
+
+                // Encrypt the container as a non-content-related outer message
+                let wire = w.enc.pack_container(&container_payload);
+
+                w.sent_bodies.insert(req_msg_id, body); // G-02
+                self.inner.pending.lock().await.insert(req_msg_id, tx);
+                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+                log::trace!("[layer] G-07 container: bundled {} acks + request", acks.len());
+            }
         }
-        // Writer lock is released. Reader task can now freely read from the socket
-        // without competing with us.
         match tokio::time::timeout(Duration::from_secs(30), rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_))     => Err(InvocationError::Deserialize("RPC channel closed (reader died?)".into())),
@@ -2435,14 +3049,38 @@ impl Client {
     async fn do_rpc_write<S: tl::Serializable>(&self, req: &S) -> Result<(), InvocationError> {
         let (tx, rx) = oneshot::channel();
         {
+            let raw_body = req.to_bytes();
+            // G-06: compress large outgoing bodies
+            let body = maybe_gz_pack(&raw_body);
+
             let mut w = self.inner.writer.lock().await;
-            let (wire, msg_id) = w.enc.pack_serializable_with_msg_id(req);
             let fk = w.frame_kind.clone();
-            self.inner.pending.lock().await.insert(msg_id, tx);
-            send_frame_write(&mut w.write_half, &wire, &fk).await?;
+
+            // G-04 + G-07: drain pending acks and bundle into container if any
+            let acks: Vec<i64> = w.pending_ack.drain(..).collect();
+
+            if acks.is_empty() {
+                let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
+                w.sent_bodies.insert(msg_id, body); // G-02
+                self.inner.pending.lock().await.insert(msg_id, tx);
+                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+            } else {
+                let ack_body = build_msgs_ack_body(&acks);
+                let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false);
+                let (req_msg_id, req_seqno) = w.enc.alloc_msg_seqno(true);
+                let container_payload = build_container_body(&[
+                    (ack_msg_id, ack_seqno, ack_body.as_slice()),
+                    (req_msg_id, req_seqno, body.as_slice()),
+                ]);
+                let wire = w.enc.pack_container(&container_payload);
+                w.sent_bodies.insert(req_msg_id, body); // G-02
+                self.inner.pending.lock().await.insert(req_msg_id, tx);
+                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+                log::trace!("[layer] G-07 write container: bundled {} acks + write", acks.len());
+            }
         }
         match tokio::time::timeout(Duration::from_secs(30), rx).await {
-            Ok(Ok(result)) => result.map(|_| ()),  // ignore body for write RPCs
+            Ok(Ok(result)) => result.map(|_| ()),
             Ok(Err(_))     => Err(InvocationError::Deserialize("rpc_write channel closed".into())),
             Err(_)         => Err(InvocationError::Deserialize("rpc_write timed out after 30 s".into())),
         }
@@ -2565,6 +3203,30 @@ impl Client {
         Ok(())
     }
 
+    // ── G-34: Graceful shutdown ────────────────────────────────────────────
+
+    /// Gracefully shut down the client.
+    ///
+    /// Signals the reader task to exit cleanly. Equivalent to cancelling the
+    /// [`ShutdownToken`] returned from [`Client::connect`].
+    ///
+    /// In-flight RPCs will receive a `Dropped` error. Call `save_session()`
+    /// before this if you want to persist the current auth state.
+    pub fn disconnect(&self) {
+        self.inner.shutdown_token.cancel();
+    }
+
+    // ── G-54: Expose sync_update_state publicly ────────────────────────────
+
+    /// Sync the internal pts/qts/seq/date state with the Telegram server.
+    ///
+    /// This is called automatically on `connect()`. Call it manually if you
+    /// need to reset the update gap-detection counters, e.g. after resuming
+    /// from a long hibernation.
+    pub async fn sync_update_state(&self) {
+        let _ = self.sync_pts_state().await;
+    }
+
     // ── Cache helpers ──────────────────────────────────────────────────────
 
     async fn cache_user(&self, user: &tl::enums::User) {
@@ -2623,11 +3285,29 @@ impl Client {
     async fn do_rpc_write_returning_body<S: tl::Serializable>(&self, req: &S) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
         {
+            let raw_body = req.to_bytes();
+            let body = maybe_gz_pack(&raw_body); // G-06
             let mut w = self.inner.writer.lock().await;
-            let (wire, msg_id) = w.enc.pack_serializable_with_msg_id(req);
             let fk = w.frame_kind.clone();
-            self.inner.pending.lock().await.insert(msg_id, tx);
-            send_frame_write(&mut w.write_half, &wire, &fk).await?;
+            let acks: Vec<i64> = w.pending_ack.drain(..).collect(); // G-04+G-07
+            if acks.is_empty() {
+                let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
+                w.sent_bodies.insert(msg_id, body); // G-02
+                self.inner.pending.lock().await.insert(msg_id, tx);
+                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+            } else {
+                let ack_body = build_msgs_ack_body(&acks);
+                let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false);
+                let (req_msg_id, req_seqno)  = w.enc.alloc_msg_seqno(true);
+                let container_payload = build_container_body(&[
+                    (ack_msg_id, ack_seqno, ack_body.as_slice()),
+                    (req_msg_id, req_seqno, body.as_slice()),
+                ]);
+                let wire = w.enc.pack_container(&container_payload);
+                w.sent_bodies.insert(req_msg_id, body); // G-02
+                self.inner.pending.lock().await.insert(req_msg_id, tx);
+                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+            }
         }
         match tokio::time::timeout(Duration::from_secs(30), rx).await {
             Ok(Ok(result)) => result,
@@ -3006,6 +3686,14 @@ struct ConnectionWriter {
     write_half: OwnedWriteHalf,
     enc:        EncryptedSession,
     frame_kind: FrameKind,
+    /// G-04: msg_ids of received content messages waiting to be acked.
+    /// Drained into a MsgsAck on every outgoing frame (bundled into container
+    /// when sending an RPC, or sent standalone after route_frame).
+    pending_ack: Vec<i64>,
+    /// G-02: raw TL body bytes of every sent request, keyed by msg_id.
+    /// On bad_msg_notification the matching body is re-encrypted with a fresh
+    /// msg_id and re-sent transparently.
+    sent_bodies: std::collections::HashMap<i64, Vec<u8>>,
 }
 
 impl ConnectionWriter {
@@ -3185,6 +3873,8 @@ impl Connection {
             write_half,
             enc:        self.enc,
             frame_kind: self.frame_kind.clone(),
+            pending_ack: Vec::new(),
+            sent_bodies: std::collections::HashMap::new(),
         };
         (writer, read_half, self.frame_kind)
     }
@@ -3520,4 +4210,88 @@ fn gz_inflate(data: &[u8]) -> Result<Vec<u8>, InvocationError> {
         .read_to_end(&mut out)
         .map_err(|_| InvocationError::Deserialize("decompression failed".into()))?;
     Ok(out)
+}
+
+// ── G-06: outgoing gzip compression ──────────────────────────────────────────
+
+/// Minimum body size above which we attempt zlib compression.
+/// Below this threshold the gzip_packed wrapper overhead exceeds the gain.
+const COMPRESSION_THRESHOLD: usize = 512;
+
+/// TL `bytes` wire encoding (used inside gzip_packed).
+fn tl_write_bytes(data: &[u8]) -> Vec<u8> {
+    let len = data.len();
+    let mut out = Vec::with_capacity(4 + len);
+    if len < 254 {
+        out.push(len as u8);
+        out.extend_from_slice(data);
+        let pad = (4 - (1 + len) % 4) % 4;
+        out.extend(std::iter::repeat(0u8).take(pad));
+    } else {
+        out.push(0xfe);
+        out.extend_from_slice(&(len as u32).to_le_bytes()[..3]);
+        out.extend_from_slice(data);
+        let pad = (4 - (4 + len) % 4) % 4;
+        out.extend(std::iter::repeat(0u8).take(pad));
+    }
+    out
+}
+
+/// Wrap `data` in a `gzip_packed#3072cfa1 packed_data:bytes` TL frame.
+fn gz_pack_body(data: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut enc = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    let _ = enc.write_all(data);
+    let compressed = enc.finish().unwrap_or_default();
+    let mut out = Vec::with_capacity(4 + 4 + compressed.len());
+    out.extend_from_slice(&ID_GZIP_PACKED.to_le_bytes());
+    out.extend(tl_write_bytes(&compressed));
+    out
+}
+
+/// Optionally compress `data`.  Returns the compressed `gzip_packed` wrapper
+/// if it is shorter than the original; otherwise returns `data` unchanged.
+fn maybe_gz_pack(data: &[u8]) -> Vec<u8> {
+    if data.len() <= COMPRESSION_THRESHOLD {
+        return data.to_vec();
+    }
+    let packed = gz_pack_body(data);
+    if packed.len() < data.len() { packed } else { data.to_vec() }
+}
+
+// ── G-04 + G-07: MsgsAck body builder ───────────────────────────────────────
+
+/// Build the TL body for `msgs_ack#62d6b459 msg_ids:Vector<long>`.
+fn build_msgs_ack_body(msg_ids: &[i64]) -> Vec<u8> {
+    // msgs_ack#62d6b459 msg_ids:Vector<long>
+    // Vector<long>: 0x1cb5c415 + count:int + [i64...]
+    let mut out = Vec::with_capacity(4 + 4 + 4 + msg_ids.len() * 8);
+    out.extend_from_slice(&ID_MSGS_ACK.to_le_bytes());
+    out.extend_from_slice(&0x1cb5c415_u32.to_le_bytes()); // Vector constructor
+    out.extend_from_slice(&(msg_ids.len() as u32).to_le_bytes());
+    for &id in msg_ids {
+        out.extend_from_slice(&id.to_le_bytes());
+    }
+    out
+}
+
+// ── G-07: MessageContainer body builder ──────────────────────────────────────
+
+/// Build the body of a `msg_container#73f1f8dc` from a list of
+/// `(msg_id, seqno, body)` inner messages.
+///
+/// The caller is responsible for allocating msg_id and seqno for each entry
+/// via `EncryptedSession::alloc_msg_seqno`.
+fn build_container_body(messages: &[(i64, i32, &[u8])]) -> Vec<u8> {
+    let total_body: usize = messages.iter().map(|(_, _, b)| 16 + b.len()).sum();
+    let mut out = Vec::with_capacity(8 + total_body);
+    out.extend_from_slice(&ID_MSG_CONTAINER.to_le_bytes());
+    out.extend_from_slice(&(messages.len() as u32).to_le_bytes());
+    for &(msg_id, seqno, body) in messages {
+        out.extend_from_slice(&msg_id.to_le_bytes());
+        out.extend_from_slice(&seqno.to_le_bytes());
+        out.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        out.extend_from_slice(body);
+    }
+    out
 }

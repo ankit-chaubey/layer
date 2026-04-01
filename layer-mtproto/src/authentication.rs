@@ -16,7 +16,7 @@
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use layer_crypto::{AuthKey, aes, factorize, generate_key_data_from_nonce, rsa};
+use layer_crypto::{AuthKey, aes, check_p_and_g, factorize, generate_key_data_from_nonce, rsa};
 use layer_tl_types::{Cursor, Deserializable, Serializable};
 use num_bigint::{BigUint, ToBigUint};
 use sha1::{Digest, Sha1};
@@ -34,6 +34,7 @@ pub enum Error {
     InvalidServerNonce   { got: [u8; 16], expected: [u8; 16] },
     EncryptedResponseNotPadded { len: usize },
     InvalidDhInnerData   { error: layer_tl_types::deserialize::Error },
+    InvalidDhPrime       { source: layer_crypto::DhError },
     GParameterOutOfRange { value: BigUint, low: BigUint, high: BigUint },
     DhGenRetry,
     DhGenFail,
@@ -60,6 +61,8 @@ impl fmt::Display for Error {
                 => write!(f, "encrypted answer len {len} is not 16-byte aligned"),
             Self::InvalidDhInnerData { error }
                 => write!(f, "DH inner data deserialization error: {error}"),
+            Self::InvalidDhPrime { source }
+                => write!(f, "DH prime/generator validation failed: {source}"),
             Self::GParameterOutOfRange { value, low, high }
                 => write!(f, "g={value} not in range ({low}, {high})"),
             Self::DhGenRetry  => write!(f, "DH gen retry requested"),
@@ -138,9 +141,7 @@ fn do_step2(
     let Step1 { nonce } = data;
 
     // ResPq has a single constructor: resPQ → variant ResPq
-    let res_pq = match response {
-        layer_tl_types::enums::ResPq::ResPq(x) => x,
-    };
+    let layer_tl_types::enums::ResPq::ResPq(res_pq) = response;
 
     check_nonce(&res_pq.nonce, &nonce)?;
 
@@ -275,6 +276,10 @@ fn do_step3(
 
     check_nonce(&inner.nonce, &nonce)?;
     check_server_nonce(&inner.server_nonce, &server_nonce)?;
+
+    // G-53: validate server-supplied DH prime and generator against MTProto spec.
+    check_p_and_g(&inner.dh_prime, inner.g as u32)
+        .map_err(|source| Error::InvalidDhPrime { source })?;
 
     let dh_prime = BigUint::from_bytes_be(&inner.dh_prime);
     let g = inner.g.to_biguint().unwrap();
