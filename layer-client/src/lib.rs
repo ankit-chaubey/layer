@@ -2761,10 +2761,8 @@ impl Client {
         location: tl::enums::InputFileLocation,
         path:     impl AsRef<std::path::Path>,
     ) -> Result<(), InvocationError> {
-        use tokio::io::AsyncWriteExt as _;
         let bytes = self.download_media(location).await?;
-        let mut f = tokio::fs::File::create(path).await?;
-        f.write_all(&bytes).await?;
+        std::fs::write(path, &bytes).map_err(InvocationError::Io)?;
         Ok(())
     }
 
