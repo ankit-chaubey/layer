@@ -13,3 +13,6 @@ categories           = ["development-tools::build-utils", "development-tools"]
 
 [dependencies]
 layer-tl-parser = { workspace = true }
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]

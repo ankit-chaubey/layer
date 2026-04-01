@@ -38,3 +38,8 @@ html = []
 ## Enable HTML parsing backed by html5ever (spec-compliant tokenizer).
 ## When active, overrides the built-in `html` parser.
 html5ever = ["dep:html5ever"]
+
+[package.metadata.docs.rs]
+# Enable all feature flags when building docs on docs.rs
+features = ["sqlite-session", "html", "html5ever"]
+rustdoc-args = ["--cfg", "docsrs"]
