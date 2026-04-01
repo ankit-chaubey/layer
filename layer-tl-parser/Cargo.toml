@@ -10,6 +10,3 @@ repository.workspace = true
 homepage.workspace   = true
 keywords             = ["telegram", "mtproto", "tl", "parser", "codegen"]
 categories           = ["parser-implementations", "development-tools"]
-
-[package.metadata.docs.rs]
-rustdoc-args = ["--cfg", "docsrs"]

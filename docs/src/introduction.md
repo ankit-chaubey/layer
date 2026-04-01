@@ -6,7 +6,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/layer-client?color=7c6af7&label=layer-client&style=flat-square)](https://crates.io/crates/layer-client)
 [![docs.rs](https://img.shields.io/docsrs/layer-client?style=flat-square&color=22c55e)](https://docs.rs/layer-client)
-[![TL Layer](https://img.shields.io/badge/TL%20Layer-224-8b5cf6?style=flat-square)](https://core.telegram.org/schema)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-223-8b5cf6?style=flat-square)](https://core.telegram.org/schema)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square)](#license)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-f74c00?style=flat-square)](https://www.rust-lang.org/)
 
@@ -52,7 +52,7 @@ Most Telegram libraries are thin wrappers around generated code or ports from Py
 <div class="feature-card">
 <div class="fc-icon">🏗️</div>
 <div class="fc-title">Auto-Generated Types</div>
-<div class="fc-desc">All 2,329 Layer 224 constructors generated at build time from the official TL schema.</div>
+<div class="fc-desc">All 2,300+ Layer 223 constructors generated at build time from the official TL schema.</div>
 </div>
 </div>
 
@@ -63,7 +63,7 @@ Most Telegram libraries are thin wrappers around generated code or ports from Py
 | Crate | Description | Typical user |
 |---|---|---|
 | **`layer-client`** | High-level async client — auth, send, receive, bots | ✅ You |
-| `layer-tl-types` | All Layer 224 constructors, functions, enums | Raw API calls |
+| `layer-tl-types` | All Layer 223 constructors, functions, enums | Raw API calls |
 | `layer-mtproto` | MTProto session, DH, framing, transport | Library authors |
 | `layer-crypto` | AES-IGE, RSA, SHA, auth key derivation | Internal |
 | `layer-tl-gen` | Build-time Rust code generator | Build tool |
@@ -77,7 +77,7 @@ Most Telegram libraries are thin wrappers around generated code or ports from Py
 
 ```toml
 [dependencies]
-layer-client = "0.4.0"
+layer-client = "0.2.2"
 tokio        = { version = "1", features = ["full"] }
 ```
 

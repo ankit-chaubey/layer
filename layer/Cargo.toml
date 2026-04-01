@@ -25,6 +25,3 @@ default = []
 parser  = ["dep:layer-tl-parser"]
 ## Re-export the code generator for custom tooling.
 codegen = ["dep:layer-tl-gen"]
-
-[package.metadata.docs.rs]
-rustdoc-args = ["--cfg", "docsrs"]
