@@ -1,3 +1,4 @@
+#![doc(html_root_url = "https://docs.rs/layer-mtproto/0.4.0")]
 //! MTProto session and transport abstractions.
 //!
 //! This crate handles:

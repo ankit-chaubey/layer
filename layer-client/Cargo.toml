@@ -8,6 +8,7 @@ license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
+documentation = "https://docs.rs/layer-client"
 keywords             = ["telegram", "mtproto", "client", "bot", "async"]
 categories           = ["api-bindings", "network-programming", "asynchronous"]
 
