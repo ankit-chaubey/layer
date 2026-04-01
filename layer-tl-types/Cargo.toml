@@ -1,6 +1,6 @@
 [package]
 name        = "layer-tl-types"
-description = "Auto-generated Telegram TL types — constructors, functions, enums (Layer 223)"
+description = "Auto-generated Telegram TL types — constructors, functions, enums (Layer 224)"
 readme = "README.md"
 version.workspace    = true
 edition.workspace    = true
@@ -36,3 +36,7 @@ tl-api                   = []
 tl-mtproto               = []
 ## Derive serde `Serialize`/`Deserialize` on all types.
 impl-serde               = []
+
+[package.metadata.docs.rs]
+features = ["tl-api", "tl-mtproto", "impl-debug", "impl-from-type", "impl-from-enum", "name-for-id", "impl-serde"]
+rustdoc-args = ["--cfg", "docsrs"]

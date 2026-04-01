@@ -142,7 +142,7 @@ client.send_reaction(peer, message_id, "").await?;
 
 ---
 
-## ChatAdminRights — Layer 223 fields
+## ChatAdminRights — Layer 224 fields
 
 ```rust
 types::ChatAdminRights {
@@ -166,7 +166,7 @@ types::ChatAdminRights {
 }
 ```
 
-## ChatBannedRights — Layer 223 fields
+## ChatBannedRights — Layer 224 fields
 
 ```rust
 types::ChatBannedRights {

@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-layer-client = "0.2.2"
+layer-client = "0.4.0"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -55,17 +55,32 @@ For bots, additionally get a **bot token** from [@BotFather](https://t.me/BotFat
 ### SQLite session storage
 
 ```toml
-layer-client = { version = "0.2.2", features = ["sqlite-session"] }
+layer-client = { version = "0.4.0", features = ["sqlite-session"] }
 ```
 
 Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.
+
+### HTML entity parsing
+
+```toml
+# Built-in hand-rolled HTML parser (no extra deps)
+layer-client = { version = "0.4.0", features = ["html"] }
+
+# OR: spec-compliant html5ever tokenizer (overrides built-in)
+layer-client = { version = "0.4.0", features = ["html5ever"] }
+```
+
+| Feature | Deps added | Notes |
+|---|---|---|
+| `html` | none | Fast, minimal, covers common Telegram HTML tags |
+| `html5ever` | `html5ever` | Full spec-compliant tokenizer; use when parsing arbitrary HTML |
 
 ### Raw type system features (`layer-tl-types`)
 
 If you use `layer-tl-types` directly for raw API access:
 
 ```toml
-layer-tl-types = { version = "0.2.2", features = [
+layer-tl-types = { version = "0.4.0", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)
@@ -95,7 +110,7 @@ use layer_tl_types::LAYER;
 
 fn main() {
     println!("Using Telegram API Layer {}", LAYER);
-    // → Using Telegram API Layer 223
+    // → Using Telegram API Layer 224
 }
 ```
 
