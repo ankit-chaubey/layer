@@ -8,6 +8,7 @@ license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
+documentation = "https://docs.rs/layer-mtproto"
 keywords             = ["telegram", "mtproto", "session", "transport", "crypto"]
 categories           = ["network-programming", "api-bindings"]
 

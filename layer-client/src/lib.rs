@@ -1,3 +1,4 @@
+#![doc(html_root_url = "https://docs.rs/layer-client/0.4.0")]
 //! # layer-client
 //!
 //! Production-grade async Telegram client built on MTProto.

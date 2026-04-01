@@ -7,6 +7,7 @@ license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
+documentation = "https://docs.rs/layer"
 readme               = "../README.md"
 keywords             = ["telegram", "mtproto", "api", "client", "bot"]
 categories           = ["api-bindings", "network-programming"]
@@ -27,4 +28,5 @@ parser  = ["dep:layer-tl-parser"]
 codegen = ["dep:layer-tl-gen"]
 
 [package.metadata.docs.rs]
+features = ["parser", "codegen"]
 rustdoc-args = ["--cfg", "docsrs"]

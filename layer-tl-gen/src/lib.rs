@@ -1,3 +1,4 @@
+#![doc(html_root_url = "https://docs.rs/layer-tl-gen/0.4.0")]
 //! Build-time code generator that transforms a parsed TL schema into Rust source files.
 //!
 //! Intended to be used from a `build.rs` script.

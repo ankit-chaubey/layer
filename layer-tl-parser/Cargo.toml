@@ -8,6 +8,7 @@ license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
+documentation = "https://docs.rs/layer-tl-parser"
 keywords             = ["telegram", "mtproto", "tl", "parser", "codegen"]
 categories           = ["parser-implementations", "development-tools"]
 

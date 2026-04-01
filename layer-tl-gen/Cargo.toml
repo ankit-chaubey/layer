@@ -8,6 +8,7 @@ license.workspace    = true
 authors.workspace    = true
 repository.workspace = true
 homepage.workspace   = true
+documentation = "https://docs.rs/layer-tl-gen"
 keywords             = ["telegram", "mtproto", "tl", "codegen", "build"]
 categories           = ["development-tools::build-utils", "development-tools"]
 

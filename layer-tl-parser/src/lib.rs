@@ -1,3 +1,4 @@
+#![doc(html_root_url = "https://docs.rs/layer-tl-parser/0.4.0")]
 //! Parser for Telegram's [Type Language] (TL) schema files.
 //!
 //! This crate converts raw `.tl` text into a structured [`Definition`] AST
