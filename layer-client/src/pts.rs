@@ -9,7 +9,7 @@
 //! If `new_pts != local_pts + pts_count` there is a gap and we must
 //! ask the server for the missed updates before processing this one.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use layer_tl_types as tl;
@@ -99,6 +99,10 @@ pub struct PtsState {
     pub channel_pts: HashMap<i64, i32>,
     /// G-16: Timestamp of last received update for deadline-based gap detection.
     pub last_update_at: Option<Instant>,
+    /// Fix #4: Channels currently awaiting a getChannelDifference response.
+    /// If a channel is in this set, no new gap-fill task is spawned for it —
+    /// matches grammers' `getting_diff_for` guard that prevents 1 gap → N tasks.
+    pub getting_diff_for: HashSet<i64>,
 }
 
 
@@ -108,6 +112,7 @@ impl PtsState {
             pts: s.pts, qts: s.qts, date: s.date, seq: s.seq,
             channel_pts: HashMap::new(),
             last_update_at: Some(Instant::now()),
+            getting_diff_for: HashSet::new(),
         }
     }
 
@@ -301,7 +306,7 @@ impl Client {
         let local_pts = self.inner.pts_state.lock().await
             .channel_pts.get(&channel_id).copied().unwrap_or(0);
 
-        let access_hash = self.inner.peer_cache.lock().await
+        let access_hash = self.inner.peer_cache.read().await
             .channels.get(&channel_id).copied().unwrap_or(0);
 
         log::info!("[layer] getChannelDifference channel_id={channel_id} pts={local_pts}");
@@ -481,6 +486,16 @@ impl Client {
         pts_count:  i32,
         upd:        Option<update::Update>,
     ) -> Result<Vec<update::Update>, InvocationError> {
+        // Fix #4: if a diff is already in flight for this channel, skip — prevents
+        // 1 gap from spawning N concurrent getChannelDifference tasks.
+        if self.inner.pts_state.lock().await.getting_diff_for.contains(&channel_id) {
+            log::debug!("[layer] channel {channel_id} diff already in flight, skipping");
+            if let Some(u) = upd {
+                self.inner.possible_gap.lock().await.push_channel(channel_id, u);
+            }
+            return Ok(vec![]);
+        }
+
         let result = self.inner.pts_state.lock().await
             .check_channel_pts(channel_id, new_pts, pts_count);
         match result {
@@ -500,10 +515,39 @@ impl Client {
                     .channel_deadline_elapsed(channel_id);
                 if deadline_elapsed {
                     log::warn!("[layer] channel {channel_id} pts gap: expected {expected}, got {got} — getChannelDifference");
+                    // Fix #4: mark this channel as having a diff in flight.
+                    self.inner.pts_state.lock().await.getting_diff_for.insert(channel_id);
                     let buffered = self.inner.possible_gap.lock().await.drain_channel(channel_id);
-                    let mut diff_updates = self.get_channel_difference(channel_id).await?;
-                    diff_updates.splice(0..0, buffered);
-                    Ok(diff_updates)
+                    match self.get_channel_difference(channel_id).await {
+                        Ok(mut diff_updates) => {
+                            // Fix #4: diff complete, allow future gaps to be handled.
+                            self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
+                            diff_updates.splice(0..0, buffered);
+                            Ok(diff_updates)
+                        }
+                        // Permanent access errors: advance pts to `got` so the gap is
+                        // considered closed and we never re-trigger getChannelDifference
+                        // for this channel on every incoming update.
+                        Err(InvocationError::Rpc(ref e))
+                            if e.name == "CHANNEL_INVALID"
+                            || e.name == "CHANNEL_PRIVATE"
+                            || e.name == "CHANNEL_NOT_MODIFIED" =>
+                        {
+                            log::warn!(
+                                "[layer] channel {channel_id}: {} — skipping gap, advancing pts to {got}",
+                                e.name
+                            );
+                            // Fix #4: diff complete (errored out), allow future gaps.
+                            self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
+                            self.inner.pts_state.lock().await.advance_channel(channel_id, got);
+                            Ok(buffered)
+                        }
+                        Err(e) => {
+                            // Fix #4: also clear on unexpected errors so we don't get stuck.
+                            self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
+                            Err(e)
+                        }
+                    }
                 } else {
                     log::debug!("[layer] channel {channel_id} pts gap: expected {expected}, got {got} — buffering");
                     Ok(vec![])

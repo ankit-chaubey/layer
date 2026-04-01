@@ -421,7 +421,7 @@ impl Client {
         media:   tl::enums::InputMedia,
         caption: &str,
     ) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::SendMedia {
             silent:                   false,
             background:               false,
@@ -455,7 +455,7 @@ impl Client {
         peer:  tl::enums::Peer,
         items: Vec<(tl::enums::InputMedia, String)>,
     ) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let multi: Vec<tl::enums::InputSingleMedia> = items.into_iter().map(|(media, caption)| {
             tl::enums::InputSingleMedia::InputSingleMedia(tl::types::InputSingleMedia {
                 media,

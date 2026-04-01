@@ -119,7 +119,7 @@ async fn listen(client: &Client, my_id: i64, is_bot: bool) {
                 if is_self_chat(peer, my_id) { continue; }
 
                 match text {
-                    "/ping" => {
+                    ".ping" => {
                         let t = std::time::Instant::now();
                         match client.invoke(&tl::functions::Ping { ping_id: 0xDEAD_BEEF }).await {
                             Ok(_) => {
@@ -131,7 +131,7 @@ async fn listen(client: &Client, my_id: i64, is_bot: bool) {
                             }
                         }
                     }
-                    "/me" if !is_bot => {
+                    ".me" if !is_bot => {
                         if let Ok(me) = client.get_me().await {
                             let _ = client.send_message_to_peer(
                                 peer.clone(),
@@ -139,12 +139,9 @@ async fn listen(client: &Client, my_id: i64, is_bot: bool) {
                             ).await;
                         }
                     }
-                    "/read" if !is_bot => {
+                    ".read" if !is_bot => {
                         let _ = client.mark_as_read(peer.clone()).await;
                         let _ = client.send_message_to_peer(peer.clone(), "✅ Marked as read").await;
-                    }
-                    t if !t.is_empty() => {
-                        let _ = client.send_message_to_peer(peer.clone(), &format!("Echo: {t}")).await;
                     }
                     _ => {}
                 }

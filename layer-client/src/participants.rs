@@ -51,7 +51,7 @@ impl Client {
     ) -> Result<Vec<Participant>, InvocationError> {
         match &peer {
             tl::enums::Peer::Channel(c) => {
-                let cache       = self.inner.peer_cache.lock().await;
+                let cache       = self.inner.peer_cache.read().await;
                 let access_hash = cache.channels.get(&c.channel_id).copied().unwrap_or(0);
                 drop(cache);
                 self.get_channel_participants(c.channel_id, access_hash, limit).await
@@ -93,7 +93,7 @@ impl Client {
 
         // Cache them
         {
-            let mut cache = self.inner.peer_cache.lock().await;
+            let mut cache = self.inner.peer_cache.write().await;
             for u in user_map.values() {
                 if let Some(h) = u.access_hash { cache.users.insert(u.id, h); }
             }
@@ -127,7 +127,7 @@ impl Client {
             .collect();
 
         {
-            let mut cache = self.inner.peer_cache.lock().await;
+            let mut cache = self.inner.peer_cache.write().await;
             for u in user_map.values() {
                 if let Some(h) = u.access_hash { cache.users.insert(u.id, h); }
             }
@@ -165,7 +165,7 @@ impl Client {
         chat_id: i64,
         user_id: i64,
     ) -> Result<(), InvocationError> {
-        let cache       = self.inner.peer_cache.lock().await;
+        let cache       = self.inner.peer_cache.read().await;
         let access_hash = cache.users.get(&user_id).copied().unwrap_or(0);
         drop(cache);
         let req = tl::functions::messages::DeleteChatUser {
@@ -188,12 +188,12 @@ impl Client {
     ) -> Result<(), InvocationError> {
         let (channel_id, ch_hash) = match &channel {
             tl::enums::Peer::Channel(c) => {
-                let h = self.inner.peer_cache.lock().await.channels.get(&c.channel_id).copied().unwrap_or(0);
+                let h = self.inner.peer_cache.read().await.channels.get(&c.channel_id).copied().unwrap_or(0);
                 (c.channel_id, h)
             }
             _ => return Err(InvocationError::Deserialize("ban_participant: peer must be a channel".into())),
         };
-        let user_hash = self.inner.peer_cache.lock().await.users.get(&user_id).copied().unwrap_or(0);
+        let user_hash = self.inner.peer_cache.read().await.users.get(&user_id).copied().unwrap_or(0);
 
         let req = tl::functions::channels::EditBanned {
             channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
@@ -242,12 +242,12 @@ impl Client {
     ) -> Result<(), InvocationError> {
         let (channel_id, ch_hash) = match &channel {
             tl::enums::Peer::Channel(c) => {
-                let h = self.inner.peer_cache.lock().await.channels.get(&c.channel_id).copied().unwrap_or(0);
+                let h = self.inner.peer_cache.read().await.channels.get(&c.channel_id).copied().unwrap_or(0);
                 (c.channel_id, h)
             }
             _ => return Err(InvocationError::Deserialize("promote_participant: peer must be a channel".into())),
         };
-        let user_hash = self.inner.peer_cache.lock().await.users.get(&user_id).copied().unwrap_or(0);
+        let user_hash = self.inner.peer_cache.read().await.users.get(&user_id).copied().unwrap_or(0);
 
         let rights = if promote {
             tl::types::ChatAdminRights {
@@ -312,7 +312,7 @@ impl Client {
         limit: i32,
     ) -> Result<Vec<tl::enums::Photo>, InvocationError> {
         let input_peer = {
-            let cache = self.inner.peer_cache.lock().await;
+            let cache = self.inner.peer_cache.read().await;
             cache.peer_to_input(&peer)
         };
 
@@ -371,7 +371,7 @@ impl Client {
         reaction:   &str,
     ) -> Result<(), InvocationError> {
         let input_peer = {
-            let cache = self.inner.peer_cache.lock().await;
+            let cache = self.inner.peer_cache.read().await;
             cache.peer_to_input(&peer)
         };
 
@@ -604,12 +604,12 @@ impl Client {
         let rights = build(BannedRightsBuilder::new()).into_tl();
         let (channel_id, ch_hash) = match &channel {
             tl::enums::Peer::Channel(c) => {
-                let h = self.inner.peer_cache.lock().await.channels.get(&c.channel_id).copied().unwrap_or(0);
+                let h = self.inner.peer_cache.read().await.channels.get(&c.channel_id).copied().unwrap_or(0);
                 (c.channel_id, h)
             }
             _ => return Err(InvocationError::Deserialize("set_banned_rights: must be a channel".into())),
         };
-        let user_hash = self.inner.peer_cache.lock().await.users.get(&user_id).copied().unwrap_or(0);
+        let user_hash = self.inner.peer_cache.read().await.users.get(&user_id).copied().unwrap_or(0);
         let req = tl::functions::channels::EditBanned {
             channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
                 channel_id, access_hash: ch_hash,
@@ -639,12 +639,12 @@ impl Client {
         let rights = b.into_tl_rights();
         let (channel_id, ch_hash) = match &channel {
             tl::enums::Peer::Channel(c) => {
-                let h = self.inner.peer_cache.lock().await.channels.get(&c.channel_id).copied().unwrap_or(0);
+                let h = self.inner.peer_cache.read().await.channels.get(&c.channel_id).copied().unwrap_or(0);
                 (c.channel_id, h)
             }
             _ => return Err(InvocationError::Deserialize("set_admin_rights: must be a channel".into())),
         };
-        let user_hash = self.inner.peer_cache.lock().await.users.get(&user_id).copied().unwrap_or(0);
+        let user_hash = self.inner.peer_cache.read().await.users.get(&user_id).copied().unwrap_or(0);
         let req = tl::functions::channels::EditAdmin {
             channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
                 channel_id, access_hash: ch_hash,
@@ -670,7 +670,7 @@ impl Client {
     ) -> Result<Vec<Participant>, InvocationError> {
         match &peer {
             tl::enums::Peer::Channel(c) => {
-                let access_hash = self.inner.peer_cache.lock().await
+                let access_hash = self.inner.peer_cache.read().await
                     .channels.get(&c.channel_id).copied().unwrap_or(0);
                 let filter = filter.unwrap_or(tl::enums::ChannelParticipantsFilter::ChannelParticipantsRecent);
                 let limit  = if limit <= 0 { 200 } else { limit };
@@ -693,7 +693,7 @@ impl Client {
                     .filter_map(|u| match u { tl::enums::User::User(u) => Some((u.id, u)), _ => None })
                     .collect();
                 {
-                    let mut cache = self.inner.peer_cache.lock().await;
+                    let mut cache = self.inner.peer_cache.write().await;
                     for u in user_map.values() {
                         if let Some(h) = u.access_hash { cache.users.insert(u.id, h); }
                     }
@@ -729,12 +729,12 @@ impl Client {
     ) -> Result<ParticipantPermissions, InvocationError> {
         let (channel_id, ch_hash) = match &channel {
             tl::enums::Peer::Channel(c) => {
-                let h = self.inner.peer_cache.lock().await.channels.get(&c.channel_id).copied().unwrap_or(0);
+                let h = self.inner.peer_cache.read().await.channels.get(&c.channel_id).copied().unwrap_or(0);
                 (c.channel_id, h)
             }
             _ => return Err(InvocationError::Deserialize("get_permissions: must be a channel".into())),
         };
-        let user_hash = self.inner.peer_cache.lock().await.users.get(&user_id).copied().unwrap_or(0);
+        let user_hash = self.inner.peer_cache.read().await.users.get(&user_id).copied().unwrap_or(0);
         let req = tl::functions::channels::GetParticipant {
             channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
                 channel_id, access_hash: ch_hash,

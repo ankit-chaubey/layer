@@ -16,12 +16,14 @@ pub mod aes;
 mod auth_key;
 mod deque_buffer;
 mod factorize;
+mod obfuscated;
 pub mod rsa;
 mod sha;
 
 pub use auth_key::AuthKey;
 pub use deque_buffer::DequeBuffer;
 pub use factorize::factorize;
+pub use obfuscated::ObfuscatedCipher;
 
 // ─── MTProto 2.0 encrypt / decrypt ───────────────────────────────────────────
 

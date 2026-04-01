@@ -112,7 +112,7 @@ impl SearchBuilder {
         self,
         client: &Client,
     ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
-        let input_peer = client.inner.peer_cache.lock().await.peer_to_input(&self.peer);
+        let input_peer = client.inner.peer_cache.read().await.peer_to_input(&self.peer);
         let req = tl::functions::messages::Search {
             peer:           input_peer,
             q:              self.query,

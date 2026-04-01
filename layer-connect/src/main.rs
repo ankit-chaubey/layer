@@ -19,7 +19,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-use layer_mtproto::transport::{AbridgedTransport, Transport};
+use layer_mtproto::transport::{AbridgedTransport, ObfuscatedAbridged, Transport};
 use layer_mtproto::{Session, EncryptedSession, authentication as auth};
 use layer_tl_types::{Cursor, Deserializable};
 
@@ -79,7 +79,7 @@ fn plaintext_body(frame: &[u8]) -> Result<&[u8], &'static str> {
 // ── TL send/receive helpers ───────────────────────────────────────────────────
 
 fn send_plain<T: layer_tl_types::RemoteCall>(
-    transport: &mut AbridgedTransport<Tcp>,
+    transport: &mut ObfuscatedAbridged,
     session:   &mut Session,
     call:      &T,
 ) -> std::io::Result<()> {
@@ -88,7 +88,7 @@ fn send_plain<T: layer_tl_types::RemoteCall>(
 }
 
 fn recv_plain<T: Deserializable>(
-    transport: &mut AbridgedTransport<Tcp>,
+    transport: &mut ObfuscatedAbridged,
 ) -> Result<T, Box<dyn std::error::Error>> {
     let raw = transport.recv_message()?;
     let body = plaintext_body(&raw)?;
@@ -100,9 +100,9 @@ fn recv_plain<T: Deserializable>(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── 1. Connect ────────────────────────────────────────────────────────────
-    println!("Connecting to {} …", DC1_TEST);
-    let tcp = Tcp::connect(DC1_TEST)?;
-    let mut transport = AbridgedTransport::new(tcp);
+    println!("Connecting to {} …", DC1_PROD);
+    let tcp = Tcp::connect(DC1_PROD)?;
+    let mut transport = ObfuscatedAbridged::new(tcp.0)?;
     let mut session = Session::new();
     println!("✓ TCP connected");
 

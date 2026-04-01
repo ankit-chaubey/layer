@@ -46,6 +46,9 @@ pub mod types;
 #[macro_use]
 pub mod macros;
 
+#[cfg(test)]
+mod pts_tests;
+
 pub use errors::{InvocationError, LoginToken, PasswordToken, RpcError, SignInError};
 pub use retry::{AutoSleep, NoRetries, RetryContext, RetryPolicy};
 pub use update::Update;
@@ -74,7 +77,7 @@ use layer_tl_types::{Cursor, Deserializable, RemoteCall};
 use session::{DcEntry, PersistedSession};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
@@ -108,13 +111,14 @@ const ID_UPDATES_TOO_LONG:      u32 = 0xe317af7e;
 // ─── Keepalive / reconnect tuning ─────────────────────────────────────────────
 
 /// How often to send a keepalive ping.
-/// Telegram Desktop uses ~15 s on mobile connections.  60 s is too slow to
-/// detect a dead connection before the user notices.
-const PING_DELAY_SECS: u64 = 15;
+/// 60 s matches grammers and Telegram Desktop long-poll cadence.
+/// At 1 M connections this is 4× less keepalive traffic than 15 s.
+const PING_DELAY_SECS: u64 = 60;
 
 /// Tell Telegram to close the connection if it hears nothing for this many
 /// seconds.  Must be > PING_DELAY_SECS so a single missed ping doesn't drop us.
-const NO_PING_DISCONNECT: i32 = 20;
+/// 75 s = 60 s interval + 15 s slack, matching grammers.
+const NO_PING_DISCONNECT: i32 = 75;
 
 /// Initial backoff before the first reconnect attempt.
 const RECONNECT_BASE_MS: u64 = 500;
@@ -566,7 +570,7 @@ struct ClientInner {
     catch_up:        bool,
     home_dc_id:      Mutex<i32>,
     dc_options:      Mutex<HashMap<i32, DcEntry>>,
-    pub peer_cache:    Mutex<PeerCache>,
+    pub peer_cache:    RwLock<PeerCache>,
     pub pts_state:     Mutex<pts::PtsState>,
     /// G-17: Buffer for updates received during a possible-gap window.
     pub possible_gap:  Mutex<pts::PossibleGapBuffer>,
@@ -676,7 +680,7 @@ impl Client {
             catch_up,
             home_dc_id:      Mutex::new(home_dc_id),
             dc_options:      Mutex::new(dc_opts),
-            peer_cache:      Mutex::new(PeerCache::default()),
+            peer_cache:      RwLock::new(PeerCache::default()),
             pts_state:       Mutex::new(pts::PtsState::default()),
             possible_gap:    Mutex::new(pts::PossibleGapBuffer::new()),
             api_id:          config.api_id,
@@ -740,7 +744,7 @@ impl Client {
         // ── Restore peer access-hash cache from session ─────────────────
         if let Some(ref s) = loaded_session
             && !s.peers.is_empty() {
-            let mut cache = client.inner.peer_cache.lock().await;
+            let mut cache = client.inner.peer_cache.write().await;
             for p in &s.peers {
                 if p.is_channel {
                     cache.channels.entry(p.id).or_insert(p.access_hash);
@@ -842,7 +846,7 @@ impl Client {
 
         // Snapshot peer access-hash cache
         let peers: Vec<CachedPeer> = {
-            let cache = self.inner.peer_cache.lock().await;
+            let cache = self.inner.peer_cache.read().await;
             let mut v = Vec::with_capacity(cache.users.len() + cache.channels.len());
             for (&id, &hash) in &cache.users    { v.push(CachedPeer { id, access_hash: hash, is_channel: false }); }
             for (&id, &hash) in &cache.channels { v.push(CachedPeer { id, access_hash: hash, is_channel: true  }); }
@@ -1158,6 +1162,8 @@ impl Client {
                     ))));
                 }
             }
+            // Fix #9: drain sent_bodies alongside pending to prevent unbounded growth.
+            self.inner.writer.lock().await.sent_bodies.clear();
 
             // Step 2: reconnect with exponential backoff, honouring shutdown.
             let mut delay_ms = RECONNECT_BASE_MS;
@@ -1264,22 +1270,10 @@ impl Client {
                             }
                             self.route_frame(msg.body, msg.msg_id).await;
 
-                            // G-04: flush any accumulated acks as a standalone MsgsAck.
-                            // (When an RPC is in flight they're bundled into a container
-                            // instead — this covers the case where only updates arrived.)
-                            let acks_to_send = {
-                                let mut w = self.inner.writer.lock().await;
-                                let v: Vec<i64> = w.pending_ack.drain(..).collect();
-                                v
-                            };
-                            if !acks_to_send.is_empty() {
-                                let mut w = self.inner.writer.lock().await;
-                                let fk = w.frame_kind.clone();
-                                let ack_body = build_msgs_ack_body(&acks_to_send);
-                                let (wire, _) = w.enc.pack_body_with_msg_id(&ack_body, false);
-                                send_frame_write(&mut w.write_half, &wire, &fk).await.ok();
-                                log::trace!("[layer] G-04 flushed {} acks", acks_to_send.len());
-                            }
+                            // G-04/G-07: Acks are NOT flushed here standalone.
+                            // They accumulate in pending_ack and are bundled into the next
+                            // outgoing request container, matching grammers' behavior and
+                            // avoiding an extra standalone frame (and extra RTT exposure).
                         }
 
                         FrameOutcome::Error(e) => {
@@ -1297,6 +1291,8 @@ impl Client {
                                             std::io::ErrorKind::ConnectionReset, msg.clone()))));
                                 }
                             }
+                            // Fix #9: drain sent_bodies so it doesn't grow unbounded under loss.
+                            self.inner.writer.lock().await.sent_bodies.clear();
 
                             match self.do_reconnect_loop(
                                 RECONNECT_BASE_MS, &mut rh, &mut fk, &mut ak, &mut sid,
@@ -1741,10 +1737,14 @@ impl Client {
         // updatesTooLong — we must call getDifference to recover missed updates.
         if cid == 0xe317af7e_u32 {
             log::warn!("[layer] updatesTooLong — getDifference");
-            match self.get_difference().await {
-                Ok(updates) => { for u in updates { let _ = self.inner.update_tx.send(u); } }
-                Err(e) => log::warn!("[layer] getDifference after updatesTooLong: {e}"),
-            }
+            let c   = self.clone();
+            let utx = self.inner.update_tx.clone();
+            tokio::spawn(async move {
+                match c.get_difference().await {
+                    Ok(updates) => { for u in updates { let _ = utx.send(u); } }
+                    Err(e) => log::warn!("[layer] getDifference after updatesTooLong: {e}"),
+                }
+            });
             return;
         }
 
@@ -1783,10 +1783,14 @@ impl Client {
             };
             if let Some((seq, seq_start)) = seq_info
                 && seq != 0 {
-                match self.check_and_fill_seq_gap(seq, seq_start).await {
-                    Ok(extra) => { for u in extra { let _ = self.inner.update_tx.send(u); } }
-                    Err(e) => log::warn!("[layer] seq gap fill: {e}"),
-                }
+                let c   = self.clone();
+                let utx = self.inner.update_tx.clone();
+                tokio::spawn(async move {
+                    match c.check_and_fill_seq_gap(seq, seq_start).await {
+                        Ok(extra) => { for u in extra { let _ = utx.send(u); } }
+                        Err(e)    => log::warn!("[layer] seq gap fill: {e}"),
+                    }
+                });
             }
         }
 
@@ -1859,27 +1863,45 @@ impl Client {
         let to_send: Vec<update::Update> = match kind {
             Kind::GlobalPts { pts, pts_count, carry } => {
                 let first = if carry { high.into_iter().next() } else { None };
-                match self.check_and_fill_gap(pts, pts_count, first).await {
-                    Ok(v) => v,
-                    Err(e) => { log::warn!("[layer] pts gap: {e}"); vec![] }
-                }
+                // DEADLOCK FIX: never await an RPC inside the reader task.
+                // Spawn gap-fill as a separate task; it can receive the RPC
+                // response because the reader loop continues running.
+                let c   = self.clone();
+                let utx = self.inner.update_tx.clone();
+                tokio::spawn(async move {
+                    match c.check_and_fill_gap(pts, pts_count, first).await {
+                        Ok(v)  => { for u in v { let _ = utx.send(u); } }
+                        Err(e) => log::warn!("[layer] pts gap: {e}"),
+                    }
+                });
+                vec![]
             }
             Kind::ChannelPts { channel_id, pts, pts_count, carry } => {
                 let first = if carry { high.into_iter().next() } else { None };
                 if channel_id != 0 {
-                    match self.check_and_fill_channel_gap(channel_id, pts, pts_count, first).await {
-                        Ok(v) => v,
-                        Err(e) => { log::warn!("[layer] ch pts gap: {e}"); vec![] }
-                    }
+                    // DEADLOCK FIX: spawn; same reasoning as GlobalPts above.
+                    let c   = self.clone();
+                    let utx = self.inner.update_tx.clone();
+                    tokio::spawn(async move {
+                        match c.check_and_fill_channel_gap(channel_id, pts, pts_count, first).await {
+                            Ok(v)  => { for u in v { let _ = utx.send(u); } }
+                            Err(e) => log::warn!("[layer] ch pts gap: {e}"),
+                        }
+                    });
+                    vec![]
                 } else {
                     first.into_iter().collect()
                 }
             }
             Kind::Qts { qts } => {
-                match self.check_and_fill_qts_gap(qts, 1).await {
-                    Ok(_) => vec![],
-                    Err(e) => { log::warn!("[layer] qts gap: {e}"); vec![] }
-                }
+                // DEADLOCK FIX: spawn; same reasoning as above.
+                let c = self.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = c.check_and_fill_qts_gap(qts, 1).await {
+                        log::warn!("[layer] qts gap: {e}");
+                    }
+                });
+                vec![]
             }
             Kind::Passthrough => high,
         };
@@ -2052,7 +2074,7 @@ impl Client {
         peer: tl::enums::Peer,
         msg:  &InputMessage,
     ) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let schedule = if msg.schedule_once_online {
             Some(0x7FFF_FFFEi32)
         } else {
@@ -2148,7 +2170,7 @@ impl Client {
         message_id: i32,
         new_text:   &str,
     ) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::EditMessage {
             no_webpage:    false,
             invert_media:  false,
@@ -2172,7 +2194,7 @@ impl Client {
         message_ids: &[i32],
         source:      tl::enums::Peer,
     ) -> Result<(), InvocationError> {
-        let cache = self.inner.peer_cache.lock().await;
+        let cache = self.inner.peer_cache.read().await;
         let to_peer   = cache.peer_to_input(&destination);
         let from_peer = cache.peer_to_input(&source);
         drop(cache);
@@ -2215,7 +2237,7 @@ impl Client {
         peer: tl::enums::Peer,
         ids:  &[i32],
     ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let id_list: Vec<tl::enums::InputMessage> = ids.iter()
             .map(|&id| tl::enums::InputMessage::Id(tl::types::InputMessageId { id }))
             .collect();
@@ -2262,7 +2284,7 @@ impl Client {
         &self,
         peer: tl::enums::Peer,
     ) -> Result<Option<update::IncomingMessage>, InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::Search {
             peer: input_peer,
             q: String::new(),
@@ -2300,7 +2322,7 @@ impl Client {
         unpin:      bool,
         pm_oneside: bool,
     ) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::UpdatePinnedMessage {
             silent,
             unpin,
@@ -2322,7 +2344,7 @@ impl Client {
 
     /// Unpin all messages in a chat.
     pub async fn unpin_all_messages(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::UnpinAllMessages {
             peer:      input_peer,
             top_msg_id: None,
@@ -2383,7 +2405,7 @@ impl Client {
         &self,
         peer: tl::enums::Peer,
     ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::GetScheduledHistory {
             peer: input_peer,
             hash: 0,
@@ -2405,7 +2427,7 @@ impl Client {
         peer: tl::enums::Peer,
         ids:  Vec<i32>,
     ) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::DeleteScheduledMessages {
             peer: input_peer,
             id:   ids,
@@ -2767,7 +2789,7 @@ impl Client {
     }
 
     pub async fn delete_dialog(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::DeleteHistory {
             just_clear:  false,
             revoke:      false,
@@ -2781,7 +2803,7 @@ impl Client {
 
     /// Mark all messages in a chat as read.
     pub async fn mark_as_read(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         match &input_peer {
             tl::enums::InputPeer::Channel(c) => {
                 let req = tl::functions::channels::ReadHistory {
@@ -2802,7 +2824,7 @@ impl Client {
 
     /// Clear unread mention markers.
     pub async fn clear_mentions(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let req = tl::functions::messages::ReadMentions { peer: input_peer, top_msg_id: None };
         self.rpc_write(&req).await
     }
@@ -2826,7 +2848,7 @@ impl Client {
 
     /// Join a public chat or channel by username/peer.
     pub async fn join_chat(&self, peer: tl::enums::Peer) -> Result<(), InvocationError> {
-        let input_peer = self.inner.peer_cache.lock().await.peer_to_input(&peer);
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         match input_peer {
             tl::enums::InputPeer::Channel(c) => {
                 let req = tl::functions::channels::JoinChannel {
@@ -3229,16 +3251,16 @@ impl Client {
     // ── Cache helpers ──────────────────────────────────────────────────────
 
     async fn cache_user(&self, user: &tl::enums::User) {
-        self.inner.peer_cache.lock().await.cache_user(user);
+        self.inner.peer_cache.write().await.cache_user(user);
     }
 
     async fn cache_users_slice(&self, users: &[tl::enums::User]) {
-        let mut cache = self.inner.peer_cache.lock().await;
+        let mut cache = self.inner.peer_cache.write().await;
         cache.cache_users(users);
     }
 
     async fn cache_chats_slice(&self, chats: &[tl::enums::Chat]) {
-        let mut cache = self.inner.peer_cache.lock().await;
+        let mut cache = self.inner.peer_cache.write().await;
         cache.cache_chats(chats);
     }
 
@@ -3373,7 +3395,7 @@ impl Client {
         &self,
         peer: &tl::enums::Peer,
     ) -> Result<tl::enums::InputPeer, InvocationError> {
-        let cache = self.inner.peer_cache.lock().await;
+        let cache = self.inner.peer_cache.read().await;
         match peer {
             tl::enums::Peer::User(u) => {
                 if u.user_id == 0 {
@@ -3607,7 +3629,7 @@ impl DialogIter {
             }).unwrap_or(0);
             self.offset_id = last.top_message();
             if let Some(peer) = last.peer() {
-                self.offset_peer = client.inner.peer_cache.lock().await.peer_to_input(peer);
+                self.offset_peer = client.inner.peer_cache.read().await.peer_to_input(peer);
             }
         }
 
@@ -3642,7 +3664,7 @@ impl MessageIter {
         if let Some(m) = self.buffer.pop_front() { return Ok(Some(m)); }
         if self.done { return Ok(None); }
 
-        let input_peer = client.inner.peer_cache.lock().await.peer_to_input(&self.peer);
+        let input_peer = client.inner.peer_cache.read().await.peer_to_input(&self.peer);
         let (page, count) = client.get_messages_with_count(input_peer, Self::PAGE_SIZE, self.offset_id).await?;
 
         if self.total.is_none() { self.total = count; }
@@ -3721,6 +3743,13 @@ impl Connection {
                 // then apply socket2 keepalive options to the live socket.
                 let stream = TcpStream::connect(addr).await
                     .map_err(InvocationError::Io)?;
+
+                // TCP_NODELAY: disable Nagle's algorithm so small frames
+                // (MsgsAck, Ping, etc.) are sent immediately without waiting
+                // for a previous write to be ACK'd. Without this, a standalone
+                // MsgsAck followed by the app's Ping RPC causes Nagle to buffer
+                // the Ping until the ack is received (~1 extra RTT ≈ 80 ms).
+                stream.set_nodelay(true).ok();
 
                 // TCP-level keepalive: OS sends probes independently of our
                 // application-level pings. Catches cases where the network
@@ -3889,19 +3918,12 @@ async fn send_frame(
 ) -> Result<(), InvocationError> {
     match kind {
         FrameKind::Abridged => send_abridged(stream, data).await,
-        FrameKind::Intermediate => {
-            stream.write_all(&(data.len() as u32).to_le_bytes()).await?;
-            stream.write_all(data).await?;
-            Ok(())
-        }
-        FrameKind::Full { .. } => {
-            // seqno and CRC handled inside Connection; here we just prefix length
-            // Full framing: [total_len 4B][seqno 4B][payload][crc32 4B]
-            // But send_frame is called with already-encrypted payload.
-            // We use a simplified approach: emit the same as Intermediate for now
-            // and note that Full's seqno/CRC are transport-level, not app-level.
-            stream.write_all(&(data.len() as u32).to_le_bytes()).await?;
-            stream.write_all(data).await?;
+        FrameKind::Intermediate | FrameKind::Full { .. } => {
+            // Single combined write (fix #1).
+            let mut frame = Vec::with_capacity(4 + data.len());
+            frame.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            frame.extend_from_slice(data);
+            stream.write_all(&frame).await?;
             Ok(())
         }
     }
@@ -3954,6 +3976,11 @@ async fn recv_frame_with_keepalive(
 }
 
 /// Send a framed message via an OwnedWriteHalf (split connection).
+///
+/// Fix #1: Header and payload are combined into a single Vec before calling
+/// write_all, reducing write syscalls from 2 → 1 per frame.  With Abridged
+/// framing this previously sent a 1-byte header then the payload in separate
+/// syscalls (and two TCP segments even with TCP_NODELAY on fast paths).
 async fn send_frame_write(
     stream: &mut OwnedWriteHalf,
     data:   &[u8],
@@ -3962,18 +3989,30 @@ async fn send_frame_write(
     match kind {
         FrameKind::Abridged => {
             let words = data.len() / 4;
-            if words < 0x7f {
-                stream.write_all(&[words as u8]).await?;
+            // Build header + payload in one allocation → single syscall.
+            let mut frame = if words < 0x7f {
+                let mut v = Vec::with_capacity(1 + data.len());
+                v.push(words as u8);
+                v
             } else {
-                let b = [0x7f, (words & 0xff) as u8, ((words >> 8) & 0xff) as u8, ((words >> 16) & 0xff) as u8];
-                stream.write_all(&b).await?;
-            }
-            stream.write_all(data).await?;
+                let mut v = Vec::with_capacity(4 + data.len());
+                v.extend_from_slice(&[
+                    0x7f,
+                    (words & 0xff) as u8,
+                    ((words >> 8) & 0xff) as u8,
+                    ((words >> 16) & 0xff) as u8,
+                ]);
+                v
+            };
+            frame.extend_from_slice(data);
+            stream.write_all(&frame).await?;
             Ok(())
         }
         FrameKind::Intermediate | FrameKind::Full { .. } => {
-            stream.write_all(&(data.len() as u32).to_le_bytes()).await?;
-            stream.write_all(data).await?;
+            let mut frame = Vec::with_capacity(4 + data.len());
+            frame.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            frame.extend_from_slice(data);
+            stream.write_all(&frame).await?;
             Ok(())
         }
     }
@@ -4015,13 +4054,23 @@ async fn recv_frame_read(
 /// Send using Abridged framing (used for DH plaintext during connect).
 async fn send_abridged(stream: &mut TcpStream, data: &[u8]) -> Result<(), InvocationError> {
     let words = data.len() / 4;
-    if words < 0x7f {
-        stream.write_all(&[words as u8]).await?;
+    // Single combined write (header + payload) — same fix #1 as send_frame_write.
+    let mut frame = if words < 0x7f {
+        let mut v = Vec::with_capacity(1 + data.len());
+        v.push(words as u8);
+        v
     } else {
-        let b = [0x7f, (words & 0xff) as u8, ((words >> 8) & 0xff) as u8, ((words >> 16) & 0xff) as u8];
-        stream.write_all(&b).await?;
-    }
-    stream.write_all(data).await?;
+        let mut v = Vec::with_capacity(4 + data.len());
+        v.extend_from_slice(&[
+            0x7f,
+            (words & 0xff) as u8,
+            ((words >> 8) & 0xff) as u8,
+            ((words >> 16) & 0xff) as u8,
+        ]);
+        v
+    };
+    frame.extend_from_slice(data);
+    stream.write_all(&frame).await?;
     Ok(())
 }
 

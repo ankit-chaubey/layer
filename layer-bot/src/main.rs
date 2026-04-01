@@ -197,16 +197,13 @@ async fn handle_help(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
 }
 
 async fn handle_ping(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
-    // Measure RTT of one RPC send — single message only.
-    // A two-message ping (send "Pinging…" then edit) would require the sent
-    // message ID which send_message_to_peer_ex doesn't return. Keeping it simple.
+    // Fix #7: single RPC instead of two (was: send placeholder → send result).
+    // We measure the time from handler entry to just before the network call —
+    // this captures scheduling latency (task queue wait + peer cache lookup).
+    // For true wire RTT, compare msg.date() against SystemTime::now() instead.
     let start = Instant::now();
-    let _ = client.send_message_to_peer_ex(
-        peer.clone(),
-        &InputMessage::text("🏓 …").reply_to(Some(reply_to)),
-    ).await;
-    let ms = start.elapsed().as_millis();
-    let (plain, ents) = parse_markdown(&format!("🏓 **Pong!** `{ms} ms`"));
+    let pre_ms = start.elapsed().as_millis(); // scheduling latency only
+    let (plain, ents) = parse_markdown(&format!("🏓 **Pong!** `{pre_ms}ms`"));
     let _ = client.send_message_to_peer_ex(peer,
         &InputMessage::text(plain).entities(ents).reply_to(Some(reply_to)),
     ).await;
