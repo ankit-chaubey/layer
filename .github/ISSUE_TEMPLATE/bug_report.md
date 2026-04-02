@@ -47,7 +47,7 @@ paste error output here
 
 | Field | Value |
 |---|---|
-| `layer-client` version | <!-- e.g. 0.4.4 --> |
+| `layer-client` version | <!-- e.g. 0.4.5 --> |
 | Rust version | <!-- output of `rustc --version` --> |
 | OS | <!-- e.g. Ubuntu 22.04, macOS 14, Windows 11 --> |
 | Telegram account type | <!-- User / Bot --> |

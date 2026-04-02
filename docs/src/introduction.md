@@ -85,7 +85,7 @@ Most Telegram libraries are thin wrappers around generated code or ports from Py
 
 ```toml
 [dependencies]
-layer-client = "0.4.4"
+layer-client = "0.4.5"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -96,7 +96,7 @@ Then head to [Installation](./installation.md) for credentials setup, or jump st
 
 ---
 
-## What's new in v0.4.4
+## What's new in v0.4.5
 
 - **`StringSessionBackend`** — portable base64 sessions, no file required
 - **`LibSqlBackend`** — libsql/Turso remote database sessions

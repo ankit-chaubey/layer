@@ -21,7 +21,7 @@
 
 ```toml
 [dependencies]
-layer-tl-parser = "0.4.4"
+layer-tl-parser = "0.4.5"
 ```
 
 > **Note:** Most users don't depend on this crate directly. It is used internally by `layer-tl-gen` (as a `build-dependency`) which in turn is used by `layer-tl-types` to generate all Telegram API types at build time.

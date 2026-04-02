@@ -198,7 +198,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-layer-client = "0.4.4"
+layer-client = "0.4.5"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -208,16 +208,16 @@ Get your `api_id` and `api_hash` from **[my.telegram.org](https://my.telegram.or
 
 ```toml
 # SQLite session persistence (stores auth key in a local .db file)
-layer-client = { version = "0.4.4", features = ["sqlite-session"] }
+layer-client = { version = "0.4.5", features = ["sqlite-session"] }
 
 # libsql / Turso remote or embedded database session
-layer-client = { version = "0.4.4", features = ["libsql-session"] }
+layer-client = { version = "0.4.5", features = ["libsql-session"] }
 
 # Hand-rolled HTML entity parser (parse_html / generate_html)
-layer-client = { version = "0.4.4", features = ["html"] }
+layer-client = { version = "0.4.5", features = ["html"] }
 
 # Spec-compliant html5ever tokenizer — replaces the built-in html parser
-layer-client = { version = "0.4.4", features = ["html5ever"] }
+layer-client = { version = "0.4.5", features = ["html5ever"] }
 ```
 
 > **Note:** `layer-client` re-exports `layer_tl_types` as `layer_client::tl`, so you usually do not need to add `layer-tl-types` as a direct dependency.
@@ -868,7 +868,7 @@ let md = generate_markdown(&plain_text, &entities);
 Enable the `html` or `html5ever` feature flag:
 
 ```toml
-layer-client = { version = "0.4.4", features = ["html"] }
+layer-client = { version = "0.4.5", features = ["html"] }
 ```
 
 ```rust

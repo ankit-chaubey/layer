@@ -22,7 +22,7 @@ while let Some(update) = updates.next().await {
 }
 ```
 
-> **Note:** As of v0.4.4, `Update` is `#[non_exhaustive]`. Your match arms **must** include a `_ => {}` fallback or the code will fail to compile when new variants are added.
+> **Note:** As of v0.4.5, `Update` is `#[non_exhaustive]`. Your match arms **must** include a `_ => {}` fallback or the code will fail to compile when new variants are added.
 
 ---
 
@@ -163,7 +163,7 @@ if let Some(inline_msg_id) = is.message_id() {
 
 ---
 
-## ChatAction — New in v0.4.4
+## ChatAction — New in v0.4.5
 
 Fires when a user starts or stops typing, uploading, recording, etc. in a chat the account is in.
 
@@ -193,7 +193,7 @@ Update::ChatAction(action) => {
 
 ---
 
-## UserStatus — New in v0.4.4
+## UserStatus — New in v0.4.5
 
 Fires when a contact's online/offline status changes. Only received for contacts or people in mutual chats (depending on their privacy settings).
 

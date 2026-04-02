@@ -52,7 +52,7 @@
 
 ```toml
 [dependencies]
-layer-client = "0.4.4"
+layer-client = "0.4.5"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -494,7 +494,7 @@ let (text, entities) = parse_html("<b>Bold</b> and <code>code</code>")?;
 With the `html5ever` feature, HTML parsing is backed by the spec-compliant `html5ever` tokenizer (handles malformed markup):
 
 ```toml
-layer-client = { version = "0.4.4", features = ["html5ever"] }
+layer-client = { version = "0.4.5", features = ["html5ever"] }
 ```
 
 ### Formatting of incoming messages
@@ -749,7 +749,7 @@ Client::builder()
 | `serde` | ❌ | Adds `serde::Serialize` / `Deserialize` on public types |
 
 ```toml
-layer-client = { version = "0.4.4", features = ["sqlite-session", "html"] }
+layer-client = { version = "0.4.5", features = ["sqlite-session", "html"] }
 ```
 
 ---

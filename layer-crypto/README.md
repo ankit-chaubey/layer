@@ -21,7 +21,7 @@
 
 ```toml
 [dependencies]
-layer-crypto = "0.4.4"
+layer-crypto = "0.4.5"
 ```
 
 ---

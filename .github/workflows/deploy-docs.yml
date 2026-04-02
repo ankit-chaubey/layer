@@ -15,6 +15,7 @@ jobs:
         with:
           mdbook-version: 'latest'
       - run: mdbook build docs
+      - run: cp -r docs/images docs/book/images
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

@@ -7,7 +7,7 @@
 
 ```toml
 [dependencies]
-layer-client = "0.4.4"
+layer-client = "0.4.5"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -58,15 +58,15 @@ For bots, additionally get a **bot token** from [@BotFather](https://t.me/BotFat
 ### SQLite session storage
 
 ```toml
-layer-client = { version = "0.4.4", features = ["sqlite-session"] }
+layer-client = { version = "0.4.5", features = ["sqlite-session"] }
 ```
 
 Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.
 
-### LibSQL / Turso session storage — New in v0.4.4
+### LibSQL / Turso session storage — New in v0.4.5
 
 ```toml
-layer-client = { version = "0.4.4", features = ["libsql-session"] }
+layer-client = { version = "0.4.5", features = ["libsql-session"] }
 ```
 
 Backed by [libsql](https://github.com/tursodatabase/libsql) — supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.
@@ -84,7 +84,7 @@ let backend = LibSqlBackend::open_remote(
 ).await?;
 ```
 
-### String session (portable, no extra deps) — New in v0.4.4
+### String session (portable, no extra deps) — New in v0.4.5
 
 No feature flag needed. Encode a session as a base64 string and restore it anywhere:
 
@@ -104,10 +104,10 @@ See [Session Backends](./authentication/session-backends.md) for the full guide.
 
 ```toml
 # Built-in hand-rolled HTML parser (no extra deps)
-layer-client = { version = "0.4.4", features = ["html"] }
+layer-client = { version = "0.4.5", features = ["html"] }
 
 # OR: spec-compliant html5ever tokenizer (overrides built-in)
-layer-client = { version = "0.4.4", features = ["html5ever"] }
+layer-client = { version = "0.4.5", features = ["html5ever"] }
 ```
 
 | Feature | Deps added | Notes |
@@ -120,7 +120,7 @@ layer-client = { version = "0.4.4", features = ["html5ever"] }
 If you use `layer-tl-types` directly for raw API access:
 
 ```toml
-layer-tl-types = { version = "0.4.4", features = [
+layer-tl-types = { version = "0.4.5", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)

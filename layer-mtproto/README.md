@@ -22,8 +22,8 @@
 
 ```toml
 [dependencies]
-layer-mtproto  = "0.4.4"
-layer-tl-types = { version = "0.4.4", features = ["tl-mtproto"] }
+layer-mtproto  = "0.4.5"
+layer-tl-types = { version = "0.4.5", features = ["tl-mtproto"] }
 ```
 
 ---

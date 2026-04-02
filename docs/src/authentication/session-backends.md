@@ -18,7 +18,7 @@
 
 ```toml
 # No extra feature needed
-layer-client = "0.4.4"
+layer-client = "0.4.5"
 ```
 
 ```rust
@@ -59,7 +59,7 @@ Nothing is written to disk. Login is required on every run. Ideal for integratio
 ## SqliteBackend
 
 ```toml
-layer-client = { version = "0.4.4", features = ["sqlite-session"] }
+layer-client = { version = "0.4.5", features = ["sqlite-session"] }
 ```
 
 ```rust
@@ -77,12 +77,12 @@ SQLite is more resilient against crash-corruption than the binary format. A good
 
 ---
 
-## LibSqlBackend — New in 0.4.4
+## LibSqlBackend — New in 0.4.5
 
 For [libsql](https://github.com/tursodatabase/libsql) (the open-source Turso database engine):
 
 ```toml
-layer-client = { version = "0.4.4", features = ["libsql-session"] }
+layer-client = { version = "0.4.5", features = ["libsql-session"] }
 ```
 
 ```rust
@@ -110,7 +110,7 @@ let (client, _shutdown) = Client::builder()
 
 ---
 
-## StringSessionBackend — New in 0.4.4
+## StringSessionBackend — New in 0.4.5
 
 Encodes the entire session as a portable base64 string. Store it in environment variables, a secrets manager, a database column, or anywhere else you can store a string.
 
