@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-dfc84dac.js";
+            window.path_to_searchindex_js = "../searchindex-c09552cd.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-747e4d8b.js"></script>
@@ -201,7 +201,7 @@
 <hr>
 <h2 id="binaryfilebackend-default"><a class="header" href="#binaryfilebackend-default">BinaryFileBackend (default)</a></h2>
 <pre><code class="language-toml"># No extra feature needed
-layer-client = "0.4.4"
+layer-client = "0.4.5"
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -233,7 +233,7 @@ let (client, _shutdown) = Client::builder()
 <p>Nothing is written to disk. Login is required on every run. Ideal for integration tests and short-lived scripts.</p>
 <hr>
 <h2 id="sqlitebackend"><a class="header" href="#sqlitebackend">SqliteBackend</a></h2>
-<pre><code class="language-toml">layer-client = { version = "0.4.4", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -248,9 +248,9 @@ let (client, _shutdown) = Client::connect(Config {
 <span class="boring">}</span></code></pre>
 <p>SQLite is more resilient against crash-corruption than the binary format. A good choice for any bot that runs continuously or handles many accounts.</p>
 <hr>
-<h2 id="libsqlbackend--new-in-044"><a class="header" href="#libsqlbackend--new-in-044">LibSqlBackend — New in 0.4.4</a></h2>
+<h2 id="libsqlbackend--new-in-045"><a class="header" href="#libsqlbackend--new-in-045">LibSqlBackend — New in 0.4.5</a></h2>
 <p>For <a href="https://github.com/tursodatabase/libsql">libsql</a> (the open-source Turso database engine):</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.4", features = ["libsql-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["libsql-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -275,7 +275,7 @@ let (client, _shutdown) = Client::builder()
 <span class="boring">}</span></code></pre>
 <p><code>LibSqlBackend</code> is a drop-in replacement for <code>SqliteBackend</code> but works with remote databases, making it ideal for serverless or horizontally-scaled deployments.</p>
 <hr>
-<h2 id="stringsessionbackend--new-in-044"><a class="header" href="#stringsessionbackend--new-in-044">StringSessionBackend — New in 0.4.4</a></h2>
+<h2 id="stringsessionbackend--new-in-045"><a class="header" href="#stringsessionbackend--new-in-045">StringSessionBackend — New in 0.4.5</a></h2>
 <p>Encodes the entire session as a portable base64 string. Store it in environment variables, a secrets manager, a database column, or anywhere else you can store a string.</p>
 <h3 id="export-an-existing-session"><a class="header" href="#export-an-existing-session">Export an existing session</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
