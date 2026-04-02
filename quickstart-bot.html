@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7c30200a.js";
+            window.path_to_searchindex_js = "searchindex-dfc84dac.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-747e4d8b.js"></script>
@@ -183,26 +183,22 @@
                     <main>
                         <h1 id="quick-start--bot"><a class="header" href="#quick-start--bot">Quick Start — Bot</a></h1>
 <p>A production-ready bot skeleton with commands, callback queries, and inline mode — all handled concurrently.</p>
-<pre class="playground"><code class="language-rust">use layer_client::{Client, Config, InputMessage, parsers::parse_markdown, update::Update};
+<pre class="playground"><code class="language-rust">use layer_client::{Client, InputMessage, parsers::parse_markdown, update::Update};
 use layer_tl_types as tl;
 use std::sync::Arc;
 
-const API_ID:    i32  = 0;        // set your values
-const API_HASH:  &amp;str = "";
-const BOT_TOKEN: &amp;str = "";
-
 #[tokio::main]
 async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-    let (client, _shutdown) = Client::connect(Config {
-        session_path: "bot.session".into(),
-        api_id:       API_ID,
-        api_hash:     API_HASH.to_string(),
-        ..Default::default()
-    }).await?;
+    let (client, _shutdown) = Client::builder()
+        .api_id(std::env::var("API_ID")?.parse()?)
+        .api_hash(std::env::var("API_HASH")?)
+        .session("bot.session")
+        .connect()
+        .await?;
     let client = Arc::new(client);
 
     if !client.is_authorized().await? {
-        client.bot_sign_in(BOT_TOKEN).await?;
+        client.bot_sign_in(&amp;std::env::var("BOT_TOKEN")?).await?;
         client.save_session().await?;
     }
 
@@ -250,12 +246,8 @@ async fn dispatch(
                         "👋 **Hello!** I'm built with **layer** — async Telegram MTProto in Rust 🦀\n\n\
                          Use /help to see all commands."
                     );
-                    let kb = inline_kb(vec![
-                        vec![cb_btn("📖 Help", "help"), cb_btn("ℹ️ About", "about")],
-                        vec![url_btn("⭐ GitHub", "https://github.com/ankit-chaubey/layer")],
-                    ]);
                     client.send_message_to_peer_ex(peer, &amp;InputMessage::text(t)
-                        .entities(e).reply_markup(kb).reply_to(Some(reply_to))).await?;
+                        .entities(e).reply_to(Some(reply_to))).await?;
                 }
                 "/help" =&gt; {
                     let (t, e) = parse_markdown(
@@ -266,7 +258,6 @@ async fn dispatch(
                          /upper `&lt;text&gt;` — UPPERCASE\n\
                          /lower `&lt;text&gt;` — lowercase\n\
                          /reverse `&lt;text&gt;` — esreveR\n\
-                         /calc `&lt;expr&gt;` — Simple calculator\n\
                          /id — Your user and chat ID"
                     );
                     client.send_message_to_peer_ex(peer, &amp;InputMessage::text(t)
@@ -280,20 +271,9 @@ async fn dispatch(
                     client.send_message_to_peer_ex(peer, &amp;InputMessage::text(t)
                         .entities(e).reply_to(Some(reply_to))).await?;
                 }
-                "/echo" =&gt; {
-                    let reply = if arg.is_empty() {
-                        "Usage: /echo &lt;text&gt;".to_string()
-                    } else {
-                        arg.to_string()
-                    };
-                    client.send_message_to_peer(peer, &amp;reply).await?;
-                }
-                "/upper" =&gt; {
-                    client.send_message_to_peer(peer, &amp;arg.to_uppercase()).await?;
-                }
-                "/lower" =&gt; {
-                    client.send_message_to_peer(peer, &amp;arg.to_lowercase()).await?;
-                }
+                "/echo"    =&gt; { client.send_message_to_peer(peer, if arg.is_empty() { "Usage: /echo &lt;text&gt;" } else { arg }).await?; }
+                "/upper"   =&gt; { client.send_message_to_peer(peer, &amp;arg.to_uppercase()).await?; }
+                "/lower"   =&gt; { client.send_message_to_peer(peer, &amp;arg.to_lowercase()).await?; }
                 "/reverse" =&gt; {
                     let rev: String = arg.chars().rev().collect();
                     client.send_message_to_peer(peer, &amp;rev).await?;
@@ -308,18 +288,16 @@ async fn dispatch(
                     client.send_message_to_peer_ex(peer, &amp;InputMessage::text(t)
                         .entities(e).reply_to(Some(reply_to))).await?;
                 }
-                _ =&gt; {
-                    client.send_message_to_peer(peer, "❓ Unknown command. Try /help").await?;
-                }
+                _ =&gt; { client.send_message_to_peer(peer, "❓ Unknown command. Try /help").await?; }
             }
         }
 
         // ── Callback queries ───────────────────────────────────────
         Update::CallbackQuery(cb) =&gt; {
             match cb.data().unwrap_or("") {
-                "help"  =&gt; { cb.answer(client, "Send /help for all commands").await?; }
-                "about" =&gt; { cb.answer_alert(client, "Built with layer — Rust MTProto 🦀").await?; }
-                _       =&gt; { cb.answer(client, "").await?; }
+                "help"  =&gt; { client.answer_callback_query(cb.query_id, Some("Send /help for commands"), false).await?; }
+                "about" =&gt; { client.answer_callback_query(cb.query_id, Some("Built with layer — Rust MTProto 🦀"), true).await?; }
+                _       =&gt; { client.answer_callback_query(cb.query_id, None, false).await?; }
             }
         }
 
@@ -330,8 +308,7 @@ async fn dispatch(
             let results = vec![
                 make_article("1", "🔠 UPPER", &amp;q.to_uppercase()),
                 make_article("2", "🔡 lower", &amp;q.to_lowercase()),
-                make_article("3", "🔄 Reversed",
-                    &amp;q.chars().rev().collect::&lt;String&gt;()),
+                make_article("3", "🔄 Reversed", &amp;q.chars().rev().collect::&lt;String&gt;()),
             ];
             client.answer_inline_query(qid, results, 30, false, None).await?;
         }
@@ -340,31 +317,6 @@ async fn dispatch(
     }
 
     Ok(())
-}
-
-// ── Keyboard helpers ──────────────────────────────────────────────────────────
-
-fn inline_kb(rows: Vec&lt;Vec&lt;tl::enums::KeyboardButton&gt;&gt;) -&gt; tl::enums::ReplyMarkup {
-    tl::enums::ReplyMarkup::ReplyInlineMarkup(tl::types::ReplyInlineMarkup {
-        rows: rows.into_iter().map(|row|
-            tl::enums::KeyboardButtonRow::KeyboardButtonRow(
-                tl::types::KeyboardButtonRow { buttons: row }
-            )
-        ).collect(),
-    })
-}
-
-fn cb_btn(text: &amp;str, data: &amp;str) -&gt; tl::enums::KeyboardButton {
-    tl::enums::KeyboardButton::Callback(tl::types::KeyboardButtonCallback {
-        requires_password: false, style: None,
-        text: text.into(), data: data.as_bytes().to_vec(),
-    })
-}
-
-fn url_btn(text: &amp;str, url: &amp;str) -&gt; tl::enums::KeyboardButton {
-    tl::enums::KeyboardButton::Url(tl::types::KeyboardButtonUrl {
-        style: None, text: text.into(), url: url.into(),
-    })
 }
 
 fn make_article(id: &amp;str, title: &amp;str, text: &amp;str) -&gt; tl::enums::InputBotInlineResult {
@@ -398,6 +350,15 @@ fn make_article(id: &amp;str, title: &amp;str, text: &amp;str) -&gt; tl::enums::
 </tbody>
 </table>
 </div>
+<hr>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
+<ul>
+<li><a href="./authentication/bot-login.html">Bot Login — full guide</a></li>
+<li><a href="./updates/callbacks.html">Callback Queries</a></li>
+<li><a href="./updates/inline-mode.html">Inline Mode</a></li>
+<li><a href="./messaging/keyboards.html">Inline Keyboards</a></li>
+<li><a href="./api/admin-rights.html">Admin &amp; Ban Rights</a></li>
+</ul>
 
                     </main>
 

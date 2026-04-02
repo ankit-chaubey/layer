@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7c30200a.js";
+            window.path_to_searchindex_js = "searchindex-dfc84dac.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-747e4d8b.js"></script>
@@ -189,12 +189,12 @@ use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-    let (client, _shutdown) = Client::connect(Config {
-        session_path: "my.session".into(),
-        api_id:       std::env::var("TG_API_ID")?.parse()?,
-        api_hash:     std::env::var("TG_API_HASH")?,
-        ..Default::default()
-    }).await?;
+    let (client, _shutdown) = Client::builder()
+        .api_id(std::env::var("TG_API_ID")?.parse()?)
+        .api_hash(std::env::var("TG_API_HASH")?)
+        .session("my.session")
+        .connect()
+        .await?;
 
     // ── Login (skipped if session file already has valid auth) ──
     if !client.is_authorized().await? {
@@ -268,7 +268,7 @@ fn read_line() -&gt; String {
 <tr><th>Step</th><th>Method</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td>Connect</td><td><code>Client::connect</code></td><td>Opens TCP, performs DH handshake, loads session</td></tr>
+<tr><td>Connect</td><td><code>Client::builder().connect()</code></td><td>Opens TCP, performs DH handshake, loads session</td></tr>
 <tr><td>Check auth</td><td><code>is_authorized</code></td><td>Returns <code>true</code> if session has a valid logged-in user</td></tr>
 <tr><td>Request code</td><td><code>request_login_code</code></td><td>Sends SMS/app code to the phone</td></tr>
 <tr><td>Sign in</td><td><code>sign_in</code></td><td>Submits the code. Returns <code>PasswordRequired</code> if 2FA is on</td></tr>
@@ -278,6 +278,14 @@ fn read_line() -&gt; String {
 </tbody>
 </table>
 </div>
+<hr>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
+<ul>
+<li><a href="./authentication/user-login.html">User Login — full guide</a></li>
+<li><a href="./authentication/2fa.html">Two-Factor Auth (2FA)</a></li>
+<li><a href="./authentication/session-backends.html">Session Backends</a> — string sessions, SQLite, Turso</li>
+<li><a href="./updates/update-types.html">Update Types</a></li>
+</ul>
 
                     </main>
 

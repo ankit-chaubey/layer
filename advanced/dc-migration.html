@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7c30200a.js";
+            window.path_to_searchindex_js = "../searchindex-dfc84dac.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-747e4d8b.js"></script>
@@ -193,33 +193,38 @@
 <li>Your code sees a successful response — the migration is invisible</li>
 </ol>
 <p>The correct DC is then saved in the session file for future connections.</p>
+<img src="../../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange used on each DC connection" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+<p><em>Each new DC connection performs a full DH key exchange to establish a fresh auth key for that DC.</em></p>
 <h2 id="overriding-the-initial-dc"><a class="header" href="#overriding-the-initial-dc">Overriding the initial DC</a></h2>
 <p>By default, <code>layer-client</code> starts on DC2. If you know your account is on a different DC, you can set the initial address:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use std::net::SocketAddr;
-
-let (client, _shutdown) = Client::connect(Config {
-    dc_addr: Some("149.154.167.91:443".parse::&lt;SocketAddr&gt;().unwrap()),
-    ..Default::default()
-}).await?;
+</span>let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_hash")
+    .session("my.session")
+    .dc_addr("149.154.167.91:443")   // DC4
+    .connect()
+    .await?;
 <span class="boring">}</span></code></pre>
 <p>DC addresses:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>DC</th><th>IP</th></tr>
+<tr><th>DC</th><th>Primary IP</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td>DC1</td><td>149.154.175.53</td></tr>
-<tr><td>DC2</td><td>149.154.167.51</td></tr>
-<tr><td>DC3</td><td>149.154.175.100</td></tr>
-<tr><td>DC4</td><td>149.154.167.91</td></tr>
-<tr><td>DC5</td><td>91.108.56.130</td></tr>
+<tr><td>DC1</td><td>149.154.175.53</td><td>US East</td></tr>
+<tr><td>DC2</td><td>149.154.167.51</td><td>US East (default)</td></tr>
+<tr><td>DC3</td><td>149.154.175.100</td><td>US West</td></tr>
+<tr><td>DC4</td><td>149.154.167.91</td><td>EU Amsterdam</td></tr>
+<tr><td>DC5</td><td>91.108.56.130</td><td>Singapore</td></tr>
 </tbody>
 </table>
 </div>
-<p>In practice, just leave <code>dc_addr: None</code> and let the auto-migration handle it.</p>
+<p>In practice, just leave the default and let auto-migration handle it.</p>
+<h2 id="dc-pool-for-media"><a class="header" href="#dc-pool-for-media">DC pool (for media)</a></h2>
+<p>When downloading media, Telegram may route large files through CDN DCs different from your account’s home DC. <code>layer-client</code> maintains a connection pool across DCs and handles this automatically via <code>invoke_on_dc</code>.</p>
 
                     </main>
 

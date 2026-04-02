@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7c30200a.js";
+            window.path_to_searchindex_js = "searchindex-dfc84dac.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-747e4d8b.js"></script>
@@ -184,6 +184,7 @@
                         <h1 id="crate-architecture"><a class="header" href="#crate-architecture">Crate Architecture</a></h1>
 <p><code>layer</code> is a workspace of focused, single-responsibility crates. Understanding the stack helps when you need to go below the high-level API.</p>
 <h2 id="dependency-graph"><a class="header" href="#dependency-graph">Dependency graph</a></h2>
+<img src="../images/arch-stack.svg" alt="layer crate dependency stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
 <pre><code>Your App
   └── layer-client          ← high-level Client, UpdateStream, InputMessage
         ├── layer-mtproto   ← MTProto session, DH, message framing
@@ -194,26 +195,33 @@
 </code></pre>
 <hr>
 <h2 id="layer-client"><a class="header" href="#layer-client">layer-client</a></h2>
+<img src="../images/crate-client-banner.svg" alt="layer-client" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>The high-level async Telegram client.</strong> Import this in your application.</p>
 <h3 id="what-it-provides"><a class="header" href="#what-it-provides">What it provides</a></h3>
 <ul>
 <li><code>Client</code> — the main handle with all high-level methods</li>
+<li><code>ClientBuilder</code> — fluent builder for connecting (<code>Client::builder()...connect()</code>)</li>
 <li><code>Config</code> — connection configuration</li>
 <li><code>Update</code> enum — typed update events</li>
 <li><code>InputMessage</code> — fluent message builder</li>
-<li><code>parsers::parse_markdown</code> — Markdown → entities</li>
+<li><code>parsers::parse_markdown</code> / <code>parsers::parse_html</code> — text → entities</li>
 <li><code>UpdateStream</code> — async iterator</li>
 <li><code>Dialog</code>, <code>DialogIter</code>, <code>MessageIter</code> — dialog/history access</li>
 <li><code>Participant</code>, <code>ParticipantStatus</code> — member info</li>
-<li><code>UploadedFile</code>, <code>DownloadIter</code> — media</li>
+<li><code>Photo</code>, <code>Document</code>, <code>Sticker</code>, <code>Downloadable</code> — typed media wrappers</li>
+<li><code>UploadedFile</code>, <code>DownloadIter</code> — upload/download</li>
 <li><code>TypingGuard</code> — auto-cancels chat action on drop</li>
-<li><code>SessionBackend</code> trait + <code>BinaryFileBackend</code>, <code>InMemoryBackend</code>, <code>SqliteBackend</code></li>
+<li><code>SearchBuilder</code>, <code>GlobalSearchBuilder</code> — fluent search</li>
+<li><code>InlineKeyboard</code>, <code>ReplyKeyboard</code>, <code>Button</code> — keyboard builders</li>
+<li><code>SessionBackend</code> trait + <code>BinaryFileBackend</code>, <code>InMemoryBackend</code>, <code>StringSessionBackend</code>, <code>SqliteBackend</code>, <code>LibSqlBackend</code></li>
 <li><code>Socks5Config</code> — proxy configuration</li>
+<li><code>TransportKind</code> — Abridged, Intermediate, Obfuscated</li>
 <li>Error types: <code>InvocationError</code>, <code>RpcError</code>, <code>SignInError</code>, <code>LoginToken</code>, <code>PasswordToken</code></li>
 <li>Retry traits: <code>RetryPolicy</code>, <code>AutoSleep</code>, <code>NoRetries</code>, <code>RetryContext</code></li>
 </ul>
 <hr>
 <h2 id="layer-tl-types"><a class="header" href="#layer-tl-types">layer-tl-types</a></h2>
+<img src="../images/crate-tl-types-banner.svg" alt="layer-tl-types" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>All generated Telegram API types.</strong> Auto-regenerated at <code>cargo build</code> from <code>tl/api.tl</code>.</p>
 <h3 id="what-it-provides-1"><a class="header" href="#what-it-provides-1">What it provides</a></h3>
 <ul>
@@ -242,6 +250,7 @@
 <p>Most Telegram API fields use <code>enums::*</code> types because the wire format is polymorphic.</p>
 <hr>
 <h2 id="layer-mtproto"><a class="header" href="#layer-mtproto">layer-mtproto</a></h2>
+<img src="../images/crate-mtproto-banner.svg" alt="layer-mtproto" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>The MTProto session layer.</strong> Handles the low-level mechanics of talking to Telegram.</p>
 <h3 id="what-it-provides-2"><a class="header" href="#what-it-provides-2">What it provides</a></h3>
 <ul>
@@ -253,6 +262,7 @@
 <li>Transport abstraction (abridged, intermediate, obfuscated)</li>
 </ul>
 <h3 id="dh-handshake-steps"><a class="header" href="#dh-handshake-steps">DH handshake steps</a></h3>
+<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 <ol>
 <li><strong>PQ factorization</strong> — <code>req_pq_multi</code> → server sends <code>resPQ</code></li>
 <li><strong>Server DH params</strong> — <code>req_DH_params</code> with encrypted key → <code>server_DH_params_ok</code></li>
@@ -261,6 +271,7 @@
 <p>After step 3, both sides hold the same auth key derived from the shared DH secret.</p>
 <hr>
 <h2 id="layer-crypto"><a class="header" href="#layer-crypto">layer-crypto</a></h2>
+<img src="../images/crate-crypto-banner.svg" alt="layer-crypto" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>Cryptographic primitives.</strong> Pure Rust, <code>#![deny(unsafe_code)]</code>.</p>
 <div class="table-wrapper">
 <table>
@@ -274,17 +285,19 @@
 <tr><td>RSA</td><td>PKCS#1 v1.5</td><td>Encrypting PQ proof with Telegram’s public keys</td></tr>
 <tr><td>SHA-1</td><td>SHA-1</td><td>Used in auth key derivation</td></tr>
 <tr><td>SHA-256</td><td>SHA-256</td><td>MTProto 2.0 MAC computation</td></tr>
+<tr><td><code>obfuscated</code></td><td>AES-CTR</td><td>Transport-layer obfuscation init</td></tr>
 <tr><td>PBKDF2</td><td>PBKDF2-SHA512</td><td>2FA password derivation (via layer-client)</td></tr>
 </tbody>
 </table>
 </div>
 <hr>
 <h2 id="layer-tl-parser"><a class="header" href="#layer-tl-parser">layer-tl-parser</a></h2>
+<img src="../images/crate-tl-parser-banner.svg" alt="layer-tl-parser" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>TL schema parser.</strong> Converts <code>.tl</code> text into structured <code>Definition</code> values.</p>
 <h3 id="parsed-ast-types"><a class="header" href="#parsed-ast-types">Parsed AST types</a></h3>
 <ul>
 <li><code>Definition</code> — a single TL line (constructor or function)</li>
-<li><code>Category</code> — <code>Types</code> or <code>Functions</code></li>
+<li><code>Category</code> — <code>Type</code> or <code>Function</code></li>
 <li><code>Parameter</code> — a named field with type</li>
 <li><code>ParameterType</code> — flags, conditionals, generic, basic</li>
 <li><code>Flag</code> — <code>flags.N?type</code> conditional fields</li>
@@ -292,6 +305,7 @@
 <p>Used exclusively by <code>build.rs</code> in <code>layer-tl-types</code>. You never import it directly.</p>
 <hr>
 <h2 id="layer-tl-gen"><a class="header" href="#layer-tl-gen">layer-tl-gen</a></h2>
+<img src="../images/crate-tl-gen-banner.svg" alt="layer-tl-gen" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>Rust code generator.</strong> Takes the parsed AST and emits valid Rust source files.</p>
 <h3 id="output-files-written-to-out_dir"><a class="header" href="#output-files-written-to-out_dir">Output files (written to <code>$OUT_DIR</code>)</a></h3>
 <div class="table-wrapper">

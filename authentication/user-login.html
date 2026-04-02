@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7c30200a.js";
+            window.path_to_searchindex_js = "../searchindex-dfc84dac.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-747e4d8b.js"></script>
@@ -268,6 +268,17 @@ fn read_line() -&gt; String {
 </span>client.sign_out().await?;
 <span class="boring">}</span></code></pre>
 <p>This revokes the auth key on Telegram’s servers and deletes the local session file.</p>
+<hr>
+<h2 id="how-the-dh-auth-key-exchange-works"><a class="header" href="#how-the-dh-auth-key-exchange-works">How the DH auth key exchange works</a></h2>
+<p>Under the hood, every new session establishes a shared auth key via a 3-step Diffie-Hellman exchange before any login code is ever sent. This key is what secures the entire session.</p>
+<img src="../../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+<ol>
+<li>Client sends <code>req_pq_multi</code> — server responds with a <code>pq</code> product</li>
+<li>Client factorises <code>pq</code> into primes (Pollard’s rho), encrypts its DH parameters with the server’s RSA key</li>
+<li>Server responds with <code>server_DH_params_ok</code> — client completes <code>g^ab mod p</code></li>
+<li>Both sides now share a 2048-bit auth key — login code is sent encrypted using this key</li>
+</ol>
+<p>See <a href="../crates.html#layer-mtproto">Crate Architecture</a> for more on the MTProto internals.</p>
 
                     </main>
 
