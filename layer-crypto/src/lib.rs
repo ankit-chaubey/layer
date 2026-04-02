@@ -1,4 +1,5 @@
-#![doc(html_root_url = "https://docs.rs/layer-crypto/0.4.4")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![doc(html_root_url = "https://docs.rs/layer-crypto/0.4.5")]
 //! Cryptographic primitives for Telegram MTProto.
 //!
 //! Provides:

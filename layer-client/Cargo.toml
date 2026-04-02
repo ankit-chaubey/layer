@@ -48,6 +48,5 @@ html = []
 html5ever = ["dep:html5ever"]
 
 [package.metadata.docs.rs]
-# Enable all feature flags when building docs on docs.rs
-features = ["sqlite-session", "libsql-session", "html", "html5ever"]
+all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

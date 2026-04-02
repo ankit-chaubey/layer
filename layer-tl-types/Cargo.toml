@@ -39,5 +39,5 @@ tl-mtproto               = []
 impl-serde               = []
 
 [package.metadata.docs.rs]
-features = ["tl-api", "tl-mtproto", "impl-debug", "impl-from-type", "impl-from-enum", "name-for-id", "impl-serde"]
+all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

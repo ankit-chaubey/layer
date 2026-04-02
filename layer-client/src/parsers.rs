@@ -527,6 +527,7 @@ impl HtmlTag {
 /// Uses the [`html5ever`] spec-compliant tokenizer.  Enable the `html5ever`
 /// Cargo feature to activate this implementation.
 #[cfg(feature = "html5ever")]
+#[cfg_attr(docsrs, doc(cfg(feature = "html5ever")))]
 pub fn parse_html(html: &str) -> (String, Vec<tl::enums::MessageEntity>) {
     use html5ever::tendril::StrTendril;
     use html5ever::tokenizer::{
