@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3cf72212.js";
+            window.path_to_searchindex_js = "searchindex-7c30200a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-eb84f683.js"></script>
+        <script src="toc-747e4d8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -233,7 +233,7 @@
 
 <div class="fc-title">Typed Update Stream</div>
 
-<div class="fc-desc">NewMessage, MessageEdited, CallbackQuery, InlineQuery — all as strongly typed Rust enums.</div>
+<div class="fc-desc">NewMessage, MessageEdited, CallbackQuery, InlineQuery, ChatAction, UserStatus — all strongly typed.</div>
 
 </div>
 
@@ -280,7 +280,7 @@
 <hr>
 <h2 id="quick-install"><a class="header" href="#quick-install">Quick install</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.0"
+layer-client = "0.4.4"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p>Then head to <a href="./installation.html">Installation</a> for credentials setup, or jump straight to:</p>
@@ -288,6 +288,16 @@ tokio        = { version = "1", features = ["full"] }
 <li><a href="./quickstart-user.html">Quick Start — User Account</a> — login, send a message, receive updates</li>
 <li><a href="./quickstart-bot.html">Quick Start — Bot</a> — bot token login, commands, callbacks</li>
 </ul>
+<hr>
+<h2 id="whats-new-in-v044"><a class="header" href="#whats-new-in-v044">What’s new in v0.4.4</a></h2>
+<ul>
+<li><strong><code>StringSessionBackend</code></strong> — portable base64 sessions, no file required</li>
+<li><strong><code>LibSqlBackend</code></strong> — libsql/Turso remote database sessions</li>
+<li><strong><code>Update::ChatAction</code></strong> and <strong><code>Update::UserStatus</code></strong> — new typed update variants</li>
+<li><strong><code>sync_update_state()</code></strong> — force immediate pts/seq reconciliation</li>
+<li>7 bug fixes (pagination, memory leaks, chunk alignment, and more)</li>
+</ul>
+<p>See the full <a href="https://github.com/ankit-chaubey/layer/blob/main/CHANGELOG.md">CHANGELOG</a>.</p>
 <hr>
 <h2 id="acknowledgements"><a class="header" href="#acknowledgements">Acknowledgements</a></h2>
 <ul>

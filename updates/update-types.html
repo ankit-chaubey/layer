@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3cf72212.js";
+            window.path_to_searchindex_js = "../searchindex-7c30200a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-eb84f683.js"></script>
+        <script src="../toc-747e4d8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,7 +182,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="update-types"><a class="header" href="#update-types">Update Types</a></h1>
-<p>All Telegram events flow through <code>stream_updates()</code> as variants of the <code>Update</code> enum. Here is every variant, what it carries, and how to handle it.</p>
+<p>All Telegram events flow through <code>stream_updates()</code> as variants of the <code>Update</code> enum. Every variant is strongly typed — no raw JSON or untagged maps.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::update::Update;
@@ -190,170 +190,208 @@
 let mut updates = client.stream_updates();
 while let Some(update) = updates.next().await {
     match update {
-        Update::NewMessage(msg)     =&gt; { /* ... */ }
-        Update::MessageEdited(msg)  =&gt; { /* ... */ }
-        Update::MessageDeleted(del) =&gt; { /* ... */ }
-        Update::CallbackQuery(cb)   =&gt; { /* ... */ }
-        Update::InlineQuery(iq)     =&gt; { /* ... */ }
-        Update::InlineSend(is)      =&gt; { /* ... */ }
-        Update::Raw(raw)            =&gt; { /* ... */ }
-        _ =&gt; {}
+        Update::NewMessage(msg)       =&gt; { /* new message arrived */ }
+        Update::MessageEdited(msg)    =&gt; { /* message was edited */ }
+        Update::MessageDeleted(del)   =&gt; { /* message(s) were deleted */ }
+        Update::CallbackQuery(cb)     =&gt; { /* inline button pressed */ }
+        Update::InlineQuery(iq)       =&gt; { /* @bot inline query */ }
+        Update::InlineSend(is)        =&gt; { /* inline result chosen */ }
+        Update::ChatAction(action)    =&gt; { /* user typing / uploading */ }
+        Update::UserStatus(status)    =&gt; { /* contact online status */ }
+        Update::Raw(raw)              =&gt; { /* unrecognised update */ }
+        _ =&gt; {}   // required: Update is #[non_exhaustive]
     }
 }
 <span class="boring">}</span></code></pre>
+<blockquote>
+<p><strong>Note:</strong> As of v0.4.4, <code>Update</code> is <code>#[non_exhaustive]</code>. Your match arms <strong>must</strong> include a <code>_ =&gt; {}</code> fallback or the code will fail to compile when new variants are added.</p>
+</blockquote>
 <hr>
 <h2 id="newmessage"><a class="header" href="#newmessage">NewMessage</a></h2>
-<p>Fires for every new message received in any chat the account participates in.</p>
+<p>Fires for every new message the account receives in any chat.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::NewMessage(msg) =&gt; {
-    // Filter out your own sent messages
-    if msg.outgoing() { return; }
+    if msg.outgoing() { return; }  // skip messages you sent
 
-    let text     = msg.text().unwrap_or("");
-    let msg_id   = msg.id();
-    let date     = msg.date_utc();  // chrono::DateTime&lt;Utc&gt;
-    let is_post  = msg.post();      // from a channel
-    let has_media = msg.media().is_some();
+    let text    = msg.text().unwrap_or("");
+    let msg_id  = msg.id();
+    let peer    = msg.peer_id();   // the chat it arrived in
+    let sender  = msg.sender_id(); // who sent it
 
     println!("[{msg_id}] {text}");
 }
 <span class="boring">}</span></code></pre>
-<p><strong>Key accessors on <code>IncomingMessage</code>:</strong></p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Returns</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td><code>id()</code></td><td><code>i32</code></td><td>Unique message ID within the chat</td></tr>
-<tr><td><code>text()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Plain text content</td></tr>
-<tr><td><code>peer_id()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>The chat it was sent in</td></tr>
-<tr><td><code>sender_id()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>Who sent it</td></tr>
-<tr><td><code>outgoing()</code></td><td><code>bool</code></td><td>Sent by the logged-in account</td></tr>
-<tr><td><code>date()</code></td><td><code>i32</code></td><td>Unix timestamp</td></tr>
-<tr><td><code>date_utc()</code></td><td><code>Option&lt;DateTime&lt;Utc&gt;&gt;</code></td><td>Parsed chrono datetime</td></tr>
-<tr><td><code>edit_date()</code></td><td><code>Option&lt;i32&gt;</code></td><td>When last edited</td></tr>
-<tr><td><code>media()</code></td><td><code>Option&lt;&amp;MessageMedia&gt;</code></td><td>Attached media</td></tr>
-<tr><td><code>entities()</code></td><td><code>Option&lt;&amp;Vec&lt;MessageEntity&gt;&gt;</code></td><td>Formatting regions</td></tr>
-<tr><td><code>mentioned()</code></td><td><code>bool</code></td><td>Account was @mentioned</td></tr>
-<tr><td><code>silent()</code></td><td><code>bool</code></td><td>Sent without notification</td></tr>
-<tr><td><code>pinned()</code></td><td><code>bool</code></td><td>A pin notification</td></tr>
-<tr><td><code>post()</code></td><td><code>bool</code></td><td>From a channel</td></tr>
-<tr><td><code>noforwards()</code></td><td><code>bool</code></td><td>Cannot be forwarded</td></tr>
-<tr><td><code>reply_to_message_id()</code></td><td><code>Option&lt;i32&gt;</code></td><td>ID of replied-to message</td></tr>
-<tr><td><code>reply_markup()</code></td><td><code>Option&lt;&amp;ReplyMarkup&gt;</code></td><td>Keyboard attached to this message</td></tr>
-<tr><td><code>forward_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>How many times forwarded</td></tr>
-<tr><td><code>view_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>View count (channels)</td></tr>
-<tr><td><code>reply_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Comment count</td></tr>
-<tr><td><code>grouped_id()</code></td><td><code>Option&lt;i64&gt;</code></td><td>Album group ID</td></tr>
-<tr><td><code>forward_header()</code></td><td><code>Option&lt;&amp;MessageFwdHeader&gt;</code></td><td>Forward origin info</td></tr>
-</tbody>
-</table>
-</div>
+<p>See <a href="./incoming-message.html">IncomingMessage</a> for the full list of accessors.</p>
 <hr>
 <h2 id="messageedited"><a class="header" href="#messageedited">MessageEdited</a></h2>
-<p>Same structure as <code>NewMessage</code> — carries the updated version of the message.</p>
+<p>Same structure as <code>NewMessage</code> — carries the new version of the edited message.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::MessageEdited(msg) =&gt; {
-    println!("Message {} was edited: {}", msg.id(), msg.text().unwrap_or(""));
-    if let Some(edit_time) = msg.edit_date_utc() {
-        println!("Edited at: {edit_time}");
+    println!("Edited [{id}]: {text}",
+        id   = msg.id(),
+        text = msg.text().unwrap_or(""),
+    );
+    if let Some(when) = msg.edit_date_utc() {
+        println!("  Edited at: {when}");
     }
 }
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="messagedeleted"><a class="header" href="#messagedeleted">MessageDeleted</a></h2>
-<p>Contains only message IDs — content is gone by the time this fires.</p>
+<p>Contains only the message IDs, not the content (which is gone).</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::MessageDeleted(del) =&gt; {
-    println!("Deleted {} messages", del.messages().len());
-    println!("IDs: {:?}", del.messages());
+    println!("Deleted IDs: {:?}", del.messages());
 
-    // For channel deletions, the channel ID is available
+    // For channel deletions, channel_id is set
     if let Some(ch_id) = del.channel_id() {
-        println!("In channel: {ch_id}");
+        println!("  In channel: {ch_id}");
     }
 }
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="callbackquery"><a class="header" href="#callbackquery">CallbackQuery</a></h2>
-<p>Fired when a user presses an inline keyboard button on a bot message.</p>
+<p>Fires when a user presses an inline keyboard button.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::CallbackQuery(cb) =&gt; {
-    let data    = cb.data().unwrap_or("");
-    let qid     = cb.query_id;
-    let from    = cb.sender_id();
-    let msg_id  = cb.msg_id;
+    let data  = cb.data().unwrap_or("");
+    let qid   = cb.query_id;
 
     match data {
-        "action:confirm" =&gt; {
-            // answer() shows a brief toast to the user
-            cb.answer(&amp;client, "✅ Confirmed!").await?;
+        "yes" =&gt; {
+            // edit the message, then acknowledge
+            client.edit_message(peer, cb.msg_id, "You said yes!").await?;
+            client.answer_callback_query(qid, None, false).await?;
         }
-        "action:cancel" =&gt; {
-            // answer_alert() shows a modal popup
-            cb.answer_alert(&amp;client, "❌ Cancelled").await?;
+        "no" =&gt; {
+            cb.answer(&amp;client, "Cancelled.").await?;
         }
         _ =&gt; {
-            // Must always answer — otherwise spinner shows forever
-            client.answer_callback_query(qid, None, false).await?;
+            client.answer_callback_query(qid, Some("Unknown"), false).await?;
         }
     }
 }
 <span class="boring">}</span></code></pre>
-<blockquote>
-<p><strong>WARNING:</strong> You <strong>must</strong> call <code>answer_callback_query</code> for every <code>CallbackQuery</code>. If you don’t, the button shows a loading spinner to the user indefinitely.</p>
-</blockquote>
+<p>See <a href="./callbacks.html">Callback Queries</a> for full reference.</p>
 <hr>
 <h2 id="inlinequery"><a class="header" href="#inlinequery">InlineQuery</a></h2>
-<p>Fired when a user types <code>@yourbot something</code> in any chat.</p>
+<p>Fires when a user types <code>@yourbot &lt;query&gt;</code> in any chat.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::InlineQuery(iq) =&gt; {
-    let query  = iq.query();   // the typed text
-    let qid    = iq.query_id;
-    let offset = iq.offset();  // for pagination
+    let q   = iq.query();
+    let qid = iq.query_id;
 
-    let results = vec![
-        make_article("1", "Result title", "Result text"),
-    ];
+    let results = build_results(q);
 
-    // cache_time = seconds to cache the results (0 = no cache)
-    // is_personal = true if results differ per user
-    // next_offset = Some("page2") for pagination
-    client.answer_inline_query(qid, results, 300, false, None).await?;
+    client.answer_inline_query(
+        qid,
+        results,
+        300,   // cache seconds
+        false, // is_personal
+        None,  // next_offset
+    ).await?;
 }
 <span class="boring">}</span></code></pre>
+<p>See <a href="./inline-mode.html">Inline Mode</a> for result builders.</p>
 <hr>
 <h2 id="inlinesend"><a class="header" href="#inlinesend">InlineSend</a></h2>
-<p>Fired when the user selects one of your inline results and it gets sent.</p>
+<p>Fires when the user actually sends a chosen inline result.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::InlineSend(is) =&gt; {
-    println!("User chose result id: {}", is.id());
-    // Useful for analytics or follow-up actions
+    let result_id   = is.result_id();
+    let query       = is.query();
+    let inline_msg  = is.message_id(); // Option — present only if inline_feedback is on
+
+    println!("User sent inline result '{result_id}' for query '{query}'");
+}
+<span class="boring">}</span></code></pre>
+<p>To edit the sent inline message:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>if let Some(inline_msg_id) = is.message_id() {
+    client.edit_inline_message(
+        inline_msg_id,
+        "Updated content!",
+    ).await?;
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="chataction--new-in-v044"><a class="header" href="#chataction--new-in-v044">ChatAction — New in v0.4.4</a></h2>
+<p>Fires when a user starts or stops typing, uploading, recording, etc. in a chat the account is in.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Update::ChatAction(action) =&gt; {
+    let user   = action.user_id();    // Option&lt;i64&gt;
+    let peer   = action.peer();       // the chat
+    let action = action.action();     // tl::enums::SendMessageAction
+
+    match action {
+        tl::enums::SendMessageAction::SendMessageTypingAction =&gt; {
+            println!("user {:?} is typing in {:?}", user, peer);
+        }
+        tl::enums::SendMessageAction::SendMessageUploadPhotoAction(_) =&gt; {
+            println!("user {:?} is uploading a photo", user);
+        }
+        tl::enums::SendMessageAction::SendMessageRecordAudioAction =&gt; {
+            println!("user {:?} is recording audio", user);
+        }
+        tl::enums::SendMessageAction::SendMessageCancelAction =&gt; {
+            println!("user {:?} stopped", user);
+        }
+        _ =&gt; {}
+    }
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="userstatus--new-in-v044"><a class="header" href="#userstatus--new-in-v044">UserStatus — New in v0.4.4</a></h2>
+<p>Fires when a contact’s online/offline status changes. Only received for contacts or people in mutual chats (depending on their privacy settings).</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Update::UserStatus(status) =&gt; {
+    let user_id = status.user_id();    // i64
+    let online  = status.status();     // tl::enums::UserStatus
+
+    match online {
+        tl::enums::UserStatus::UserStatusOnline(s) =&gt; {
+            println!("user {user_id} went online (expires {})", s.expires);
+        }
+        tl::enums::UserStatus::UserStatusOffline(s) =&gt; {
+            println!("user {user_id} went offline (was online {})", s.was_online);
+        }
+        tl::enums::UserStatus::UserStatusRecently =&gt; {
+            println!("user {user_id}: seen recently");
+        }
+        tl::enums::UserStatus::UserStatusLastWeek(_) =&gt; {
+            println!("user {user_id}: seen last week");
+        }
+        tl::enums::UserStatus::UserStatusLastMonth(_) =&gt; {
+            println!("user {user_id}: seen last month");
+        }
+        _ =&gt; {}
+    }
 }
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="raw"><a class="header" href="#raw">Raw</a></h2>
-<p>Any TL update variant not mapped to one of the above. Carries the constructor ID for identification.</p>
+<p>Any update that doesn’t map to a named variant is passed through as <code>Update::Raw</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::Raw(raw) =&gt; {
-    println!("Unhandled update: 0x{:08x}", raw.constructor_id);
-
-    // You can decode it manually using the TL types
-    // if you know the constructor:
-    // let upd: tl::enums::Update = ...;
+    // raw.constructor_id() — the TL constructor ID (u32)
+    // raw.bytes()          — the raw serialised bytes
+    println!("Unhandled update: 0x{:08x}", raw.constructor_id());
 }
 <span class="boring">}</span></code></pre>
-<p>Use this as a catch-all for new update types as the Telegram API evolves, or to handle specialized updates like <code>updateBotChatInviteRequester</code>, <code>updateBotStopped</code>, etc.</p>
+<p>Use this as an escape hatch to handle updates that <code>layer-client</code> doesn’t yet have a typed variant for.</p>
 <hr>
-<h2 id="concurrent-handling-pattern"><a class="header" href="#concurrent-handling-pattern">Concurrent handling pattern</a></h2>
+<h2 id="concurrent-handling"><a class="header" href="#concurrent-handling">Concurrent handling</a></h2>
+<p>Spawn each update in its own Tokio task to prevent one slow handler from blocking others:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use std::sync::Arc;
@@ -362,21 +400,33 @@ let client = Arc::new(client);
 let mut updates = client.stream_updates();
 
 while let Some(update) = updates.next().await {
-    let c = client.clone();
+    let client = client.clone();
     tokio::spawn(async move {
-        if let Err(e) = handle(update, &amp;c).await {
-            eprintln!("Error: {e}");
+        if let Err(e) = handle(update, &amp;client).await {
+            eprintln!("Handler error: {e}");
         }
     });
 }
+
+async fn handle(
+    update: Update,
+    client: &amp;Client,
+) -&gt; Result&lt;(), Box&lt;dyn std::error::Error + Send + Sync&gt;&gt; {
+    match update {
+        Update::NewMessage(msg) if !msg.outgoing() =&gt; {
+            // …
+        }
+        _ =&gt; {}
+    }
+    Ok(())
+}
 <span class="boring">}</span></code></pre>
-<p>This ensures slow handlers don’t block the receive loop.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../messaging/formatting.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../messaging/reactions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -390,7 +440,7 @@ while let Some(update) = updates.next().await {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../messaging/formatting.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../messaging/reactions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

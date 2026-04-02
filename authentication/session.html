@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3cf72212.js";
+            window.path_to_searchindex_js = "../searchindex-7c30200a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-eb84f683.js"></script>
+        <script src="../toc-747e4d8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,48 +182,77 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="session-persistence"><a class="header" href="#session-persistence">Session Persistence</a></h1>
-<p>A session stores your auth key, DC address, and peer access hash cache. Without it, you’d need to log in on every run.</p>
+<p>A session stores your auth key, DC address, and peer access-hash cache. Without it, you’d need to log in on every run.</p>
 <h2 id="binary-file-default"><a class="header" href="#binary-file-default">Binary file (default)</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Config {
+</span>use layer_client::{Client, Config};
+
+let (client, _shutdown) = Client::connect(Config {
     session_path: "my.session".into(),
+    api_id:       12345,
+    api_hash:     "abc123".into(),
     ..Default::default()
-}
+}).await?;
 <span class="boring">}</span></code></pre>
-<p>After login:</p>
+<p>After login, save to disk:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>client.save_session().await?;
 <span class="boring">}</span></code></pre>
-<p>The file is created at the given path and loaded automatically on the next <code>Client::connect</code>. Keep it in <code>.gitignore</code> — it’s equivalent to your account password.</p>
+<p>The file is created at <code>session_path</code> and reloaded automatically on the next <code>Client::connect</code>. <strong>Keep it in <code>.gitignore</code> — it grants full API access to your account.</strong></p>
+<hr>
 <h2 id="in-memory-ephemeral"><a class="header" href="#in-memory-ephemeral">In-memory (ephemeral)</a></h2>
 <p>Nothing written to disk. Useful for tests or short-lived scripts:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::session_backend::InMemoryBackend;
 
-// Using InMemoryBackend directly via Config
-Config {
-    // session_path is ignored when using a custom backend
-    ..Default::default()
-}
+let (client, _shutdown) = Client::builder()
+    .session(InMemoryBackend::new())
+    .api_id(12345)
+    .api_hash("abc123")
+    .connect()
+    .await?;
 <span class="boring">}</span></code></pre>
-<p>With an in-memory session, login is required on every run.</p>
+<p>Login is required on every run since nothing persists.</p>
+<hr>
 <h2 id="sqlite-robust-long-running-servers"><a class="header" href="#sqlite-robust-long-running-servers">SQLite (robust, long-running servers)</a></h2>
-<p>Enable the feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.0", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.4", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// SQLite session is automatically used when the feature is enabled
-// and the session file has a .db extension
-Config {
+</span>let (client, _shutdown) = Client::connect(Config {
     session_path: "session.db".into(),
     ..Default::default()
-}
+}).await?;
 <span class="boring">}</span></code></pre>
-<p>SQLite is more robust against crash-corruption than the binary file format, making it ideal for production bots.</p>
+<p>SQLite is more resilient against crash-corruption than the binary format. Ideal for production bots.</p>
+<hr>
+<h2 id="string-session--new-in-v044"><a class="header" href="#string-session--new-in-v044">String session — New in v0.4.4</a></h2>
+<p>Encode the entire session as a portable base64 string. Store it in an env var, a DB column, or CI secrets:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Export (after login)
+let s = client.export_session_string().await?;
+// → "AQAAAAEDAADtE1lMHBT7...=="
+
+// Restore
+let (client, _shutdown) = Client::with_string_session(
+    &amp;s, api_id, api_hash,
+).await?;
+
+// Or via builder
+use layer_client::session_backend::StringSessionBackend;
+let (client, _shutdown) = Client::builder()
+    .session(StringSessionBackend::new(&amp;s))
+    .api_id(api_id)
+    .api_hash(api_hash)
+    .connect()
+    .await?;
+<span class="boring">}</span></code></pre>
+<p>See <a href="./session-backends.html">Session Backends</a> for the full guide including LibSQL (Turso) backend.</p>
+<hr>
 <h2 id="whats-stored-in-a-session"><a class="header" href="#whats-stored-in-a-session">What’s stored in a session</a></h2>
 <div class="table-wrapper">
 <table>
@@ -241,6 +270,7 @@ Config {
 </tbody>
 </table>
 </div>
+<hr>
 <h2 id="security"><a class="header" href="#security">Security</a></h2>
 <blockquote>
 <p><strong>SECURITY:</strong> A stolen session file gives full API access to your account. Protect it like a password.</p>
@@ -251,16 +281,17 @@ Config {
 <li>Never log or print session file contents</li>
 <li>If compromised: revoke from <strong>Telegram → Settings → Devices → Terminate session</strong></li>
 </ul>
+<hr>
 <h2 id="multi-session--multi-account"><a class="header" href="#multi-session--multi-account">Multi-session / multi-account</a></h2>
-<p>Each <code>Client::connect</code> call loads one session. For multiple accounts, use multiple files:</p>
+<p>Each <code>Client::connect</code> loads one session. For multiple accounts, use multiple files:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let client_a = Client::connect(Config {
+</span>let (client_a, _) = Client::connect(Config {
     session_path: "account_a.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
 
-let client_b = Client::connect(Config {
+let (client_b, _) = Client::connect(Config {
     session_path: "account_b.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
@@ -274,7 +305,7 @@ let client_b = Client::connect(Config {
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../messaging/sending.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../authentication/session-backends.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -288,7 +319,7 @@ let client_b = Client::connect(Config {
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../messaging/sending.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../authentication/session-backends.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

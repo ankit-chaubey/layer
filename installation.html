@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3cf72212.js";
+            window.path_to_searchindex_js = "searchindex-7c30200a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-eb84f683.js"></script>
+        <script src="toc-747e4d8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -184,7 +184,7 @@
                         <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <h2 id="add-to-cargotoml"><a class="header" href="#add-to-cargotoml">Add to Cargo.toml</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.0"
+layer-client = "0.4.4"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p><code>layer-client</code> re-exports everything you need for both user clients and bots.</p>
@@ -205,11 +205,11 @@ tokio        = { version = "1", features = ["full"] }
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>// Good — from environment
-let api_id:   i32 = std::env::var("TG_API_ID")?.parse()?;
+let api_id:   i32    = std::env::var("TG_API_ID")?.parse()?;
 let api_hash: String = std::env::var("TG_API_HASH")?;
 
 // Bad — hardcoded in source
-let api_id = 12345;
+let api_id   = 12345;
 let api_hash = "deadbeef..."; // ← never do this in a public repo
 <span class="boring">}</span></code></pre>
 <hr>
@@ -225,15 +225,45 @@ let api_hash = "deadbeef..."; // ← never do this in a public repo
 <hr>
 <h2 id="optional-features"><a class="header" href="#optional-features">Optional features</a></h2>
 <h3 id="sqlite-session-storage"><a class="header" href="#sqlite-session-storage">SQLite session storage</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.0", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.4", features = ["sqlite-session"] }
 </code></pre>
 <p>Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.</p>
+<h3 id="libsql--turso-session-storage--new-in-v044"><a class="header" href="#libsql--turso-session-storage--new-in-v044">LibSQL / Turso session storage — New in v0.4.4</a></h3>
+<pre><code class="language-toml">layer-client = { version = "0.4.4", features = ["libsql-session"] }
+</code></pre>
+<p>Backed by <a href="https://github.com/tursodatabase/libsql">libsql</a> — supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::LibSqlBackend;
+
+// Local
+let backend = LibSqlBackend::open_local("session.libsql").await?;
+
+// Remote (Turso cloud)
+let backend = LibSqlBackend::open_remote(
+    "libsql://your-db.turso.io",
+    "your-turso-auth-token",
+).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="string-session-portable-no-extra-deps--new-in-v044"><a class="header" href="#string-session-portable-no-extra-deps--new-in-v044">String session (portable, no extra deps) — New in v0.4.4</a></h3>
+<p>No feature flag needed. Encode a session as a base64 string and restore it anywhere:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Export
+let s = client.export_session_string().await?;
+
+// Restore
+let (client, _shutdown) = Client::with_string_session(
+    &amp;s, api_id, api_hash,
+).await?;
+<span class="boring">}</span></code></pre>
+<p>See <a href="./authentication/session-backends.html">Session Backends</a> for the full guide.</p>
 <h3 id="html-entity-parsing"><a class="header" href="#html-entity-parsing">HTML entity parsing</a></h3>
 <pre><code class="language-toml"># Built-in hand-rolled HTML parser (no extra deps)
-layer-client = { version = "0.4.0", features = ["html"] }
+layer-client = { version = "0.4.4", features = ["html"] }
 
 # OR: spec-compliant html5ever tokenizer (overrides built-in)
-layer-client = { version = "0.4.0", features = ["html5ever"] }
+layer-client = { version = "0.4.4", features = ["html5ever"] }
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -248,7 +278,7 @@ layer-client = { version = "0.4.0", features = ["html5ever"] }
 </div>
 <h3 id="raw-type-system-features-layer-tl-types"><a class="header" href="#raw-type-system-features-layer-tl-types">Raw type system features (<code>layer-tl-types</code>)</a></h3>
 <p>If you use <code>layer-tl-types</code> directly for raw API access:</p>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.0", features = [
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.4", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)
@@ -258,22 +288,6 @@ layer-client = { version = "0.4.0", features = ["html5ever"] }
     "impl-serde",      # serde::Serialize / Deserialize
 ] }
 </code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Feature</th><th>Default</th><th>What it enables</th></tr>
-</thead>
-<tbody>
-<tr><td><code>tl-api</code></td><td>✅</td><td>All Telegram API constructors and functions</td></tr>
-<tr><td><code>tl-mtproto</code></td><td>❌</td><td>Low-level MTProto transport types</td></tr>
-<tr><td><code>impl-debug</code></td><td>✅</td><td><code>#[derive(Debug)]</code> on every generated type</td></tr>
-<tr><td><code>impl-from-type</code></td><td>✅</td><td><code>From&lt;types::Message&gt; for enums::Message</code></td></tr>
-<tr><td><code>impl-from-enum</code></td><td>✅</td><td><code>TryFrom&lt;enums::Message&gt; for types::Message</code></td></tr>
-<tr><td><code>name-for-id</code></td><td>❌</td><td>Look up constructor name by ID — useful for debugging</td></tr>
-<tr><td><code>impl-serde</code></td><td>❌</td><td>JSON serialization via serde</td></tr>
-</tbody>
-</table>
-</div>
 <hr>
 <h2 id="verifying-installation"><a class="header" href="#verifying-installation">Verifying installation</a></h2>
 <pre class="playground"><code class="language-rust">use layer_tl_types::LAYER;
@@ -294,7 +308,7 @@ fn main() {
 <tr><td>macOS (Apple Silicon + Intel)</td><td>✅ Fully supported</td><td></td></tr>
 <tr><td>Windows</td><td>✅ Supported</td><td>Use WSL2 for best experience</td></tr>
 <tr><td>Android (Termux)</td><td>✅ Works</td><td>Native ARM64</td></tr>
-<tr><td>iOS</td><td>⚠️ Untested</td><td>No async runtime constraints</td></tr>
+<tr><td>iOS</td><td>⚠️ Untested</td><td>No async runtime constraints known</td></tr>
 </tbody>
 </table>
 </div>

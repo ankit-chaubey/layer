@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3cf72212.js";
+            window.path_to_searchindex_js = "searchindex-7c30200a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-eb84f683.js"></script>
+        <script src="toc-747e4d8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -190,19 +190,27 @@
 </thead>
 <tbody>
 <tr><td><code>sqlite-session</code></td><td>❌</td><td>SQLite-backed session storage via <code>rusqlite</code></td></tr>
+<tr><td><code>libsql-session</code></td><td>❌</td><td>libsql / Turso session storage — local or remote (<strong>New in v0.4.4</strong>)</td></tr>
 <tr><td><code>html</code></td><td>❌</td><td>Built-in hand-rolled HTML parser (<code>parse_html</code>, <code>generate_html</code>)</td></tr>
 <tr><td><code>html5ever</code></td><td>❌</td><td>Spec-compliant html5ever tokenizer — overrides the built-in <code>html</code> parser</td></tr>
+<tr><td><code>serde</code></td><td>❌</td><td><code>serde::Serialize</code> / <code>Deserialize</code> on <code>Config</code> and public structs</td></tr>
 </tbody>
 </table>
 </div>
 <pre><code class="language-toml"># SQLite session only
-layer-client = { version = "0.4.0", features = ["sqlite-session"] }
+layer-client = { version = "0.4.4", features = ["sqlite-session"] }
+
+# LibSQL / Turso session (new in 0.4.4)
+layer-client = { version = "0.4.4", features = ["libsql-session"] }
 
 # HTML parsing (minimal, no extra deps)
-layer-client = { version = "0.4.0", features = ["html"] }
+layer-client = { version = "0.4.4", features = ["html"] }
 
 # HTML parsing (spec-compliant, adds html5ever dep)
-layer-client = { version = "0.4.0", features = ["html5ever"] }
+layer-client = { version = "0.4.4", features = ["html5ever"] }
+
+# Multiple features at once
+layer-client = { version = "0.4.4", features = ["sqlite-session", "html"] }
 </code></pre>
 <hr>
 <h2 id="layer-tl-types"><a class="header" href="#layer-tl-types">layer-tl-types</a></h2>
@@ -219,20 +227,19 @@ layer-client = { version = "0.4.0", features = ["html5ever"] }
 <tr><td><code>impl-from-enum</code></td><td>✅</td><td><code>TryFrom&lt;enums::E&gt; for types::T</code> conversions</td></tr>
 <tr><td><code>name-for-id</code></td><td>❌</td><td><code>name_for_id(id: u32) -&gt; Option&lt;&amp;'static str&gt;</code></td></tr>
 <tr><td><code>impl-serde</code></td><td>❌</td><td><code>serde::Serialize</code> + <code>serde::Deserialize</code> on all types</td></tr>
-<tr><td><code>deserializable-functions</code></td><td>❌</td><td><code>Deserializable</code> for function types (server use)</td></tr>
+<tr><td><code>deserializable-functions</code></td><td>❌</td><td><code>Deserializable</code> for function types (server-side use)</td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="example-enable-serde"><a class="header" href="#example-enable-serde">Example: enable serde</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.0", features = ["tl-api", "impl-serde"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.4", features = ["tl-api", "impl-serde"] }
 </code></pre>
-<p>Then:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let json = serde_json::to_string(&amp;some_tl_type)?;
 <span class="boring">}</span></code></pre>
 <h3 id="example-name_for_id-debugging"><a class="header" href="#example-name_for_id-debugging">Example: name_for_id (debugging)</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.0", features = ["tl-api", "name-for-id"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.4", features = ["tl-api", "name-for-id"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -243,9 +250,26 @@ if let Some(name) = name_for_id(0x74ae4240) {
 }
 <span class="boring">}</span></code></pre>
 <h3 id="example-minimal-no-debug-no-conversions"><a class="header" href="#example-minimal-no-debug-no-conversions">Example: minimal (no Debug, no conversions)</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.0", default-features = false, features = ["tl-api"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.4", default-features = false, features = ["tl-api"] }
 </code></pre>
-<p>This reduces compile time if you don’t need the convenience traits.</p>
+<p>Reduces compile time when you don’t need convenience traits.</p>
+<hr>
+<h2 id="string-session--no-feature-flag-needed"><a class="header" href="#string-session--no-feature-flag-needed">String session — no feature flag needed</a></h2>
+<p><code>StringSessionBackend</code> and <code>export_session_string()</code> are available in the default build — no feature flag required:</p>
+<pre><code class="language-toml">layer-client = "0.4.4"   # already includes StringSessionBackend
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let s = client.export_session_string().await?;
+let (client, _) = Client::with_string_session(&amp;s, api_id, api_hash).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="docsrs-build-matrix"><a class="header" href="#docsrs-build-matrix">docs.rs build matrix</a></h2>
+<p>When building docs on docs.rs, all feature flags are enabled:</p>
+<pre><code class="language-toml">[package.metadata.docs.rs]
+features = ["sqlite-session", "libsql-session", "html", "html5ever"]
+rustdoc-args = ["--cfg", "docsrs"]
+</code></pre>
 
                     </main>
 

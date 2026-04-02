@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3cf72212.js";
+            window.path_to_searchindex_js = "searchindex-7c30200a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-eb84f683.js"></script>
+        <script src="toc-747e4d8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,12 +193,13 @@ const BOT_TOKEN: &amp;str = "";
 
 #[tokio::main]
 async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-    let client = Arc::new(Client::connect(Config {
+    let (client, _shutdown) = Client::connect(Config {
         session_path: "bot.session".into(),
         api_id:       API_ID,
         api_hash:     API_HASH.to_string(),
         ..Default::default()
-    }).await?);
+    }).await?;
+    let client = Arc::new(client);
 
     if !client.is_authorized().await? {
         client.bot_sign_in(BOT_TOKEN).await?;

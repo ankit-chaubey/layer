@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>InputMessage Builder - layer — Async Telegram MTProto in Rust</title>
+        <title>Typing Guard - layer — Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -147,7 +147,7 @@
                         <a href="https://github.com/ankit-chaubey/layer" title="Git repository" aria-label="Git repository">
                             <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
                         </a>
-                        <a href="https://github.com/ankit-chaubey/layer/edit/main/docs/src/api/input-message.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/ankit-chaubey/layer/edit/main/docs/src/api/typing-guard.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
                         </a>
 
@@ -181,149 +181,115 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="inputmessage-builder"><a class="header" href="#inputmessage-builder">InputMessage Builder</a></h1>
-<p><code>InputMessage</code> is a fluent builder for composing rich messages with full control over every parameter.</p>
-<h2 id="import"><a class="header" href="#import">Import</a></h2>
+                        <h1 id="typing-guard"><a class="header" href="#typing-guard">Typing Guard</a></h1>
+<p><code>TypingGuard</code> is a RAII wrapper that keeps a “typing…” or “uploading…” indicator alive for the duration of an operation and automatically cancels it on drop.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic usage</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::InputMessage;
-use layer_client::parsers::parse_markdown;
-<span class="boring">}</span></code></pre>
-<h2 id="builder-methods"><a class="header" href="#builder-methods">Builder methods</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Type</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>InputMessage::text(text)</code></td><td><code>impl Into&lt;String&gt;</code></td><td>Create with plain text (constructor)</td></tr>
-<tr><td><code>.set_text(text)</code></td><td><code>impl Into&lt;String&gt;</code></td><td>Replace the text</td></tr>
-<tr><td><code>.entities(entities)</code></td><td><code>Vec&lt;MessageEntity&gt;</code></td><td>Formatting entities from <code>parse_markdown</code></td></tr>
-<tr><td><code>.reply_to(id)</code></td><td><code>Option&lt;i32&gt;</code></td><td>Reply to a message ID</td></tr>
-<tr><td><code>.reply_markup(markup)</code></td><td><code>ReplyMarkup</code></td><td>Inline or reply keyboard</td></tr>
-<tr><td><code>.silent(v)</code></td><td><code>bool</code></td><td>Send without notification</td></tr>
-<tr><td><code>.background(v)</code></td><td><code>bool</code></td><td>Send as background message</td></tr>
-<tr><td><code>.clear_draft(v)</code></td><td><code>bool</code></td><td>Clear the chat draft on send</td></tr>
-<tr><td><code>.no_webpage(v)</code></td><td><code>bool</code></td><td>Disable link preview</td></tr>
-<tr><td><code>.schedule_date(ts)</code></td><td><code>Option&lt;i32&gt;</code></td><td>Unix timestamp to schedule the send</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="plain-text"><a class="header" href="#plain-text">Plain text</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let msg = InputMessage::text("Hello, world!");
-client.send_message_to_peer_ex(peer, &amp;msg).await?;
-<span class="boring">}</span></code></pre>
-<h2 id="markdown-formatting"><a class="header" href="#markdown-formatting">Markdown formatting</a></h2>
-<p><code>parse_markdown</code> converts Markdown to plain text + entity list:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let (plain, entities) = parse_markdown(
-    "**Bold**, _italic_, `inline code`, and [a link](https://example.com)"
-);
-let msg = InputMessage::text(plain).entities(entities);
-<span class="boring">}</span></code></pre>
-<p>Supported Markdown syntax:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Syntax</th><th>Result</th></tr>
-</thead>
-<tbody>
-<tr><td><code>**text**</code></td><td><strong>Bold</strong></td></tr>
-<tr><td><code>_text_</code> or <code>*text*</code></td><td><em>Italic</em></td></tr>
-<tr><td><code>\</code>text``</td><td><code>Inline code</code></td></tr>
-<tr><td><code>\</code>``text````</td><td>Pre-formatted block</td></tr>
-<tr><td><code>[label](url)</code></td><td>Hyperlink</td></tr>
-<tr><td><code>__text__</code></td><td>Underline</td></tr>
-<tr><td><code>~~text~~</code></td><td>Strikethrough</td></tr>
-<tr><td><code>||text||</code></td><td>Spoiler</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="reply-to-a-message"><a class="header" href="#reply-to-a-message">Reply to a message</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let msg = InputMessage::text("This is my reply")
-    .reply_to(Some(original_msg_id));
-<span class="boring">}</span></code></pre>
-<h2 id="with-inline-keyboard"><a class="header" href="#with-inline-keyboard">With inline keyboard</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_tl_types as tl;
+</span>use layer_client::TypingGuard;
 
-let keyboard = tl::enums::ReplyMarkup::ReplyInlineMarkup(
-    tl::types::ReplyInlineMarkup {
-        rows: vec![
-            tl::enums::KeyboardButtonRow::KeyboardButtonRow(
-                tl::types::KeyboardButtonRow {
-                    buttons: vec![
-                        tl::enums::KeyboardButton::Callback(
-                            tl::types::KeyboardButtonCallback {
-                                requires_password: false,
-                                style: None,
-                                text: "Click me".into(),
-                                data: b"my_action".to_vec(),
-                            }
-                        )
-                    ]
-                }
-            )
-        ]
-    }
-);
+async fn process_message(client: &amp;Client, peer: tl::enums::Peer) {
+    // Start "typing…" — cancelled automatically when guard drops
+    let _guard = TypingGuard::typing(client, peer).await;
 
-let msg = InputMessage::text("Pick an action:").reply_markup(keyboard);
+    // Do your slow work here
+    let response = compute_heavy_reply().await;
+
+    // _guard drops here → typing indicator cancelled automatically
+    client.send_message_to_peer(peer, &amp;response).await.ok();
+}
 <span class="boring">}</span></code></pre>
-<h2 id="silent-message-no-notification"><a class="header" href="#silent-message-no-notification">Silent message (no notification)</a></h2>
+<h2 id="action-types"><a class="header" href="#action-types">Action types</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let msg = InputMessage::text("Heads-up (no ping)").silent(true);
+</span>use layer_tl_types::{enums, types};
+
+// Typing a text message
+let _guard = TypingGuard::typing(client, peer).await;
+
+// Uploading a photo
+let _guard = TypingGuard::upload_photo(client, peer).await;
+
+// Uploading a document / file
+let _guard = TypingGuard::upload_document(client, peer).await;
+
+// Recording a voice message
+let _guard = TypingGuard::record_audio(client, peer).await;
+
+// Recording a video note
+let _guard = TypingGuard::record_round(client, peer).await;
+
+// Choose a sticker
+let _guard = TypingGuard::choose_sticker(client, peer).await;
+
+// Custom action (raw TL type)
+let _guard = TypingGuard::custom(
+    client,
+    peer,
+    enums::SendMessageAction::SendMessageTypingAction,
+).await;
 <span class="boring">}</span></code></pre>
-<h2 id="scheduled-message"><a class="header" href="#scheduled-message">Scheduled message</a></h2>
+<h2 id="forum-topic-typing-top_msg_id"><a class="header" href="#forum-topic-typing-top_msg_id">Forum topic typing (top_msg_id)</a></h2>
+<p>For forum supergroups, pass the topic’s <code>top_msg_id</code> to restrict the indicator to that topic:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use std::time::{SystemTime, UNIX_EPOCH};
-
-// Schedule for 1 hour from now
-let in_one_hour = SystemTime::now()
-    .duration_since(UNIX_EPOCH).unwrap()
-    .as_secs() as i32 + 3600;
-
-let msg = InputMessage::text("This will appear in 1 hour")
-    .schedule_date(Some(in_one_hour));
+</span>client.send_chat_action(
+    peer,
+    enums::SendMessageAction::SendMessageTypingAction,
+    Some(topic_msg_id),  // top_msg_id
+).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="no-link-preview"><a class="header" href="#no-link-preview">No link preview</a></h2>
+<p><code>TypingGuard</code> sends this on an interval (default 5 seconds) so the indicator doesn’t expire while you’re working.</p>
+<h2 id="manual-send_chat_action"><a class="header" href="#manual-send_chat_action">Manual send_chat_action</a></h2>
+<p>Without <code>TypingGuard</code>, you can fire a one-shot indicator:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let msg = InputMessage::text("https://example.com — visit it!")
-    .no_webpage(true);
+</span>client.send_chat_action(
+    peer,
+    tl::enums::SendMessageAction::SendMessageTypingAction,
+    None,  // no topic
+).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="combining-everything"><a class="header" href="#combining-everything">Combining everything</a></h2>
+<p>The indicator automatically expires after ~5 seconds on Telegram’s end. <code>TypingGuard</code> keeps refreshing it on an interval.</p>
+<h2 id="how-typingguard-works"><a class="header" href="#how-typingguard-works">How TypingGuard works</a></h2>
+<p>On creation, <code>TypingGuard</code>:</p>
+<ol>
+<li>Sends the action immediately</li>
+<li>Spawns a background task that re-sends the action every ~4.5 seconds</li>
+</ol>
+<p>On drop, it cancels the background task and optionally sends a <code>SendMessageCancelAction</code> to clear the indicator immediately.</p>
+<h2 id="example-file-upload-with-progress-indicator"><a class="header" href="#example-file-upload-with-progress-indicator">Example: file upload with progress indicator</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let (text, entities) = parse_markdown("📢 **Announcement:** check out _this week's update_!");
+</span>async fn send_file_with_progress(
+    client: &amp;Client,
+    peer: tl::enums::Peer,
+    path: &amp;str,
+) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    // Show "uploading document…" while uploading
+    let _guard = TypingGuard::upload_document(client, peer.clone()).await;
 
-let msg = InputMessage::text(text)
-    .entities(entities)
-    .reply_to(Some(pinned_msg_id))
-    .silent(false)
-    .no_webpage(true)
-    .reply_markup(keyboard);
+    let uploaded = client.upload_file(path).await?;
 
-client.send_message_to_peer_ex(channel_peer, &amp;msg).await?;
+    // Guard drops here, cancelling the indicator
+    drop(_guard);
+
+    // Now send the file — no typing indicator
+    client.send_file(peer, uploaded.as_document_media(), None).await?;
+
+    Ok(())
+}
 <span class="boring">}</span></code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../api/client.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../api/search.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../api/participants.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../advanced/raw-api.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -333,11 +299,11 @@ client.send_message_to_peer_ex(channel_peer, &amp;msg).await?;
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../api/client.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../api/search.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../api/participants.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../advanced/raw-api.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

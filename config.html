@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3cf72212.js";
+            window.path_to_searchindex_js = "searchindex-7c30200a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-eb84f683.js"></script>
+        <script src="toc-747e4d8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -189,7 +189,7 @@
 use layer_client::session_backend::{BinaryFileBackend, InMemoryBackend};
 use std::sync::Arc;
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     // Required
     api_id:   12345,
     api_hash: "your_api_hash".into(),

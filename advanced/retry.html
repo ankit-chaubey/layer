@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3cf72212.js";
+            window.path_to_searchindex_js = "../searchindex-7c30200a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-eb84f683.js"></script>
+        <script src="../toc-747e4d8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -190,7 +190,7 @@
 </span>use layer_client::{Config, AutoSleep};
 use std::sync::Arc;
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     retry_policy: Arc::new(AutoSleep::default()),
     ..Default::default()
 }).await?;
@@ -202,7 +202,7 @@ let client = Client::connect(Config {
 </span><span class="boring">fn main() {
 </span>use layer_client::NoRetries;
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     retry_policy: Arc::new(NoRetries),
     ..Default::default()
 }).await?;
@@ -259,7 +259,7 @@ impl RetryPolicy for CappedSleep {
     }
 }
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     retry_policy: Arc::new(CappedSleep {
         max_wait_secs: 30,
         max_attempts:  3,
