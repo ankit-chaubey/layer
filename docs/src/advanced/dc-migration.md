@@ -14,7 +14,7 @@ Telegram's infrastructure is split across multiple **Data Centers (DCs)**. When 
 
 The correct DC is then saved in the session file for future connections.
 
-<img src="../../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange used on each DC connection" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange used on each DC connection" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 
 *Each new DC connection performs a full DH key exchange to establish a fresh auth key for that DC.*
 

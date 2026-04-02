@@ -1,9 +1,9 @@
 # ⚡ layer
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/layer-banner-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="../images/layer-banner-light.png">
-  <img src="../images/layer-banner.png" alt="layer — Async Rust MTProto" width="100%" style="border-radius:8px; margin-bottom:1.5rem;" />
+  <source media="(prefers-color-scheme: dark)" srcset="images/layer-banner-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="images/layer-banner-light.png">
+  <img src="images/layer-banner.png" alt="layer — Async Rust MTProto" width="100%" style="border-radius:8px; margin-bottom:1.5rem;" />
 </picture>
 
 <div class="hero-banner">
@@ -66,7 +66,7 @@ Most Telegram libraries are thin wrappers around generated code or ports from Py
 
 ## Crate overview
 
-<img src="../images/arch-stack.svg" alt="layer crate architecture stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
+<img src="images/arch-stack.svg" alt="layer crate architecture stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
 
 | Crate | Description | Typical user |
 |---|---|---|
