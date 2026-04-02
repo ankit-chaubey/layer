@@ -22,7 +22,7 @@
 [![Crates.io](https://img.shields.io/crates/v/layer-client?style=for-the-badge&color=fc8d62&label=layer-client&logo=rust)](https://crates.io/crates/layer-client)
 [![Downloads](https://img.shields.io/crates/d/layer-client?style=for-the-badge&color=f59e0b&logo=rust&label=downloads)](https://crates.io/crates/layer-client)
 [![docs.rs](https://img.shields.io/badge/docs.rs-layer--client-5865F2?style=for-the-badge&logo=docs.rs)](https://docs.rs/layer-client)
-[![Guide](https://img.shields.io/badge/book-online%20guide-10b981?style=for-the-badge&logo=mdbook)](https://github.ankitchaubey.in/layer/)
+[![Guide](https://img.shields.io/badge/book-online%20guide-10b981?style=for-the-badge&logo=mdbook)](https://layer.ankitchaubey.in/)
 
 <br/>
 
@@ -186,7 +186,7 @@ layer/
 ```
 
 > The full API reference lives at **[docs.rs/layer-client](https://docs.rs/layer-client)**.
-> The narrative guide lives at **[github.ankitchaubey.in/layer](https://github.ankitchaubey.in/layer/)**.
+> The narrative guide lives at **[layer.ankitchaubey.in](https://layer.ankitchaubey.in/)**.
 
 <br/>
 
@@ -257,7 +257,7 @@ async fn main() -> anyhow::Result<()> {
 
 No trait objects, no callbacks, no `dyn Handler`. Just an async loop and pattern matching. That's the whole bot.
 
-> [📖 Read more in the Bot Quick Start guide →](https://github.ankitchaubey.in/layer/quickstart-bot.html)
+> [📖 Read more in the Bot Quick Start guide →](https://layer.ankitchaubey.in/quickstart-bot.html)
 
 <br/>
 
@@ -313,7 +313,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 > After the first successful login the session is persisted to `my.session`. Subsequent runs skip the phone/code flow entirely.
 
-> [📖 Full user account guide →](https://github.ankitchaubey.in/layer/quickstart-user.html)
+> [📖 Full user account guide →](https://layer.ankitchaubey.in/quickstart-user.html)
 
 <br/>
 
@@ -404,7 +404,7 @@ async fn handle_update(
 }
 ```
 
-> [📖 Full production bot guide →](https://github.ankitchaubey.in/layer/quickstart-bot.html)
+> [📖 Full production bot guide →](https://layer.ankitchaubey.in/quickstart-bot.html)
 
 <br/>
 
@@ -480,7 +480,7 @@ let (client, _shutdown) = Client::builder()
 
 String sessions are ideal for serverless deployments, CI/CD bots, and any environment where writing files is inconvenient.
 
-> [📖 Session backends guide →](https://github.ankitchaubey.in/layer/authentication/session-backends.html)
+> [📖 Session backends guide →](https://layer.ankitchaubey.in/authentication/session-backends.html)
 
 <br/>
 
@@ -549,7 +549,7 @@ Update::NewMessage(msg) => {
 }
 ```
 
-> [📖 Incoming message reference →](https://github.ankitchaubey.in/layer/updates/incoming-message.html)
+> [📖 Incoming message reference →](https://layer.ankitchaubey.in/updates/incoming-message.html)
 
 <br/>
 
@@ -683,7 +683,7 @@ client.mark_as_read(peer.clone()).await?;
 client.clear_mentions(peer.clone()).await?;
 ```
 
-> [📖 Full messaging reference →](https://github.ankitchaubey.in/layer/messaging/sending.html)
+> [📖 Full messaging reference →](https://layer.ankitchaubey.in/messaging/sending.html)
 
 <br/>
 
@@ -740,7 +740,7 @@ let photo = Photo::from_message(&msg.raw)?;
 let bytes = client.download(&photo).await?;
 ```
 
-> [📖 Media guide →](https://github.ankitchaubey.in/layer/messaging/media.html)
+> [📖 Media guide →](https://layer.ankitchaubey.in/messaging/media.html)
 
 <br/>
 
@@ -835,7 +835,7 @@ Update::InlineQuery(iq) => {
 }
 ```
 
-> [📖 Keyboards guide →](https://github.ankitchaubey.in/layer/messaging/keyboards.html)
+> [📖 Keyboards guide →](https://layer.ankitchaubey.in/messaging/keyboards.html)
 
 <br/>
 
@@ -884,7 +884,7 @@ client
 let html_str = generate_html(&plain_text, &entities);
 ```
 
-> [📖 Formatting reference →](https://github.ankitchaubey.in/layer/messaging/formatting.html)
+> [📖 Formatting reference →](https://layer.ankitchaubey.in/messaging/formatting.html)
 
 <br/>
 
@@ -910,7 +910,7 @@ client.send_reaction(peer.clone(), message_id, InputReactions::emoticon("🔥").
 client.send_reaction(peer.clone(), message_id, InputReactions::remove()).await?;
 ```
 
-> [📖 Reactions guide →](https://github.ankitchaubey.in/layer/messaging/reactions.html)
+> [📖 Reactions guide →](https://layer.ankitchaubey.in/messaging/reactions.html)
 
 <br/>
 
@@ -957,7 +957,7 @@ let _t = client.recording_video(peer.clone()).await?;
 let _t = client.typing_in_topic(peer.clone(), topic_id).await?;
 ```
 
-> [📖 Typing guard reference →](https://github.ankitchaubey.in/layer/api/typing-guard.html)
+> [📖 Typing guard reference →](https://layer.ankitchaubey.in/api/typing-guard.html)
 
 <br/>
 
@@ -1046,7 +1046,7 @@ client.accept_invite_link("https://t.me/joinchat/AbCdEfG...").await?;
 client.delete_dialog(peer.clone()).await?;
 ```
 
-> [📖 Participants guide →](https://github.ankitchaubey.in/layer/api/participants.html)
+> [📖 Participants guide →](https://layer.ankitchaubey.in/api/participants.html)
 
 <br/>
 
@@ -1089,7 +1089,7 @@ let results = client
     .await?;
 ```
 
-> [📖 Search guide →](https://github.ankitchaubey.in/layer/api/search.html)
+> [📖 Search guide →](https://layer.ankitchaubey.in/api/search.html)
 
 <br/>
 
@@ -1123,7 +1123,7 @@ let messages = client.get_messages_by_id(peer.clone(), &[100, 101, 102]).await?;
 let messages = client.get_messages(peer.clone(), 20).await?;
 ```
 
-> [📖 Dialogs guide →](https://github.ankitchaubey.in/layer/api/dialogs.html)
+> [📖 Dialogs guide →](https://layer.ankitchaubey.in/api/dialogs.html)
 
 <br/>
 
@@ -1187,7 +1187,7 @@ impl SessionBackend for RedisBackend {
 }
 ```
 
-> [📖 Session backends guide →](https://github.ankitchaubey.in/layer/authentication/session-backends.html)
+> [📖 Session backends guide →](https://layer.ankitchaubey.in/authentication/session-backends.html)
 
 <br/>
 
@@ -1258,7 +1258,7 @@ client.invoke_on_dc(&req, 2).await?;
 
 Any method listed in the [Telegram API documentation](https://core.telegram.org/method) can be invoked this way. Layer 224 includes **2,329** TL constructors and all RPC functions.
 
-> [📖 Raw API guide →](https://github.ankitchaubey.in/layer/advanced/raw-api.html)
+> [📖 Raw API guide →](https://layer.ankitchaubey.in/advanced/raw-api.html)
 
 <br/>
 
@@ -1287,7 +1287,7 @@ let (client, _) = Client::builder()
     .await?;
 ```
 
-> [📖 Transport reference →](https://github.ankitchaubey.in/layer/advanced/proxy.html)
+> [📖 Transport reference →](https://layer.ankitchaubey.in/advanced/proxy.html)
 
 <br/>
 
@@ -1378,7 +1378,7 @@ let (client, _) = Client::builder()
     .await?;
 ```
 
-> [📖 Error handling guide →](https://github.ankitchaubey.in/layer/errors.html)
+> [📖 Error handling guide →](https://layer.ankitchaubey.in/errors.html)
 
 <br/>
 
@@ -1417,7 +1417,7 @@ cargo build
 
 The codegen (`layer-tl-gen`) runs as a build script. No manual code changes are required for pure schema updates — the 2,329 type definitions are entirely auto-generated.
 
-> [📖 Layer upgrade guide →](https://github.ankitchaubey.in/layer/advanced/layer-upgrade.html)
+> [📖 Layer upgrade guide →](https://layer.ankitchaubey.in/advanced/layer-upgrade.html)
 
 <br/>
 
@@ -1472,7 +1472,7 @@ Questions, ideas, bug reports — come talk to us:
 |---|---|
 | 📢 **Channel** — releases and announcements | [t.me/layer_rs](https://t.me/layer_rs) |
 | 💬 **Chat** — questions and discussion | [t.me/layer_chat](https://t.me/layer_chat) |
-| 📖 **Online Book** — narrative guide | [github.ankitchaubey.in/layer](https://github.ankitchaubey.in/layer/) |
+| 📖 **Online Book** — narrative guide | [layer.ankitchaubey.in](https://layer.ankitchaubey.in/) |
 | 📦 **Crates.io** | [crates.io/crates/layer-client](https://crates.io/crates/layer-client) |
 | 📄 **API Docs** | [docs.rs/layer-client](https://docs.rs/layer-client) |
 | 🐛 **Issue Tracker** | [github.com/ankit-chaubey/layer/issues](https://github.com/ankit-chaubey/layer/issues) |
