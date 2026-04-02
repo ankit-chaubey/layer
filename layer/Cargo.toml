@@ -28,5 +28,5 @@ parser  = ["dep:layer-tl-parser"]
 codegen = ["dep:layer-tl-gen"]
 
 [package.metadata.docs.rs]
-features = ["parser", "codegen"]
+all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

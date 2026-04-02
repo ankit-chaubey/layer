@@ -1,4 +1,5 @@
-#![doc(html_root_url = "https://docs.rs/layer-client/0.4.4")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![doc(html_root_url = "https://docs.rs/layer-client/0.4.5")]
 //! # layer-client
 //!
 //! Production-grade async Telegram client built on MTProto.
@@ -64,8 +65,10 @@ use retry::RetryLoop;
 pub use retry::{AutoSleep, NoRetries, RetryContext, RetryPolicy};
 pub use search::{GlobalSearchBuilder, SearchBuilder};
 #[cfg(feature = "libsql-session")]
+#[cfg_attr(docsrs, doc(cfg(feature = "libsql-session")))]
 pub use session_backend::LibSqlBackend;
 #[cfg(feature = "sqlite-session")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sqlite-session")))]
 pub use session_backend::SqliteBackend;
 pub use session_backend::{
     BinaryFileBackend, InMemoryBackend, SessionBackend, StringSessionBackend,

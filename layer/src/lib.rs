@@ -1,4 +1,5 @@
-#![doc(html_root_url = "https://docs.rs/layer/0.4.4")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![doc(html_root_url = "https://docs.rs/layer/0.4.5")]
 //! # layer — Telegram MTProto library
 //!
 //! `layer` is a modular Rust library for the Telegram MTProto protocol.
