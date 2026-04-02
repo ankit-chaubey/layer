@@ -271,7 +271,7 @@ fn read_line() -&gt; String {
 <hr>
 <h2 id="how-the-dh-auth-key-exchange-works"><a class="header" href="#how-the-dh-auth-key-exchange-works">How the DH auth key exchange works</a></h2>
 <p>Under the hood, every new session establishes a shared auth key via a 3-step Diffie-Hellman exchange before any login code is ever sent. This key is what secures the entire session.</p>
-<img src="../../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 <ol>
 <li>Client sends <code>req_pq_multi</code> — server responds with a <code>pq</code> product</li>
 <li>Client factorises <code>pq</code> into primes (Pollard’s rho), encrypts its DH parameters with the server’s RSA key</li>

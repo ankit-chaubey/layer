@@ -181,9 +181,9 @@
                     <main>
                         <h1 id="-layer"><a class="header" href="#-layer">⚡ layer</a></h1>
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/layer-banner-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="../images/layer-banner-light.png">
-  <img src="../images/layer-banner.png" alt="layer — Async Rust MTProto" width="100%" style="border-radius:8px; margin-bottom:1.5rem;" />
+  <source media="(prefers-color-scheme: dark)" srcset="images/layer-banner-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="images/layer-banner-light.png">
+  <img src="images/layer-banner.png" alt="layer — Async Rust MTProto" width="100%" style="border-radius:8px; margin-bottom:1.5rem;" />
 </picture>
 <div class="hero-banner">
 <h2>A modular, production-grade async Rust implementation of the Telegram MTProto protocol</h2>
@@ -262,7 +262,7 @@
 
 <hr>
 <h2 id="crate-overview"><a class="header" href="#crate-overview">Crate overview</a></h2>
-<img src="../images/arch-stack.svg" alt="layer crate architecture stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
+<img src="images/arch-stack.svg" alt="layer crate architecture stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
 <div class="table-wrapper">
 <table>
 <thead>
@@ -309,7 +309,7 @@ tokio        = { version = "1", features = ["full"] }
 <li><a href="https://core.telegram.org/mtproto"><strong>Telegram</strong></a> for the detailed MTProto specification.</li>
 <li>The Rust async ecosystem: <code>tokio</code>, <code>flate2</code>, <code>getrandom</code>, <code>sha2</code>, and friends.</li>
 </ul>
-<div style="break-before: page; page-break-before: always;"></div><img src="../images/layer-logo.svg" alt="layer" height="48" style="margin-bottom:1rem;" />
+<div style="break-before: page; page-break-before: always;"></div><img src="images/layer-logo.svg" alt="layer" height="48" style="margin-bottom:1rem;" />
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <h2 id="add-to-cargotoml"><a class="header" href="#add-to-cargotoml">Add to Cargo.toml</a></h2>
 <pre><code class="language-toml">[dependencies]
@@ -817,7 +817,7 @@ fn read_line() -&gt; String {
 <hr>
 <h2 id="how-the-dh-auth-key-exchange-works"><a class="header" href="#how-the-dh-auth-key-exchange-works">How the DH auth key exchange works</a></h2>
 <p>Under the hood, every new session establishes a shared auth key via a 3-step Diffie-Hellman exchange before any login code is ever sent. This key is what secures the entire session.</p>
-<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+<img src="images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 <ol>
 <li>Client sends <code>req_pq_multi</code> — server responds with a <code>pq</code> product</li>
 <li>Client factorises <code>pq</code> into primes (Pollard’s rho), encrypts its DH parameters with the server’s RSA key</li>
@@ -4421,7 +4421,7 @@ let (client, _shutdown) = Client::connect(Config {
 <li>Your code sees a successful response — the migration is invisible</li>
 </ol>
 <p>The correct DC is then saved in the session file for future connections.</p>
-<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange used on each DC connection" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+<img src="images/mtproto-dh-flow.svg" alt="MTProto DH key exchange used on each DC connection" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 <p><em>Each new DC connection performs a full DH key exchange to establish a fresh auth key for that DC.</em></p>
 <h2 id="overriding-the-initial-dc"><a class="header" href="#overriding-the-initial-dc">Overriding the initial DC</a></h2>
 <p>By default, <code>layer-client</code> starts on DC2. If you know your account is on a different DC, you can set the initial address:</p>
@@ -4850,7 +4850,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 <h1 id="crate-architecture"><a class="header" href="#crate-architecture">Crate Architecture</a></h1>
 <p><code>layer</code> is a workspace of focused, single-responsibility crates. Understanding the stack helps when you need to go below the high-level API.</p>
 <h2 id="dependency-graph"><a class="header" href="#dependency-graph">Dependency graph</a></h2>
-<img src="../images/arch-stack.svg" alt="layer crate dependency stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
+<img src="images/arch-stack.svg" alt="layer crate dependency stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
 <pre><code>Your App
   └── layer-client          ← high-level Client, UpdateStream, InputMessage
         ├── layer-mtproto   ← MTProto session, DH, message framing
@@ -4861,7 +4861,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 </code></pre>
 <hr>
 <h2 id="layer-client"><a class="header" href="#layer-client">layer-client</a></h2>
-<img src="../images/crate-client-banner.svg" alt="layer-client" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+<img src="images/crate-client-banner.svg" alt="layer-client" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>The high-level async Telegram client.</strong> Import this in your application.</p>
 <h3 id="what-it-provides"><a class="header" href="#what-it-provides">What it provides</a></h3>
 <ul>
@@ -4887,7 +4887,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 </ul>
 <hr>
 <h2 id="layer-tl-types"><a class="header" href="#layer-tl-types">layer-tl-types</a></h2>
-<img src="../images/crate-tl-types-banner.svg" alt="layer-tl-types" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+<img src="images/crate-tl-types-banner.svg" alt="layer-tl-types" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>All generated Telegram API types.</strong> Auto-regenerated at <code>cargo build</code> from <code>tl/api.tl</code>.</p>
 <h3 id="what-it-provides-1"><a class="header" href="#what-it-provides-1">What it provides</a></h3>
 <ul>
@@ -4916,7 +4916,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 <p>Most Telegram API fields use <code>enums::*</code> types because the wire format is polymorphic.</p>
 <hr>
 <h2 id="layer-mtproto"><a class="header" href="#layer-mtproto">layer-mtproto</a></h2>
-<img src="../images/crate-mtproto-banner.svg" alt="layer-mtproto" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+<img src="images/crate-mtproto-banner.svg" alt="layer-mtproto" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>The MTProto session layer.</strong> Handles the low-level mechanics of talking to Telegram.</p>
 <h3 id="what-it-provides-2"><a class="header" href="#what-it-provides-2">What it provides</a></h3>
 <ul>
@@ -4928,7 +4928,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 <li>Transport abstraction (abridged, intermediate, obfuscated)</li>
 </ul>
 <h3 id="dh-handshake-steps"><a class="header" href="#dh-handshake-steps">DH handshake steps</a></h3>
-<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+<img src="images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 <ol>
 <li><strong>PQ factorization</strong> — <code>req_pq_multi</code> → server sends <code>resPQ</code></li>
 <li><strong>Server DH params</strong> — <code>req_DH_params</code> with encrypted key → <code>server_DH_params_ok</code></li>
@@ -4937,7 +4937,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 <p>After step 3, both sides hold the same auth key derived from the shared DH secret.</p>
 <hr>
 <h2 id="layer-crypto"><a class="header" href="#layer-crypto">layer-crypto</a></h2>
-<img src="../images/crate-crypto-banner.svg" alt="layer-crypto" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+<img src="images/crate-crypto-banner.svg" alt="layer-crypto" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>Cryptographic primitives.</strong> Pure Rust, <code>#![deny(unsafe_code)]</code>.</p>
 <div class="table-wrapper">
 <table>
@@ -4958,7 +4958,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 </div>
 <hr>
 <h2 id="layer-tl-parser"><a class="header" href="#layer-tl-parser">layer-tl-parser</a></h2>
-<img src="../images/crate-tl-parser-banner.svg" alt="layer-tl-parser" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+<img src="images/crate-tl-parser-banner.svg" alt="layer-tl-parser" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>TL schema parser.</strong> Converts <code>.tl</code> text into structured <code>Definition</code> values.</p>
 <h3 id="parsed-ast-types"><a class="header" href="#parsed-ast-types">Parsed AST types</a></h3>
 <ul>
@@ -4971,7 +4971,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 <p>Used exclusively by <code>build.rs</code> in <code>layer-tl-types</code>. You never import it directly.</p>
 <hr>
 <h2 id="layer-tl-gen"><a class="header" href="#layer-tl-gen">layer-tl-gen</a></h2>
-<img src="../images/crate-tl-gen-banner.svg" alt="layer-tl-gen" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+<img src="images/crate-tl-gen-banner.svg" alt="layer-tl-gen" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 <p><strong>Rust code generator.</strong> Takes the parsed AST and emits valid Rust source files.</p>
 <h3 id="output-files-written-to-out_dir"><a class="header" href="#output-files-written-to-out_dir">Output files (written to <code>$OUT_DIR</code>)</a></h3>
 <div class="table-wrapper">
@@ -4996,7 +4996,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="feature-flags"><a class="header" href="#feature-flags">Feature Flags</a></h1>
-<img src="../images/feature-flags.svg" alt="layer feature flags overview" width="100%" style="margin: 0.5rem 0 1.5rem 0; border-radius:6px;" />
+<img src="images/feature-flags.svg" alt="layer feature flags overview" width="100%" style="margin: 0.5rem 0 1.5rem 0; border-radius:6px;" />
 <h2 id="layer-client-1"><a class="header" href="#layer-client-1">layer-client</a></h2>
 <div class="table-wrapper">
 <table>
