@@ -1,3 +1,6 @@
+
+<img src="../images/layer-logo.svg" alt="layer" height="48" style="margin-bottom:1rem;" />
+
 # Installation
 
 ## Add to Cargo.toml

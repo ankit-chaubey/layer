@@ -4,6 +4,8 @@
 
 ## Dependency graph
 
+<img src="../images/arch-stack.svg" alt="layer crate dependency stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
+
 ```
 Your App
   └── layer-client          ← high-level Client, UpdateStream, InputMessage
@@ -18,27 +20,36 @@ Your App
 
 ## layer-client
 
+<img src="../images/crate-client-banner.svg" alt="layer-client" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+
 **The high-level async Telegram client.** Import this in your application.
 
 ### What it provides
 - `Client` — the main handle with all high-level methods
+- `ClientBuilder` — fluent builder for connecting (`Client::builder()...connect()`)
 - `Config` — connection configuration
 - `Update` enum — typed update events
 - `InputMessage` — fluent message builder
-- `parsers::parse_markdown` — Markdown → entities
+- `parsers::parse_markdown` / `parsers::parse_html` — text → entities
 - `UpdateStream` — async iterator
 - `Dialog`, `DialogIter`, `MessageIter` — dialog/history access
 - `Participant`, `ParticipantStatus` — member info
-- `UploadedFile`, `DownloadIter` — media
+- `Photo`, `Document`, `Sticker`, `Downloadable` — typed media wrappers
+- `UploadedFile`, `DownloadIter` — upload/download
 - `TypingGuard` — auto-cancels chat action on drop
-- `SessionBackend` trait + `BinaryFileBackend`, `InMemoryBackend`, `SqliteBackend`
+- `SearchBuilder`, `GlobalSearchBuilder` — fluent search
+- `InlineKeyboard`, `ReplyKeyboard`, `Button` — keyboard builders
+- `SessionBackend` trait + `BinaryFileBackend`, `InMemoryBackend`, `StringSessionBackend`, `SqliteBackend`, `LibSqlBackend`
 - `Socks5Config` — proxy configuration
+- `TransportKind` — Abridged, Intermediate, Obfuscated
 - Error types: `InvocationError`, `RpcError`, `SignInError`, `LoginToken`, `PasswordToken`
 - Retry traits: `RetryPolicy`, `AutoSleep`, `NoRetries`, `RetryContext`
 
 ---
 
 ## layer-tl-types
+
+<img src="../images/crate-tl-types-banner.svg" alt="layer-tl-types" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 
 **All generated Telegram API types.** Auto-regenerated at `cargo build` from `tl/api.tl`.
 
@@ -66,6 +77,8 @@ Most Telegram API fields use `enums::*` types because the wire format is polymor
 
 ## layer-mtproto
 
+<img src="../images/crate-mtproto-banner.svg" alt="layer-mtproto" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+
 **The MTProto session layer.** Handles the low-level mechanics of talking to Telegram.
 
 ### What it provides
@@ -77,6 +90,9 @@ Most Telegram API fields use `enums::*` types because the wire format is polymor
 - Transport abstraction (abridged, intermediate, obfuscated)
 
 ### DH handshake steps
+
+<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+
 1. **PQ factorization** — `req_pq_multi` → server sends `resPQ`
 2. **Server DH params** — `req_DH_params` with encrypted key → `server_DH_params_ok`
 3. **Client DH finish** — `set_client_DH_params` → `dh_gen_ok`
@@ -86,6 +102,8 @@ After step 3, both sides hold the same auth key derived from the shared DH secre
 ---
 
 ## layer-crypto
+
+<img src="../images/crate-crypto-banner.svg" alt="layer-crypto" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 
 **Cryptographic primitives.** Pure Rust, `#![deny(unsafe_code)]`.
 
@@ -97,17 +115,20 @@ After step 3, both sides hold the same auth key derived from the shared DH secre
 | RSA | PKCS#1 v1.5 | Encrypting PQ proof with Telegram's public keys |
 | SHA-1 | SHA-1 | Used in auth key derivation |
 | SHA-256 | SHA-256 | MTProto 2.0 MAC computation |
+| `obfuscated` | AES-CTR | Transport-layer obfuscation init |
 | PBKDF2 | PBKDF2-SHA512 | 2FA password derivation (via layer-client) |
 
 ---
 
 ## layer-tl-parser
 
+<img src="../images/crate-tl-parser-banner.svg" alt="layer-tl-parser" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
+
 **TL schema parser.** Converts `.tl` text into structured `Definition` values.
 
 ### Parsed AST types
 - `Definition` — a single TL line (constructor or function)
-- `Category` — `Types` or `Functions`
+- `Category` — `Type` or `Function`
 - `Parameter` — a named field with type
 - `ParameterType` — flags, conditionals, generic, basic
 - `Flag` — `flags.N?type` conditional fields
@@ -117,6 +138,8 @@ Used exclusively by `build.rs` in `layer-tl-types`. You never import it directly
 ---
 
 ## layer-tl-gen
+
+<img src="../images/crate-tl-gen-banner.svg" alt="layer-tl-gen" width="100%" style="margin: 0.5rem 0 1rem 0; border-radius:6px;" />
 
 **Rust code generator.** Takes the parsed AST and emits valid Rust source files.
 

@@ -3,26 +3,22 @@
 A production-ready bot skeleton with commands, callback queries, and inline mode — all handled concurrently.
 
 ```rust
-use layer_client::{Client, Config, InputMessage, parsers::parse_markdown, update::Update};
+use layer_client::{Client, InputMessage, parsers::parse_markdown, update::Update};
 use layer_tl_types as tl;
 use std::sync::Arc;
 
-const API_ID:    i32  = 0;        // set your values
-const API_HASH:  &str = "";
-const BOT_TOKEN: &str = "";
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (client, _shutdown) = Client::connect(Config {
-        session_path: "bot.session".into(),
-        api_id:       API_ID,
-        api_hash:     API_HASH.to_string(),
-        ..Default::default()
-    }).await?;
+    let (client, _shutdown) = Client::builder()
+        .api_id(std::env::var("API_ID")?.parse()?)
+        .api_hash(std::env::var("API_HASH")?)
+        .session("bot.session")
+        .connect()
+        .await?;
     let client = Arc::new(client);
 
     if !client.is_authorized().await? {
-        client.bot_sign_in(BOT_TOKEN).await?;
+        client.bot_sign_in(&std::env::var("BOT_TOKEN")?).await?;
         client.save_session().await?;
     }
 
@@ -70,12 +66,8 @@ async fn dispatch(
                         "👋 **Hello!** I'm built with **layer** — async Telegram MTProto in Rust 🦀\n\n\
                          Use /help to see all commands."
                     );
-                    let kb = inline_kb(vec![
-                        vec![cb_btn("📖 Help", "help"), cb_btn("ℹ️ About", "about")],
-                        vec![url_btn("⭐ GitHub", "https://github.com/ankit-chaubey/layer")],
-                    ]);
                     client.send_message_to_peer_ex(peer, &InputMessage::text(t)
-                        .entities(e).reply_markup(kb).reply_to(Some(reply_to))).await?;
+                        .entities(e).reply_to(Some(reply_to))).await?;
                 }
                 "/help" => {
                     let (t, e) = parse_markdown(
@@ -86,7 +78,6 @@ async fn dispatch(
                          /upper `<text>` — UPPERCASE\n\
                          /lower `<text>` — lowercase\n\
                          /reverse `<text>` — esreveR\n\
-                         /calc `<expr>` — Simple calculator\n\
                          /id — Your user and chat ID"
                     );
                     client.send_message_to_peer_ex(peer, &InputMessage::text(t)
@@ -100,20 +91,9 @@ async fn dispatch(
                     client.send_message_to_peer_ex(peer, &InputMessage::text(t)
                         .entities(e).reply_to(Some(reply_to))).await?;
                 }
-                "/echo" => {
-                    let reply = if arg.is_empty() {
-                        "Usage: /echo <text>".to_string()
-                    } else {
-                        arg.to_string()
-                    };
-                    client.send_message_to_peer(peer, &reply).await?;
-                }
-                "/upper" => {
-                    client.send_message_to_peer(peer, &arg.to_uppercase()).await?;
-                }
-                "/lower" => {
-                    client.send_message_to_peer(peer, &arg.to_lowercase()).await?;
-                }
+                "/echo"    => { client.send_message_to_peer(peer, if arg.is_empty() { "Usage: /echo <text>" } else { arg }).await?; }
+                "/upper"   => { client.send_message_to_peer(peer, &arg.to_uppercase()).await?; }
+                "/lower"   => { client.send_message_to_peer(peer, &arg.to_lowercase()).await?; }
                 "/reverse" => {
                     let rev: String = arg.chars().rev().collect();
                     client.send_message_to_peer(peer, &rev).await?;
@@ -128,18 +108,16 @@ async fn dispatch(
                     client.send_message_to_peer_ex(peer, &InputMessage::text(t)
                         .entities(e).reply_to(Some(reply_to))).await?;
                 }
-                _ => {
-                    client.send_message_to_peer(peer, "❓ Unknown command. Try /help").await?;
-                }
+                _ => { client.send_message_to_peer(peer, "❓ Unknown command. Try /help").await?; }
             }
         }
 
         // ── Callback queries ───────────────────────────────────────
         Update::CallbackQuery(cb) => {
             match cb.data().unwrap_or("") {
-                "help"  => { cb.answer(client, "Send /help for all commands").await?; }
-                "about" => { cb.answer_alert(client, "Built with layer — Rust MTProto 🦀").await?; }
-                _       => { cb.answer(client, "").await?; }
+                "help"  => { client.answer_callback_query(cb.query_id, Some("Send /help for commands"), false).await?; }
+                "about" => { client.answer_callback_query(cb.query_id, Some("Built with layer — Rust MTProto 🦀"), true).await?; }
+                _       => { client.answer_callback_query(cb.query_id, None, false).await?; }
             }
         }
 
@@ -150,8 +128,7 @@ async fn dispatch(
             let results = vec![
                 make_article("1", "🔠 UPPER", &q.to_uppercase()),
                 make_article("2", "🔡 lower", &q.to_lowercase()),
-                make_article("3", "🔄 Reversed",
-                    &q.chars().rev().collect::<String>()),
+                make_article("3", "🔄 Reversed", &q.chars().rev().collect::<String>()),
             ];
             client.answer_inline_query(qid, results, 30, false, None).await?;
         }
@@ -160,31 +137,6 @@ async fn dispatch(
     }
 
     Ok(())
-}
-
-// ── Keyboard helpers ──────────────────────────────────────────────────────────
-
-fn inline_kb(rows: Vec<Vec<tl::enums::KeyboardButton>>) -> tl::enums::ReplyMarkup {
-    tl::enums::ReplyMarkup::ReplyInlineMarkup(tl::types::ReplyInlineMarkup {
-        rows: rows.into_iter().map(|row|
-            tl::enums::KeyboardButtonRow::KeyboardButtonRow(
-                tl::types::KeyboardButtonRow { buttons: row }
-            )
-        ).collect(),
-    })
-}
-
-fn cb_btn(text: &str, data: &str) -> tl::enums::KeyboardButton {
-    tl::enums::KeyboardButton::Callback(tl::types::KeyboardButtonCallback {
-        requires_password: false, style: None,
-        text: text.into(), data: data.as_bytes().to_vec(),
-    })
-}
-
-fn url_btn(text: &str, url: &str) -> tl::enums::KeyboardButton {
-    tl::enums::KeyboardButton::Url(tl::types::KeyboardButtonUrl {
-        style: None, text: text.into(), url: url.into(),
-    })
 }
 
 fn make_article(id: &str, title: &str, text: &str) -> tl::enums::InputBotInlineResult {
@@ -215,3 +167,13 @@ fn make_article(id: &str, title: &str, text: &str) -> tl::enums::InputBotInlineR
 | Callback queries | ✅ | ✅ |
 | Anonymous in groups | ❌ | ✅ If admin |
 | Rate limits | Stricter | More generous |
+
+---
+
+## Next steps
+
+- [Bot Login — full guide](./authentication/bot-login.md)
+- [Callback Queries](./updates/callbacks.md)
+- [Inline Mode](./updates/inline-mode.md)
+- [Inline Keyboards](./messaging/keyboards.md)
+- [Admin & Ban Rights](./api/admin-rights.md)

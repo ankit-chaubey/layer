@@ -14,27 +14,36 @@ Telegram's infrastructure is split across multiple **Data Centers (DCs)**. When 
 
 The correct DC is then saved in the session file for future connections.
 
+<img src="../../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange used on each DC connection" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+
+*Each new DC connection performs a full DH key exchange to establish a fresh auth key for that DC.*
+
 ## Overriding the initial DC
 
 By default, `layer-client` starts on DC2. If you know your account is on a different DC, you can set the initial address:
 
 ```rust
-use std::net::SocketAddr;
-
-let (client, _shutdown) = Client::connect(Config {
-    dc_addr: Some("149.154.167.91:443".parse::<SocketAddr>().unwrap()),
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_hash")
+    .session("my.session")
+    .dc_addr("149.154.167.91:443")   // DC4
+    .connect()
+    .await?;
 ```
 
 DC addresses:
 
-| DC | IP |
-|---|---|
-| DC1 | 149.154.175.53 |
-| DC2 | 149.154.167.51 |
-| DC3 | 149.154.175.100 |
-| DC4 | 149.154.167.91 |
-| DC5 | 91.108.56.130 |
+| DC | Primary IP | Notes |
+|---|---|---|
+| DC1 | 149.154.175.53 | US East |
+| DC2 | 149.154.167.51 | US East (default) |
+| DC3 | 149.154.175.100 | US West |
+| DC4 | 149.154.167.91 | EU Amsterdam |
+| DC5 | 91.108.56.130 | Singapore |
 
-In practice, just leave `dc_addr: None` and let the auto-migration handle it.
+In practice, just leave the default and let auto-migration handle it.
+
+## DC pool (for media)
+
+When downloading media, Telegram may route large files through CDN DCs different from your account's home DC. `layer-client` maintains a connection pool across DCs and handles this automatically via `invoke_on_dc`.

@@ -1,5 +1,7 @@
 # Feature Flags
 
+<img src="../images/feature-flags.svg" alt="layer feature flags overview" width="100%" style="margin: 0.5rem 0 1.5rem 0; border-radius:6px;" />
+
 ## layer-client
 
 | Feature | Default | Description |
@@ -38,9 +40,9 @@ layer-client = { version = "0.4.4", features = ["sqlite-session", "html"] }
 | `impl-debug` | ✅ | `#[derive(Debug)]` on all generated types |
 | `impl-from-type` | ✅ | `From<types::T> for enums::E` conversions |
 | `impl-from-enum` | ✅ | `TryFrom<enums::E> for types::T` conversions |
+| `deserializable-functions` | ❌ | `Deserializable` for function types (server-side use) |
 | `name-for-id` | ❌ | `name_for_id(id: u32) -> Option<&'static str>` |
 | `impl-serde` | ❌ | `serde::Serialize` + `serde::Deserialize` on all types |
-| `deserializable-functions` | ❌ | `Deserializable` for function types (server-side use) |
 
 ### Example: enable serde
 
