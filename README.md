@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/ankit-chaubey/layer/main/docs/theme/layer-banner-dark.png" alt="layer — Async Rust MTProto" width="100%" />
+<img src="https://raw.githubusercontent.com/ankit-chaubey/layer/main/docs/images/layer-banner-dark.png" alt="layer — Async Rust MTProto" width="100%" />
 
 <br/>
 
@@ -8,7 +8,14 @@
 
 **A modular, production-grade async Rust library for the Telegram MTProto protocol.**
 
-*Built from scratch. Every byte understood.*
+*Developed By* **[Ankit Chaubey](https://github.com/ankit-chaubey)**
+
+*Built with curiosity, caffeine, and a lot of Rust compiler errors 🦀*
+
+<br/>
+
+[![GitHub](https://img.shields.io/badge/GitHub-ankit--chaubey-181717?style=for-the-badge&logo=github)](https://github.com/ankit-chaubey)
+[![Website](https://img.shields.io/badge/Website-ankitchaubey.in-10b981?style=for-the-badge&logo=safari)](https://ankitchaubey.in)
 
 <br/>
 
