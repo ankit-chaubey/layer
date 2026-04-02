@@ -102,7 +102,7 @@ This revokes the auth key on Telegram's servers and deletes the local session fi
 
 Under the hood, every new session establishes a shared auth key via a 3-step Diffie-Hellman exchange before any login code is ever sent. This key is what secures the entire session.
 
-<img src="../../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
+<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 
 1. Client sends `req_pq_multi` — server responds with a `pq` product
 2. Client factorises `pq` into primes (Pollard's rho), encrypts its DH parameters with the server's RSA key

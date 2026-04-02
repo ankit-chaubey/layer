@@ -1,6 +1,6 @@
 # Feature Flags
 
-<img src="../images/feature-flags.svg" alt="layer feature flags overview" width="100%" style="margin: 0.5rem 0 1.5rem 0; border-radius:6px;" />
+<img src="images/feature-flags.svg" alt="layer feature flags overview" width="100%" style="margin: 0.5rem 0 1.5rem 0; border-radius:6px;" />
 
 ## layer-client
 
