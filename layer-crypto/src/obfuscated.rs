@@ -11,7 +11,7 @@
 //! ```
 
 #[allow(deprecated)]
-use aes::cipher::{generic_array::GenericArray, KeyIvInit, StreamCipher};
+use aes::cipher::{KeyIvInit, StreamCipher, generic_array::GenericArray};
 
 /// AES-256-CTR stream cipher pair for MTProto obfuscated transport.
 pub struct ObfuscatedCipher {

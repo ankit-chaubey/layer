@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-layer-client = "0.4.0"
+layer-client = "0.4.4"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -28,11 +28,11 @@ Every Telegram API call requires an `api_id` (integer) and `api_hash` (hex strin
 
 ```rust
 // Good — from environment
-let api_id:   i32 = std::env::var("TG_API_ID")?.parse()?;
+let api_id:   i32    = std::env::var("TG_API_ID")?.parse()?;
 let api_hash: String = std::env::var("TG_API_HASH")?;
 
 // Bad — hardcoded in source
-let api_id = 12345;
+let api_id   = 12345;
 let api_hash = "deadbeef..."; // ← never do this in a public repo
 ```
 
@@ -55,19 +55,56 @@ For bots, additionally get a **bot token** from [@BotFather](https://t.me/BotFat
 ### SQLite session storage
 
 ```toml
-layer-client = { version = "0.4.0", features = ["sqlite-session"] }
+layer-client = { version = "0.4.4", features = ["sqlite-session"] }
 ```
 
 Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.
+
+### LibSQL / Turso session storage — New in v0.4.4
+
+```toml
+layer-client = { version = "0.4.4", features = ["libsql-session"] }
+```
+
+Backed by [libsql](https://github.com/tursodatabase/libsql) — supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.
+
+```rust
+use layer_client::session_backend::LibSqlBackend;
+
+// Local
+let backend = LibSqlBackend::open_local("session.libsql").await?;
+
+// Remote (Turso cloud)
+let backend = LibSqlBackend::open_remote(
+    "libsql://your-db.turso.io",
+    "your-turso-auth-token",
+).await?;
+```
+
+### String session (portable, no extra deps) — New in v0.4.4
+
+No feature flag needed. Encode a session as a base64 string and restore it anywhere:
+
+```rust
+// Export
+let s = client.export_session_string().await?;
+
+// Restore
+let (client, _shutdown) = Client::with_string_session(
+    &s, api_id, api_hash,
+).await?;
+```
+
+See [Session Backends](./authentication/session-backends.md) for the full guide.
 
 ### HTML entity parsing
 
 ```toml
 # Built-in hand-rolled HTML parser (no extra deps)
-layer-client = { version = "0.4.0", features = ["html"] }
+layer-client = { version = "0.4.4", features = ["html"] }
 
 # OR: spec-compliant html5ever tokenizer (overrides built-in)
-layer-client = { version = "0.4.0", features = ["html5ever"] }
+layer-client = { version = "0.4.4", features = ["html5ever"] }
 ```
 
 | Feature | Deps added | Notes |
@@ -80,7 +117,7 @@ layer-client = { version = "0.4.0", features = ["html5ever"] }
 If you use `layer-tl-types` directly for raw API access:
 
 ```toml
-layer-tl-types = { version = "0.4.0", features = [
+layer-tl-types = { version = "0.4.4", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)
@@ -90,16 +127,6 @@ layer-tl-types = { version = "0.4.0", features = [
     "impl-serde",      # serde::Serialize / Deserialize
 ] }
 ```
-
-| Feature | Default | What it enables |
-|---|---|---|
-| `tl-api` | ✅ | All Telegram API constructors and functions |
-| `tl-mtproto` | ❌ | Low-level MTProto transport types |
-| `impl-debug` | ✅ | `#[derive(Debug)]` on every generated type |
-| `impl-from-type` | ✅ | `From<types::Message> for enums::Message` |
-| `impl-from-enum` | ✅ | `TryFrom<enums::Message> for types::Message` |
-| `name-for-id` | ❌ | Look up constructor name by ID — useful for debugging |
-| `impl-serde` | ❌ | JSON serialization via serde |
 
 ---
 
@@ -124,4 +151,4 @@ fn main() {
 | macOS (Apple Silicon + Intel) | ✅ Fully supported | |
 | Windows | ✅ Supported | Use WSL2 for best experience |
 | Android (Termux) | ✅ Works | Native ARM64 |
-| iOS | ⚠️ Untested | No async runtime constraints |
+| iOS | ⚠️ Untested | No async runtime constraints known |

@@ -19,8 +19,9 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
+#[allow(unused_imports)]
 use layer_mtproto::transport::{AbridgedTransport, ObfuscatedAbridged, Transport};
-use layer_mtproto::{Session, EncryptedSession, authentication as auth};
+use layer_mtproto::{EncryptedSession, Session, authentication as auth};
 use layer_tl_types::{Cursor, Deserializable};
 
 // ── DC addresses ─────────────────────────────────────────────────────────────
@@ -30,6 +31,7 @@ use layer_tl_types::{Cursor, Deserializable};
 const DC1_PROD: &str = "149.154.167.51:443";
 
 /// Test DC1 (use while developing)
+#[allow(dead_code)]
 const DC1_TEST: &str = "149.154.167.40:80";
 
 // ── Minimal TCP transport ─────────────────────────────────────────────────────
@@ -47,7 +49,9 @@ impl Tcp {
 
 impl Transport for Tcp {
     type Error = std::io::Error;
-    fn send(&mut self, data: &[u8]) -> Result<(), Self::Error> { self.0.write_all(data) }
+    fn send(&mut self, data: &[u8]) -> Result<(), Self::Error> {
+        self.0.write_all(data)
+    }
     fn recv(&mut self) -> Result<Vec<u8>, Self::Error> {
         let mut first = [0u8; 1];
         self.0.read_exact(&mut first)?;
@@ -67,12 +71,16 @@ impl Transport for Tcp {
 // ── Plaintext frame parser ────────────────────────────────────────────────────
 
 fn plaintext_body(frame: &[u8]) -> Result<&[u8], &'static str> {
-    if frame.len() < 20 { return Err("frame too short"); }
+    if frame.len() < 20 {
+        return Err("frame too short");
+    }
     if u64::from_le_bytes(frame[..8].try_into().unwrap()) != 0 {
         return Err("auth_key_id != 0 in plaintext response");
     }
     let len = u32::from_le_bytes(frame[16..20].try_into().unwrap()) as usize;
-    if frame.len() < 20 + len { return Err("truncated body"); }
+    if frame.len() < 20 + len {
+        return Err("truncated body");
+    }
     Ok(&frame[20..20 + len])
 }
 
@@ -80,8 +88,8 @@ fn plaintext_body(frame: &[u8]) -> Result<&[u8], &'static str> {
 
 fn send_plain<T: layer_tl_types::RemoteCall>(
     transport: &mut ObfuscatedAbridged,
-    session:   &mut Session,
-    call:      &T,
+    session: &mut Session,
+    call: &T,
 ) -> std::io::Result<()> {
     let msg = session.pack(call);
     transport.send_message(&msg.to_plaintext_bytes())
@@ -122,7 +130,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let server_dh: layer_tl_types::enums::ServerDhParams = recv_plain(&mut transport)?;
     match &server_dh {
-        layer_tl_types::enums::ServerDhParams::Ok(_)   => println!("  ✓ ServerDhParamsOk"),
+        layer_tl_types::enums::ServerDhParams::Ok(_) => println!("  ✓ ServerDhParamsOk"),
         layer_tl_types::enums::ServerDhParams::Fail(_) => println!("  ✗ ServerDhParamsFail"),
     }
 
@@ -155,7 +163,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut cur = Cursor::from_slice(&msg.body);
             match layer_tl_types::enums::Config::deserialize(&mut cur) {
                 Ok(layer_tl_types::enums::Config::Config(cfg)) => {
-                    println!("  ✓ Config: {} DCs, date={}", cfg.dc_options.len(), cfg.date);
+                    println!(
+                        "  ✓ Config: {} DCs, date={}",
+                        cfg.dc_options.len(),
+                        cfg.date
+                    );
                     println!("  DC list (first 5):");
                     for dc in cfg.dc_options.iter().take(5) {
                         let layer_tl_types::enums::DcOption::DcOption(opt) = dc;

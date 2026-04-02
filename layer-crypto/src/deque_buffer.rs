@@ -16,7 +16,11 @@ impl DequeBuffer {
     pub fn with_capacity(back: usize, front: usize) -> Self {
         let mut buf = Vec::with_capacity(front + back);
         buf.resize(front, 0);
-        Self { buf, head: front, default_head: front }
+        Self {
+            buf,
+            head: front,
+            default_head: front,
+        }
     }
 
     /// Reset the buffer to empty (but keep allocation).
@@ -40,28 +44,44 @@ impl DequeBuffer {
     }
 
     /// Number of bytes in the buffer.
-    pub fn len(&self) -> usize { self.buf.len() - self.head }
+    pub fn len(&self) -> usize {
+        self.buf.len() - self.head
+    }
 
     /// True if empty.
-    pub fn is_empty(&self) -> bool { self.head == self.buf.len() }
+    pub fn is_empty(&self) -> bool {
+        self.head == self.buf.len()
+    }
 }
 
 impl AsRef<[u8]> for DequeBuffer {
-    fn as_ref(&self) -> &[u8] { &self.buf[self.head..] }
+    fn as_ref(&self) -> &[u8] {
+        &self.buf[self.head..]
+    }
 }
 impl AsMut<[u8]> for DequeBuffer {
-    fn as_mut(&mut self) -> &mut [u8] { &mut self.buf[self.head..] }
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[self.head..]
+    }
 }
 impl<I: SliceIndex<[u8]>> Index<I> for DequeBuffer {
     type Output = I::Output;
-    fn index(&self, i: I) -> &Self::Output { self.as_ref().index(i) }
+    fn index(&self, i: I) -> &Self::Output {
+        self.as_ref().index(i)
+    }
 }
 impl<I: SliceIndex<[u8]>> IndexMut<I> for DequeBuffer {
-    fn index_mut(&mut self, i: I) -> &mut Self::Output { self.as_mut().index_mut(i) }
+    fn index_mut(&mut self, i: I) -> &mut Self::Output {
+        self.as_mut().index_mut(i)
+    }
 }
 impl Extend<u8> for DequeBuffer {
-    fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) { self.buf.extend(iter); }
+    fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
+        self.buf.extend(iter);
+    }
 }
 impl<'a> Extend<&'a u8> for DequeBuffer {
-    fn extend<T: IntoIterator<Item = &'a u8>>(&mut self, iter: T) { self.buf.extend(iter); }
+    fn extend<T: IntoIterator<Item = &'a u8>>(&mut self, iter: T) {
+        self.buf.extend(iter);
+    }
 }

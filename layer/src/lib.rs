@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/layer/0.4.0")]
+#![doc(html_root_url = "https://docs.rs/layer/0.4.4")]
 //! # layer — Telegram MTProto library
 //!
 //! `layer` is a modular Rust library for the Telegram MTProto protocol.
@@ -56,14 +56,8 @@ pub use layer_tl_gen as codegen;
 
 // ─── Convenience re-exports ───────────────────────────────────────────────────
 
-pub use layer_tl_types::{
-    Identifiable,
-    RemoteCall,
-    Serializable,
-    Deserializable,
-    LAYER,
-};
+pub use layer_tl_types::{Deserializable, Identifiable, LAYER, RemoteCall, Serializable};
 
-pub use layer_mtproto::{Session, EncryptedSession};
-pub use layer_mtproto::authentication::{self, Finished, step1, step2, step3, finish};
 pub use layer_crypto::AuthKey;
+pub use layer_mtproto::authentication::{self, Finished, finish, step1, step2, step3};
+pub use layer_mtproto::{EncryptedSession, Session};

@@ -47,16 +47,23 @@ impl<'a> Cursor<'a> {
     }
 
     /// Current byte offset.
-    pub fn pos(&self) -> usize { self.pos }
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
 
     /// Remaining bytes.
-    pub fn remaining(&self) -> usize { self.buf.len() - self.pos }
+    pub fn remaining(&self) -> usize {
+        self.buf.len() - self.pos
+    }
 
     /// Read a single byte.
     pub fn read_byte(&mut self) -> Result<u8> {
         match self.buf.get(self.pos).copied() {
-            Some(b) => { self.pos += 1; Ok(b) }
-            None    => Err(Error::UnexpectedEof),
+            Some(b) => {
+                self.pos += 1;
+                Ok(b)
+            }
+            None => Err(Error::UnexpectedEof),
         }
     }
 
@@ -177,7 +184,9 @@ impl Deserializable for Vec<u8> {
         // Skip alignment padding
         let total = 1 + header_extra + len;
         let padding = (4 - (total % 4)) % 4;
-        for _ in 0..padding { buf.read_byte()?; }
+        for _ in 0..padding {
+            buf.read_byte()?;
+        }
 
         Ok(data)
     }
@@ -206,7 +215,9 @@ impl<T: Deserializable> Deserializable for Vec<T> {
 impl<T: Deserializable> Deserializable for crate::RawVec<T> {
     fn deserialize(buf: Buffer) -> Result<Self> {
         let len = i32::deserialize(buf)? as usize;
-        let inner = (0..len).map(|_| T::deserialize(buf)).collect::<Result<_>>()?;
+        let inner = (0..len)
+            .map(|_| T::deserialize(buf))
+            .collect::<Result<_>>()?;
         Ok(crate::RawVec(inner))
     }
 }

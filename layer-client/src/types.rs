@@ -21,57 +21,79 @@ impl User {
     pub fn from_raw(raw: tl::enums::User) -> Option<Self> {
         match &raw {
             tl::enums::User::Empty(_) => None,
-            tl::enums::User::User(_)  => Some(Self { raw }),
+            tl::enums::User::User(_) => Some(Self { raw }),
         }
     }
 
     fn inner(&self) -> &tl::types::User {
         match &self.raw {
-            tl::enums::User::User(u)  => u,
+            tl::enums::User::User(u) => u,
             tl::enums::User::Empty(_) => unreachable!("User::Empty filtered in from_raw"),
         }
     }
 
     /// Telegram user ID.
-    pub fn id(&self) -> i64 { self.inner().id }
+    pub fn id(&self) -> i64 {
+        self.inner().id
+    }
 
     /// Access hash needed for API calls.
-    pub fn access_hash(&self) -> Option<i64> { self.inner().access_hash }
+    pub fn access_hash(&self) -> Option<i64> {
+        self.inner().access_hash
+    }
 
     /// First name.
-    pub fn first_name(&self) -> Option<&str> { self.inner().first_name.as_deref() }
+    pub fn first_name(&self) -> Option<&str> {
+        self.inner().first_name.as_deref()
+    }
 
     /// Last name.
-    pub fn last_name(&self) -> Option<&str> { self.inner().last_name.as_deref() }
+    pub fn last_name(&self) -> Option<&str> {
+        self.inner().last_name.as_deref()
+    }
 
     /// Username (without `@`).
-    pub fn username(&self) -> Option<&str> { self.inner().username.as_deref() }
+    pub fn username(&self) -> Option<&str> {
+        self.inner().username.as_deref()
+    }
 
     /// Phone number, if visible.
-    pub fn phone(&self) -> Option<&str> { self.inner().phone.as_deref() }
+    pub fn phone(&self) -> Option<&str> {
+        self.inner().phone.as_deref()
+    }
 
     /// `true` if this is a verified account.
-    pub fn verified(&self) -> bool { self.inner().verified }
+    pub fn verified(&self) -> bool {
+        self.inner().verified
+    }
 
     /// `true` if this is a bot account.
-    pub fn bot(&self) -> bool { self.inner().bot }
+    pub fn bot(&self) -> bool {
+        self.inner().bot
+    }
 
     /// `true` if the account is deleted.
-    pub fn deleted(&self) -> bool { self.inner().deleted }
+    pub fn deleted(&self) -> bool {
+        self.inner().deleted
+    }
 
     /// `true` if the current user has blocked this user.
-    pub fn blocked(&self) -> bool { false }
+    pub fn blocked(&self) -> bool {
+        false
+    }
 
     /// `true` if this is a premium account.
-    pub fn premium(&self) -> bool { self.inner().premium }
+    pub fn premium(&self) -> bool {
+        self.inner().premium
+    }
 
     /// Full display name (`first_name [last_name]`).
     pub fn full_name(&self) -> String {
         match (self.first_name(), self.last_name()) {
             (Some(f), Some(l)) => format!("{f} {l}"),
-            (Some(f), None)    => f.to_string(),
-            (None,    Some(l)) => l.to_string(),
-            (None,    None)    => String::new(),
+            (Some(f), None) => f.to_string(),
+            (None, Some(l)) => l.to_string(),
+            (None, None) => String::new(),
         }
     }
 
@@ -84,7 +106,7 @@ impl User {
     pub fn as_input_peer(&self) -> tl::enums::InputPeer {
         match self.inner().access_hash {
             Some(ah) => tl::enums::InputPeer::User(tl::types::InputPeerUser {
-                user_id:     self.id(),
+                user_id: self.id(),
                 access_hash: ah,
             }),
             None => tl::enums::InputPeer::PeerSelf,
@@ -116,7 +138,7 @@ impl Group {
     /// basic group (i.e. empty, forbidden, or a channel).
     pub fn from_raw(raw: tl::enums::Chat) -> Option<Self> {
         match raw {
-            tl::enums::Chat::Chat(c)            => Some(Self { raw: c }),
+            tl::enums::Chat::Chat(c) => Some(Self { raw: c }),
             tl::enums::Chat::Empty(_)
             | tl::enums::Chat::Forbidden(_)
             | tl::enums::Chat::Channel(_)
@@ -125,16 +147,24 @@ impl Group {
     }
 
     /// Group ID.
-    pub fn id(&self) -> i64 { self.raw.id }
+    pub fn id(&self) -> i64 {
+        self.raw.id
+    }
 
     /// Group title.
-    pub fn title(&self) -> &str { &self.raw.title }
+    pub fn title(&self) -> &str {
+        &self.raw.title
+    }
 
     /// Member count.
-    pub fn participants_count(&self) -> i32 { self.raw.participants_count }
+    pub fn participants_count(&self) -> i32 {
+        self.raw.participants_count
+    }
 
     /// `true` if the logged-in user is the creator.
-    pub fn creator(&self) -> bool { self.raw.creator }
+    pub fn creator(&self) -> bool {
+        self.raw.creator
+    }
 
     /// `true` if the group has been migrated to a supergroup.
     pub fn migrated_to(&self) -> Option<&tl::enums::InputChannel> {
@@ -176,45 +206,67 @@ impl Channel {
     }
 
     /// Channel ID.
-    pub fn id(&self) -> i64 { self.raw.id }
+    pub fn id(&self) -> i64 {
+        self.raw.id
+    }
 
     /// Access hash.
-    pub fn access_hash(&self) -> Option<i64> { self.raw.access_hash }
+    pub fn access_hash(&self) -> Option<i64> {
+        self.raw.access_hash
+    }
 
     /// Channel / supergroup title.
-    pub fn title(&self) -> &str { &self.raw.title }
+    pub fn title(&self) -> &str {
+        &self.raw.title
+    }
 
     /// Username (without `@`), if public.
-    pub fn username(&self) -> Option<&str> { self.raw.username.as_deref() }
+    pub fn username(&self) -> Option<&str> {
+        self.raw.username.as_deref()
+    }
 
     /// `true` if this is a supergroup (not a broadcast channel).
-    pub fn megagroup(&self) -> bool { self.raw.megagroup }
+    pub fn megagroup(&self) -> bool {
+        self.raw.megagroup
+    }
 
     /// `true` if this is a broadcast channel.
-    pub fn broadcast(&self) -> bool { self.raw.broadcast }
+    pub fn broadcast(&self) -> bool {
+        self.raw.broadcast
+    }
 
     /// `true` if this is a verified channel.
-    pub fn verified(&self) -> bool { self.raw.verified }
+    pub fn verified(&self) -> bool {
+        self.raw.verified
+    }
 
     /// `true` if the channel is restricted.
-    pub fn restricted(&self) -> bool { self.raw.restricted }
+    pub fn restricted(&self) -> bool {
+        self.raw.restricted
+    }
 
     /// `true` if the channel has signatures on posts.
-    pub fn signatures(&self) -> bool { self.raw.signatures }
+    pub fn signatures(&self) -> bool {
+        self.raw.signatures
+    }
 
     /// Approximate member count (may be `None` for private channels).
-    pub fn participants_count(&self) -> Option<i32> { self.raw.participants_count }
+    pub fn participants_count(&self) -> Option<i32> {
+        self.raw.participants_count
+    }
 
     /// Convert to a `Peer`.
     pub fn as_peer(&self) -> tl::enums::Peer {
-        tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: self.id() })
+        tl::enums::Peer::Channel(tl::types::PeerChannel {
+            channel_id: self.id(),
+        })
     }
 
     /// Convert to an `InputPeer` (requires access hash).
     pub fn as_input_peer(&self) -> tl::enums::InputPeer {
         match self.raw.access_hash {
             Some(ah) => tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
-                channel_id:  self.id(),
+                channel_id: self.id(),
                 access_hash: ah,
             }),
             None => tl::enums::InputPeer::Empty,
@@ -225,7 +277,7 @@ impl Channel {
     pub fn as_input_channel(&self) -> tl::enums::InputChannel {
         match self.raw.access_hash {
             Some(ah) => tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
-                channel_id:  self.id(),
+                channel_id: self.id(),
                 access_hash: ah,
             }),
             None => tl::enums::InputChannel::Empty,
@@ -256,8 +308,10 @@ impl Chat {
     /// Attempt to construct from a raw `tl::enums::Chat`.
     pub fn from_raw(raw: tl::enums::Chat) -> Option<Self> {
         match &raw {
-            tl::enums::Chat::Chat(_)    => Group::from_raw(raw).map(Chat::Group),
-            tl::enums::Chat::Channel(_) => Channel::from_raw(raw).map(|c| Chat::Channel(Box::new(c))),
+            tl::enums::Chat::Chat(_) => Group::from_raw(raw).map(Chat::Group),
+            tl::enums::Chat::Channel(_) => {
+                Channel::from_raw(raw).map(|c| Chat::Channel(Box::new(c)))
+            }
             _ => None,
         }
     }
@@ -265,7 +319,7 @@ impl Chat {
     /// Common ID regardless of variant.
     pub fn id(&self) -> i64 {
         match self {
-            Chat::Group(g)   => g.id(),
+            Chat::Group(g) => g.id(),
             Chat::Channel(c) => c.id(),
         }
     }
@@ -273,7 +327,7 @@ impl Chat {
     /// Common title regardless of variant.
     pub fn title(&self) -> &str {
         match self {
-            Chat::Group(g)   => g.title(),
+            Chat::Group(g) => g.title(),
             Chat::Channel(c) => c.title(),
         }
     }
@@ -281,7 +335,7 @@ impl Chat {
     /// Convert to a `Peer`.
     pub fn as_peer(&self) -> tl::enums::Peer {
         match self {
-            Chat::Group(g)   => g.as_peer(),
+            Chat::Group(g) => g.as_peer(),
             Chat::Channel(c) => c.as_peer(),
         }
     }
@@ -289,7 +343,7 @@ impl Chat {
     /// Convert to an `InputPeer`.
     pub fn as_input_peer(&self) -> tl::enums::InputPeer {
         match self {
-            Chat::Group(g)   => g.as_input_peer(),
+            Chat::Group(g) => g.as_input_peer(),
             Chat::Channel(c) => c.as_input_peer(),
         }
     }

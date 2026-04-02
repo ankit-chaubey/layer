@@ -10,9 +10,9 @@
 
 use std::collections::VecDeque;
 
-use tokio::sync::mpsc;
 use layer_tl_types as tl;
 use layer_tl_types::{Cursor, Deserializable};
+use tokio::sync::mpsc;
 
 use crate::update::{InlineQuery, Update};
 use crate::{Client, InvocationError};
@@ -37,7 +37,7 @@ impl InlineQueryIter {
 /// A single result returned by a bot for an inline query.
 /// Obtained from [`InlineResultIter::next`].
 pub struct InlineResult {
-    client:   Client,
+    client: Client,
     query_id: i64,
     /// The raw TL result variant.
     pub raw: tl::enums::BotInlineResult,
@@ -47,7 +47,7 @@ impl InlineResult {
     /// The result ID string.
     pub fn id(&self) -> &str {
         match &self.raw {
-            tl::enums::BotInlineResult::BotInlineResult(r)               => &r.id,
+            tl::enums::BotInlineResult::BotInlineResult(r) => &r.id,
             tl::enums::BotInlineResult::BotInlineMediaResult(r) => &r.id,
         }
     }
@@ -55,7 +55,7 @@ impl InlineResult {
     /// Title, if the result has one.
     pub fn title(&self) -> Option<&str> {
         match &self.raw {
-            tl::enums::BotInlineResult::BotInlineResult(r)               => r.title.as_deref(),
+            tl::enums::BotInlineResult::BotInlineResult(r) => r.title.as_deref(),
             tl::enums::BotInlineResult::BotInlineMediaResult(r) => r.title.as_deref(),
         }
     }
@@ -63,7 +63,7 @@ impl InlineResult {
     /// Description, if present.
     pub fn description(&self) -> Option<&str> {
         match &self.raw {
-            tl::enums::BotInlineResult::BotInlineResult(r)               => r.description.as_deref(),
+            tl::enums::BotInlineResult::BotInlineResult(r) => r.description.as_deref(),
             tl::enums::BotInlineResult::BotInlineMediaResult(r) => r.description.as_deref(),
         }
     }
@@ -75,19 +75,19 @@ impl InlineResult {
             cache.peer_to_input(&peer)
         };
         let req = tl::functions::messages::SendInlineBotResult {
-            silent:               false,
-            background:           false,
-            clear_draft:          false,
-            hide_via:             false,
-            peer:                 input_peer,
-            reply_to:             None,
-            random_id:            crate::random_i64_pub(),
-            query_id:             self.query_id,
-            id:                   self.id().to_string(),
-            schedule_date:        None,
-            send_as:              None,
+            silent: false,
+            background: false,
+            clear_draft: false,
+            hide_via: false,
+            peer: input_peer,
+            reply_to: None,
+            random_id: crate::random_i64_pub(),
+            query_id: self.query_id,
+            id: self.id().to_string(),
+            schedule_date: None,
+            send_as: None,
             quick_reply_shortcut: None,
-            allow_paid_stars:     None,
+            allow_paid_stars: None,
         };
         self.client.rpc_call_raw_pub(&req).await?;
         Ok(())
@@ -99,15 +99,20 @@ impl InlineResult {
 /// Paginated iterator over results from a bot's inline mode.
 /// Created by [`Client::inline_query`].
 pub struct InlineResultIter {
-    client:     Client,
-    request:    tl::functions::messages::GetInlineBotResults,
-    buffer:     VecDeque<InlineResult>,
+    client: Client,
+    request: tl::functions::messages::GetInlineBotResults,
+    buffer: VecDeque<InlineResult>,
     last_chunk: bool,
 }
 
 impl InlineResultIter {
     fn new(client: Client, request: tl::functions::messages::GetInlineBotResults) -> Self {
-        Self { client, request, buffer: VecDeque::new(), last_chunk: false }
+        Self {
+            client,
+            request,
+            buffer: VecDeque::new(),
+            last_chunk: false,
+        }
     }
 
     /// Override the context peer (some bots return different results per chat type).
@@ -138,11 +143,12 @@ impl InlineResultIter {
         }
 
         let client = self.client.clone();
-        self.buffer.extend(r.results.into_iter().map(|raw| InlineResult {
-            client: client.clone(),
-            query_id,
-            raw,
-        }));
+        self.buffer
+            .extend(r.results.into_iter().map(|raw| InlineResult {
+                client: client.clone(),
+                query_id,
+                raw,
+            }));
 
         Ok(self.buffer.pop_front())
     }
@@ -154,14 +160,18 @@ impl Client {
     /// Return an iterator that yields every *incoming* inline query (bot side).
     pub fn iter_inline_queries(&self) -> InlineQueryIter {
         let (tx, rx) = mpsc::unbounded_channel();
-        let client   = self.clone();
+        let client = self.clone();
         tokio::spawn(async move {
             let mut stream = client.stream_updates();
             loop {
                 match stream.next().await {
-                    Some(Update::InlineQuery(q)) => { if tx.send(q).is_err() { break; } }
+                    Some(Update::InlineQuery(q)) => {
+                        if tx.send(q).is_err() {
+                            break;
+                        }
+                    }
                     Some(_) => {}
-                    None    => break,
+                    None => break,
                 }
             }
         });
@@ -184,26 +194,27 @@ impl Client {
     /// ```
     pub async fn inline_query(
         &self,
-        bot:   tl::enums::Peer,
+        bot: tl::enums::Peer,
         query: &str,
     ) -> Result<InlineResultIter, InvocationError> {
         let input_bot = {
             let cache = self.inner.peer_cache.read().await;
             match cache.peer_to_input(&bot) {
-                tl::enums::InputPeer::User(u) =>
+                tl::enums::InputPeer::User(u) => {
                     tl::enums::InputUser::InputUser(tl::types::InputUser {
-                        user_id:     u.user_id,
+                        user_id: u.user_id,
                         access_hash: u.access_hash,
-                    }),
+                    })
+                }
                 _ => tl::enums::InputUser::Empty,
             }
         };
         let request = tl::functions::messages::GetInlineBotResults {
-            bot:       input_bot,
-            peer:      tl::enums::InputPeer::Empty,
+            bot: input_bot,
+            peer: tl::enums::InputPeer::Empty,
             geo_point: None,
-            query:     query.to_string(),
-            offset:    String::new(),
+            query: query.to_string(),
+            offset: String::new(),
         };
         Ok(InlineResultIter::new(self.clone(), request))
     }

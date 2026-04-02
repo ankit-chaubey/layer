@@ -8,10 +8,9 @@
 //! * [`FullTransport`] — like Intermediate but additionally includes a running
 //!   sequence number and a CRC-32 checksum for integrity verification.
 
-
+use crate::InvocationError;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use crate::InvocationError;
 
 // ─── Intermediate ─────────────────────────────────────────────────────────────
 
@@ -30,12 +29,18 @@ impl IntermediateTransport {
     /// Connect and send the 4-byte init header.
     pub async fn connect(addr: &str) -> Result<Self, InvocationError> {
         let stream = TcpStream::connect(addr).await?;
-        Ok(Self { stream, init_sent: false })
+        Ok(Self {
+            stream,
+            init_sent: false,
+        })
     }
 
     /// Wrap an existing stream (the init byte will be sent on first [`send`]).
     pub fn from_stream(stream: TcpStream) -> Self {
-        Self { stream, init_sent: false }
+        Self {
+            stream,
+            init_sent: false,
+        }
     }
 
     /// Send a message with Intermediate framing.
@@ -60,7 +65,9 @@ impl IntermediateTransport {
         Ok(buf)
     }
 
-    pub fn into_inner(self) -> TcpStream { self.stream }
+    pub fn into_inner(self) -> TcpStream {
+        self.stream
+    }
 }
 
 // ─── Full ─────────────────────────────────────────────────────────────────────
@@ -85,17 +92,25 @@ pub struct FullTransport {
 impl FullTransport {
     pub async fn connect(addr: &str) -> Result<Self, InvocationError> {
         let stream = TcpStream::connect(addr).await?;
-        Ok(Self { stream, send_seqno: 0, recv_seqno: 0 })
+        Ok(Self {
+            stream,
+            send_seqno: 0,
+            recv_seqno: 0,
+        })
     }
 
     pub fn from_stream(stream: TcpStream) -> Self {
-        Self { stream, send_seqno: 0, recv_seqno: 0 }
+        Self {
+            stream,
+            send_seqno: 0,
+            recv_seqno: 0,
+        }
     }
 
     /// Send a message with Full framing (length + seqno + payload + crc32).
     pub async fn send(&mut self, data: &[u8]) -> Result<(), InvocationError> {
         let total_len = (data.len() + 12) as u32; // len field + seqno + payload + crc
-        let seq       = self.send_seqno;
+        let seq = self.send_seqno;
         self.send_seqno = self.send_seqno.wrapping_add(1);
 
         let mut packet = Vec::with_capacity(total_len as usize);
@@ -116,7 +131,9 @@ impl FullTransport {
         self.stream.read_exact(&mut len_buf).await?;
         let total_len = u32::from_le_bytes(len_buf) as usize;
         if total_len < 12 {
-            return Err(InvocationError::Deserialize("Full transport: packet too short".into()));
+            return Err(InvocationError::Deserialize(
+                "Full transport: packet too short".into(),
+            ));
         }
         let mut rest = vec![0u8; total_len - 4];
         self.stream.read_exact(&mut rest).await?;
@@ -140,7 +157,9 @@ impl FullTransport {
         Ok(body[4..].to_vec())
     }
 
-    pub fn into_inner(self) -> TcpStream { self.stream }
+    pub fn into_inner(self) -> TcpStream {
+        self.stream
+    }
 }
 
 // ─── CRC-32 (IEEE 802.3 polynomial) ──────────────────────────────────────────
@@ -154,7 +173,9 @@ fn crc32_ieee(data: &[u8]) -> u32 {
         for _ in 0..8 {
             let mix = (crc ^ b) & 1;
             crc >>= 1;
-            if mix != 0 { crc ^= POLY; }
+            if mix != 0 {
+                crc ^= POLY;
+            }
             b >>= 1;
         }
     }

@@ -13,12 +13,13 @@ const BOT_TOKEN: &str = "";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Arc::new(Client::connect(Config {
+    let (client, _shutdown) = Client::connect(Config {
         session_path: "bot.session".into(),
         api_id:       API_ID,
         api_hash:     API_HASH.to_string(),
         ..Default::default()
-    }).await?);
+    }).await?;
+    let client = Arc::new(client);
 
     if !client.is_authorized().await? {
         client.bot_sign_in(BOT_TOKEN).await?;

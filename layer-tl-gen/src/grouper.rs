@@ -1,7 +1,7 @@
 //! Groups definitions by namespace and return type for organised code output.
 
-use std::collections::HashMap;
 use layer_tl_parser::tl::{Category, Definition, Type};
+use std::collections::HashMap;
 
 /// Group definitions of `category` by their (first-level) namespace.
 pub(crate) fn group_by_ns(
@@ -11,7 +11,10 @@ pub(crate) fn group_by_ns(
     let mut map: HashMap<String, Vec<&Definition>> = HashMap::new();
 
     for def in defs.iter().filter(|d| d.category == category) {
-        assert!(def.namespace.len() <= 1, "only one namespace level supported");
+        assert!(
+            def.namespace.len() <= 1,
+            "only one namespace level supported"
+        );
         let ns = def.namespace.first().map(|s| s.as_str()).unwrap_or("");
         map.entry(ns.to_owned()).or_default().push(def);
     }
@@ -29,7 +32,10 @@ pub(crate) fn group_by_ns(
 pub(crate) fn group_types_by_ns(defs: &[Definition]) -> HashMap<Option<String>, Vec<&Type>> {
     let mut map: HashMap<Option<String>, Vec<&Type>> = HashMap::new();
 
-    for def in defs.iter().filter(|d| d.category == Category::Types && !d.ty.generic_ref) {
+    for def in defs
+        .iter()
+        .filter(|d| d.category == Category::Types && !d.ty.generic_ref)
+    {
         assert!(def.namespace.len() <= 1);
         map.entry(def.namespace.first().cloned())
             .or_default()

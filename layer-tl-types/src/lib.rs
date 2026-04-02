@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/layer-tl-types/0.4.0")]
+#![doc(html_root_url = "https://docs.rs/layer-tl-types/0.4.4")]
 //! Generated Telegram API types, functions and enums.
 //!
 //! This crate is **auto-generated** from the TL schema files in `tl/`.
@@ -37,13 +37,13 @@
 #![allow(clippy::large_enum_variant)]
 
 pub mod deserialize;
-pub mod serialize;
 mod generated;
+pub mod serialize;
 
 pub use deserialize::{Cursor, Deserializable};
-pub use generated::{LAYER, enums, functions, types};
 #[cfg(feature = "name-for-id")]
 pub use generated::name_for_id;
+pub use generated::{LAYER, enums, functions, types};
 pub use serialize::Serializable;
 
 /// Bare vector — `vector` (lowercase) as opposed to the boxed `Vector`.
@@ -60,7 +60,9 @@ pub struct RawVec<T>(pub Vec<T>);
 pub struct Blob(pub Vec<u8>);
 
 impl From<Vec<u8>> for Blob {
-    fn from(v: Vec<u8>) -> Self { Self(v) }
+    fn from(v: Vec<u8>) -> Self {
+        Self(v)
+    }
 }
 
 // ─── Core traits ──────────────────────────────────────────────────────────────

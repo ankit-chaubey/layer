@@ -1,4 +1,7 @@
-use layer_mtproto::{Session, transport::{AbridgedTransport, Transport}};
+use layer_mtproto::{
+    Session,
+    transport::{AbridgedTransport, Transport},
+};
 
 #[test]
 fn session_seq_no_increments() {
@@ -56,7 +59,10 @@ impl Transport for MemTransport {
 
 #[test]
 fn abridged_sends_init_byte_once() {
-    let inner = MemTransport { inbox: vec![], outbox: vec![] };
+    let inner = MemTransport {
+        inbox: vec![],
+        outbox: vec![],
+    };
     let mut t = AbridgedTransport::new(inner);
 
     let payload = vec![0u8; 4]; // 4 bytes = 1 word

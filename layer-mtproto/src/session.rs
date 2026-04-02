@@ -29,7 +29,10 @@ pub struct Session {
 impl Session {
     /// Create a fresh session.
     pub fn new() -> Self {
-        Self { msg_counter: 0, seq_no: 0 }
+        Self {
+            msg_counter: 0,
+            seq_no: 0,
+        }
     }
 
     /// Allocate a new message ID.
@@ -45,13 +48,13 @@ impl Session {
     pub fn next_seq_no(&mut self) -> i32 {
         let n = self.seq_no;
         self.seq_no += 2;
-        n | 1  // odd = content-related
+        n | 1 // odd = content-related
     }
 
     /// Return the next sequence number for a content-*un*related message.
     pub fn next_seq_no_unrelated(&mut self) -> i32 {
         let n = self.seq_no;
-        n & !1  // even = content-unrelated (don't increment)
+        n & !1 // even = content-unrelated (don't increment)
     }
 
     /// Serialize an RPC function into a [`Message`] ready to send.
@@ -59,13 +62,15 @@ impl Session {
     /// The message body is just the TL-serialized `call`; the surrounding
     /// transport framing (auth_key_id, etc.) is applied in [`Message::to_plaintext_bytes`].
     pub fn pack<R: RemoteCall>(&mut self, call: &R) -> Message {
-        let id     = self.next_msg_id();
+        let id = self.next_msg_id();
         let seq_no = self.next_seq_no();
-        let body   = call.to_bytes();
+        let body = call.to_bytes();
         Message::plaintext(id, seq_no, body)
     }
 }
 
 impl Default for Session {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

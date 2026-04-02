@@ -41,13 +41,23 @@ impl RpcError {
         // e.g. "FLOOD_WAIT_30" → name = "FLOOD_WAIT", value = Some(30)
         if let Some(idx) = message.rfind('_') {
             let suffix = &message[idx + 1..];
-            if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
-                && let Ok(v) = suffix.parse::<u32>() {
+            if !suffix.is_empty()
+                && suffix.chars().all(|c| c.is_ascii_digit())
+                && let Ok(v) = suffix.parse::<u32>()
+            {
                 let name = message[..idx].to_string();
-                return Self { code, name, value: Some(v) };
+                return Self {
+                    code,
+                    name,
+                    value: Some(v),
+                };
             }
         }
-        Self { code, name: message.to_string(), value: None }
+        Self {
+            code,
+            name: message.to_string(),
+            value: None,
+        }
     }
 
     /// Match on the error name, with optional wildcard prefix/suffix `'*'`.
@@ -80,6 +90,7 @@ impl RpcError {
 
 /// The error type returned from any `Client` method that talks to Telegram.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum InvocationError {
     /// Telegram rejected the request.
     Rpc(RpcError),
@@ -89,18 +100,20 @@ pub enum InvocationError {
     Deserialize(String),
     /// The request was dropped (e.g. sender task shut down).
     Dropped,
-    /// DC migration required — internal, automatically handled by [`crate::Client`].
+    /// DC migration required — handled internally by [`crate::Client`].
+    /// Not returned to callers; present only for internal routing.
+    #[doc(hidden)]
     Migrate(i32),
 }
 
 impl fmt::Display for InvocationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Rpc(e)          => write!(f, "{e}"),
-            Self::Io(e)           => write!(f, "I/O error: {e}"),
-            Self::Deserialize(s)  => write!(f, "deserialize error: {s}"),
-            Self::Dropped         => write!(f, "request dropped"),
-            Self::Migrate(dc)     => write!(f, "DC migration to {dc}"),
+            Self::Rpc(e) => write!(f, "{e}"),
+            Self::Io(e) => write!(f, "I/O error: {e}"),
+            Self::Deserialize(s) => write!(f, "deserialize error: {s}"),
+            Self::Dropped => write!(f, "request dropped"),
+            Self::Migrate(dc) => write!(f, "DC migration to {dc}"),
         }
     }
 }
@@ -108,11 +121,15 @@ impl fmt::Display for InvocationError {
 impl std::error::Error for InvocationError {}
 
 impl From<io::Error> for InvocationError {
-    fn from(e: io::Error) -> Self { Self::Io(e) }
+    fn from(e: io::Error) -> Self {
+        Self::Io(e)
+    }
 }
 
 impl From<layer_tl_types::deserialize::Error> for InvocationError {
-    fn from(e: layer_tl_types::deserialize::Error) -> Self { Self::Deserialize(e.to_string()) }
+    fn from(e: layer_tl_types::deserialize::Error) -> Self {
+        Self::Deserialize(e.to_string())
+    }
 }
 
 impl InvocationError {
@@ -120,7 +137,7 @@ impl InvocationError {
     pub fn is(&self, pattern: &str) -> bool {
         match self {
             Self::Rpc(e) => e.is(pattern),
-            _            => false,
+            _ => false,
         }
     }
 
@@ -128,7 +145,7 @@ impl InvocationError {
     pub fn flood_wait_seconds(&self) -> Option<u64> {
         match self {
             Self::Rpc(e) => e.flood_wait_seconds(),
-            _            => None,
+            _ => None,
         }
     }
 }
@@ -151,10 +168,10 @@ pub enum SignInError {
 impl fmt::Display for SignInError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SignUpRequired        => write!(f, "sign up required — use official Telegram app"),
-            Self::PasswordRequired(_)  => write!(f, "2FA password required"),
-            Self::InvalidCode          => write!(f, "invalid or expired code"),
-            Self::Other(e)             => write!(f, "{e}"),
+            Self::SignUpRequired => write!(f, "sign up required — use official Telegram app"),
+            Self::PasswordRequired(_) => write!(f, "2FA password required"),
+            Self::InvalidCode => write!(f, "invalid or expired code"),
+            Self::Other(e) => write!(f, "{e}"),
         }
     }
 }
@@ -162,7 +179,9 @@ impl fmt::Display for SignInError {
 impl std::error::Error for SignInError {}
 
 impl From<InvocationError> for SignInError {
-    fn from(e: InvocationError) -> Self { Self::Other(e) }
+    fn from(e: InvocationError) -> Self {
+        Self::Other(e)
+    }
 }
 
 // ─── PasswordToken ────────────────────────────────────────────────────────────
@@ -193,6 +212,6 @@ impl fmt::Debug for PasswordToken {
 ///
 /// Pass to [`crate::Client::sign_in`] with the received code.
 pub struct LoginToken {
-    pub(crate) phone:           String,
+    pub(crate) phone: String,
     pub(crate) phone_code_hash: String,
 }

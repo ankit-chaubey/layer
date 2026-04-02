@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/layer-tl-parser/0.4.0")]
+#![doc(html_root_url = "https://docs.rs/layer-tl-parser/0.4.4")]
 //! Parser for Telegram's [Type Language] (TL) schema files.
 //!
 //! This crate converts raw `.tl` text into a structured [`Definition`] AST
@@ -22,8 +22,8 @@
 
 /// Parse error types for TL schema parsing.
 pub mod errors;
-pub mod tl;
 mod iterator;
+pub mod tl;
 mod utils;
 
 use errors::ParseError;

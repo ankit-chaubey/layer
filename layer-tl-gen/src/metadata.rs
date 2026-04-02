@@ -1,7 +1,7 @@
 //! Pre-computed metadata used throughout the code generator.
 
-use std::collections::{HashMap, HashSet};
 use layer_tl_parser::tl::{Category, Definition, Parameter, ParameterType, Type};
+use std::collections::{HashMap, HashSet};
 
 pub(crate) struct Metadata<'a> {
     /// Definitions that contain themselves (directly or transitively).
@@ -31,9 +31,11 @@ impl<'a> Metadata<'a> {
         // Detect unused flags
         for def in defs {
             for flag_param in def.params.iter().filter(|p| p.ty == ParameterType::Flags) {
-                let used = def.params.iter().any(|p| matches!(&p.ty,
-                    ParameterType::Normal { flag: Some(f), .. } if f.name == flag_param.name
-                ));
+                let used = def.params.iter().any(|p| {
+                    matches!(&p.ty,
+                        ParameterType::Normal { flag: Some(f), .. } if f.name == flag_param.name
+                    )
+                });
                 if !used {
                     meta.unused_flags
                         .entry((&def.namespace, &def.name))
@@ -93,9 +95,7 @@ fn self_refs<'a>(
             // Indirect via another constructor
             if let Some(sub_defs) = defs_by_type.get(&(&ty.namespace, &ty.name)) {
                 for sub in sub_defs {
-                    if !visited.contains(&sub.id)
-                        && self_refs(root, sub, defs_by_type, visited)
-                    {
+                    if !visited.contains(&sub.id) && self_refs(root, sub, defs_by_type, visited) {
                         return true;
                     }
                 }

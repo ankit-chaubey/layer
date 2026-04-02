@@ -1,8 +1,8 @@
 //! The public code-generation API.
 
+use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
-use std::fs::File;
 
 use layer_tl_parser::tl::{Category, Definition, ParameterType};
 
@@ -60,10 +60,10 @@ impl Outputs<File> {
     pub fn from_dir(out_dir: &str) -> io::Result<Self> {
         let p = Path::new(out_dir);
         Ok(Self {
-            common:    File::create(p.join("generated_common.rs"))?,
-            types:     File::create(p.join("generated_types.rs"))?,
+            common: File::create(p.join("generated_common.rs"))?,
+            types: File::create(p.join("generated_types.rs"))?,
             functions: File::create(p.join("generated_functions.rs"))?,
-            enums:     File::create(p.join("generated_enums.rs"))?,
+            enums: File::create(p.join("generated_enums.rs"))?,
         })
     }
 }
@@ -121,7 +121,10 @@ fn write_common<W: Write>(defs: &[Definition], config: &Config, out: &mut W) -> 
 
     if config.gen_name_for_id {
         writeln!(out, "/// Returns the TL name for a known constructor ID.")?;
-        writeln!(out, "pub fn name_for_id(id: u32) -> Option<&'static str> {{")?;
+        writeln!(
+            out,
+            "pub fn name_for_id(id: u32) -> Option<&'static str> {{"
+        )?;
         writeln!(out, "    match id {{")?;
         for def in defs {
             writeln!(
@@ -224,7 +227,9 @@ fn generic_list(def: &Definition, bounds: &str) -> String {
     let mut params: Vec<&str> = Vec::new();
     for p in &def.params {
         if let ParameterType::Normal { ty, .. } = &p.ty
-            && ty.generic_ref && !params.contains(&ty.name.as_str()) {
+            && ty.generic_ref
+            && !params.contains(&ty.name.as_str())
+        {
             params.push(&ty.name);
         }
     }
@@ -243,7 +248,7 @@ fn write_struct<W: Write>(
     config: &Config,
 ) -> io::Result<()> {
     let kind = match def.category {
-        Category::Types     => "constructor",
+        Category::Types => "constructor",
         Category::Functions => "method",
     };
     writeln!(
@@ -261,7 +266,10 @@ fn write_struct<W: Write>(
         writeln!(out, "{indent}#[derive(Debug)]")?;
     }
     if config.impl_serde {
-        writeln!(out, "{indent}#[derive(serde::Serialize, serde::Deserialize)]")?;
+        writeln!(
+            out,
+            "{indent}#[derive(serde::Serialize, serde::Deserialize)]"
+        )?;
     }
     writeln!(out, "{indent}#[derive(Clone, PartialEq)]")?;
     writeln!(
@@ -273,7 +281,7 @@ fn write_struct<W: Write>(
 
     for param in &def.params {
         match &param.ty {
-            ParameterType::Flags => {}  // computed on-the-fly
+            ParameterType::Flags => {} // computed on-the-fly
             ParameterType::Normal { .. } => {
                 writeln!(
                     out,
@@ -306,7 +314,7 @@ fn write_struct_serializable<W: Write>(
     meta: &Metadata,
 ) -> io::Result<()> {
     let gl_decl = generic_list(def, ": crate::Serializable");
-    let gl_use  = generic_list(def, "");
+    let gl_use = generic_list(def, "");
 
     writeln!(
         out,
@@ -314,8 +322,15 @@ fn write_struct_serializable<W: Write>(
         n::def_type_name(def)
     )?;
 
-    let underscore = if def.category == Category::Types && def.params.is_empty() { "_" } else { "" };
-    writeln!(out, "{indent}    fn serialize(&self, {underscore}buf: &mut impl Extend<u8>) {{")?;
+    let underscore = if def.category == Category::Types && def.params.is_empty() {
+        "_"
+    } else {
+        ""
+    };
+    writeln!(
+        out,
+        "{indent}    fn serialize(&self, {underscore}buf: &mut impl Extend<u8>) {{"
+    )?;
 
     if def.category == Category::Functions {
         writeln!(out, "{indent}        use crate::Identifiable;")?;
@@ -349,18 +364,37 @@ fn write_param_serialization<W: Write>(
             write!(out, "{indent}        (")?;
             let mut first = true;
             for other in &def.params {
-                if let Normal { flag: Some(fl), ty, .. } = &other.ty {
-                    if fl.name != param.name { continue; }
-                    if !first { write!(out, " | ")?; }
+                if let Normal {
+                    flag: Some(fl), ty, ..
+                } = &other.ty
+                {
+                    if fl.name != param.name {
+                        continue;
+                    }
+                    if !first {
+                        write!(out, " | ")?;
+                    }
                     first = false;
                     if ty.name == "true" {
-                        write!(out, "if self.{} {{ 1 << {} }} else {{ 0 }}", n::param_attr_name(other), fl.index)?;
+                        write!(
+                            out,
+                            "if self.{} {{ 1 << {} }} else {{ 0 }}",
+                            n::param_attr_name(other),
+                            fl.index
+                        )?;
                     } else {
-                        write!(out, "if self.{}.is_some() {{ 1 << {} }} else {{ 0 }}", n::param_attr_name(other), fl.index)?;
+                        write!(
+                            out,
+                            "if self.{}.is_some() {{ 1 << {} }} else {{ 0 }}",
+                            n::param_attr_name(other),
+                            fl.index
+                        )?;
                     }
                 }
             }
-            if first { write!(out, "0u32")?; }
+            if first {
+                write!(out, "0u32")?;
+            }
             writeln!(out, ").serialize(buf);")?;
         }
         Normal { ty, flag } => {
@@ -369,7 +403,10 @@ fn write_param_serialization<W: Write>(
                 if ty.name == "true" {
                     // bool flag — nothing to serialize, it's in the flags word
                 } else {
-                    writeln!(out, "{indent}        if let Some(v) = &self.{attr} {{ v.serialize(buf); }}")?;
+                    writeln!(
+                        out,
+                        "{indent}        if let Some(v) = &self.{attr} {{ v.serialize(buf); }}"
+                    )?;
                 }
             } else {
                 writeln!(out, "{indent}        self.{attr}.serialize(buf);")?;
@@ -385,7 +422,7 @@ fn write_struct_deserializable<W: Write>(
     def: &Definition,
 ) -> io::Result<()> {
     let gl_decl = generic_list(def, ": crate::Deserializable");
-    let gl_use  = generic_list(def, "");
+    let gl_use = generic_list(def, "");
 
     // Empty structs never read from `buf`. Name it `_buf` to suppress the
     // unused-variable warning in the generated output.
@@ -402,7 +439,9 @@ fn write_struct_deserializable<W: Write>(
     )?;
 
     // Read flags first so optional params can check them
-    let flag_params: Vec<_> = def.params.iter()
+    let flag_params: Vec<_> = def
+        .params
+        .iter()
         .filter(|p| p.ty == ParameterType::Flags)
         .collect();
 
@@ -432,7 +471,9 @@ fn write_struct_deserializable<W: Write>(
                     writeln!(
                         out,
                         "{indent}        let {attr} = if (_{} & (1 << {})) != 0 {{ Some({}::deserialize(buf)?) }} else {{ None }};",
-                        fl.name, fl.index, n::type_item_path(ty)
+                        fl.name,
+                        fl.index,
+                        n::type_item_path(ty)
                     )?;
                 }
             } else {
@@ -461,7 +502,7 @@ fn write_remote_call<W: Write>(out: &mut W, indent: &str, def: &Definition) -> i
     // Generic functions (e.g. invokeWithLayer<X>) need the type parameter on
     // the impl header and on the struct name, just like every other write_* helper.
     let gl_decl = generic_list(def, ": crate::Serializable + crate::Deserializable");
-    let gl_use  = generic_list(def, "");
+    let gl_use = generic_list(def, "");
     writeln!(
         out,
         "{indent}impl{gl_decl} crate::RemoteCall for {}{gl_use} {{",
@@ -535,7 +576,10 @@ fn write_enum<W: Write>(
         writeln!(out, "{indent}#[derive(Debug)]")?;
     }
     if config.impl_serde {
-        writeln!(out, "{indent}#[derive(serde::Serialize, serde::Deserialize)]")?;
+        writeln!(
+            out,
+            "{indent}#[derive(serde::Serialize, serde::Deserialize)]"
+        )?;
     }
     writeln!(out, "{indent}#[derive(Clone, PartialEq)]")?;
     writeln!(out, "{indent}pub enum {} {{", n::type_name(ty))?;
@@ -545,9 +589,13 @@ fn write_enum<W: Write>(
         if def.params.is_empty() {
             writeln!(out, "{indent}    {variant},")?;
         } else if meta.is_recursive(def) {
-            writeln!(out, "{indent}    {variant}(Box<{}>),", n::def_qual_name(def))?;
+            writeln!(
+                out,
+                "{indent}    {variant}(Box<{}>),",
+                n::def_qual_name(def)
+            )?;
         } else {
-            writeln!(out, "{indent}    {variant}({})," , n::def_qual_name(def))?;
+            writeln!(out, "{indent}    {variant}({}),", n::def_qual_name(def))?;
         }
     }
 
@@ -565,7 +613,10 @@ fn write_enum_serializable<W: Write>(
         "{indent}impl crate::Serializable for {} {{",
         n::type_name(ty)
     )?;
-    writeln!(out, "{indent}    fn serialize(&self, buf: &mut impl Extend<u8>) {{")?;
+    writeln!(
+        out,
+        "{indent}    fn serialize(&self, buf: &mut impl Extend<u8>) {{"
+    )?;
     writeln!(out, "{indent}        use crate::Identifiable;")?;
     writeln!(out, "{indent}        match self {{")?;
 
@@ -573,7 +624,11 @@ fn write_enum_serializable<W: Write>(
         let variant = n::def_variant_name(def);
         let bind = if def.params.is_empty() { "" } else { "(x)" };
         writeln!(out, "{indent}            Self::{variant}{bind} => {{")?;
-        writeln!(out, "{indent}                {}::CONSTRUCTOR_ID.serialize(buf);", n::def_qual_name(def))?;
+        writeln!(
+            out,
+            "{indent}                {}::CONSTRUCTOR_ID.serialize(buf);",
+            n::def_qual_name(def)
+        )?;
         if !def.params.is_empty() {
             writeln!(out, "{indent}                x.serialize(buf);")?;
         }
@@ -606,13 +661,22 @@ fn write_enum_deserializable<W: Write>(
 
     for def in meta.defs_for_type(ty) {
         let variant = n::def_variant_name(def);
-        let qual    = n::def_qual_name(def);
+        let qual = n::def_qual_name(def);
         if def.params.is_empty() {
-            writeln!(out, "{indent}            {qual}::CONSTRUCTOR_ID => Self::{variant},")?;
+            writeln!(
+                out,
+                "{indent}            {qual}::CONSTRUCTOR_ID => Self::{variant},"
+            )?;
         } else if meta.is_recursive(def) {
-            writeln!(out, "{indent}            {qual}::CONSTRUCTOR_ID => Self::{variant}(Box::new({qual}::deserialize(buf)?)),")?;
+            writeln!(
+                out,
+                "{indent}            {qual}::CONSTRUCTOR_ID => Self::{variant}(Box::new({qual}::deserialize(buf)?)),"
+            )?;
         } else {
-            writeln!(out, "{indent}            {qual}::CONSTRUCTOR_ID => Self::{variant}({qual}::deserialize(buf)?),")?;
+            writeln!(
+                out,
+                "{indent}            {qual}::CONSTRUCTOR_ID => Self::{variant}({qual}::deserialize(buf)?),"
+            )?;
         }
     }
 
@@ -633,8 +697,8 @@ fn write_impl_from<W: Write>(
 ) -> io::Result<()> {
     for def in meta.defs_for_type(ty) {
         let enum_name = n::type_name(ty);
-        let qual      = n::def_qual_name(def);
-        let variant   = n::def_variant_name(def);
+        let qual = n::def_qual_name(def);
+        let variant = n::def_variant_name(def);
 
         writeln!(out, "{indent}impl From<{qual}> for {enum_name} {{")?;
         let underscore = if def.params.is_empty() { "_" } else { "" };
@@ -660,19 +724,30 @@ fn write_impl_try_from<W: Write>(
 ) -> io::Result<()> {
     let enum_name = n::type_name(ty);
     for def in meta.defs_for_type(ty) {
-        if def.params.is_empty() { continue; }
-        let qual    = n::def_qual_name(def);
+        if def.params.is_empty() {
+            continue;
+        }
+        let qual = n::def_qual_name(def);
         let variant = n::def_variant_name(def);
 
         writeln!(out, "{indent}impl TryFrom<{enum_name}> for {qual} {{")?;
         writeln!(out, "{indent}    type Error = {enum_name};")?;
         writeln!(out, "{indent}    #[allow(unreachable_patterns)]")?;
-        writeln!(out, "{indent}    fn try_from(v: {enum_name}) -> Result<Self, Self::Error> {{")?;
+        writeln!(
+            out,
+            "{indent}    fn try_from(v: {enum_name}) -> Result<Self, Self::Error> {{"
+        )?;
         writeln!(out, "{indent}        match v {{")?;
         if meta.is_recursive(def) {
-            writeln!(out, "{indent}            {enum_name}::{variant}(x) => Ok(*x),")?;
+            writeln!(
+                out,
+                "{indent}            {enum_name}::{variant}(x) => Ok(*x),"
+            )?;
         } else {
-            writeln!(out, "{indent}            {enum_name}::{variant}(x) => Ok(x),")?;
+            writeln!(
+                out,
+                "{indent}            {enum_name}::{variant}(x) => Ok(x),"
+            )?;
         }
         writeln!(out, "{indent}            other => Err(other),")?;
         writeln!(out, "{indent}        }}")?;

@@ -21,7 +21,7 @@ By default, `layer-client` starts on DC2. If you know your account is on a diffe
 ```rust
 use std::net::SocketAddr;
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     dc_addr: Some("149.154.167.91:443".parse::<SocketAddr>().unwrap()),
     ..Default::default()
 }).await?;

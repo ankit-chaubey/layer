@@ -18,18 +18,27 @@ impl AuthKey {
         aux_hash.copy_from_slice(&sha[..8]);
         let mut key_id = [0u8; 8];
         key_id.copy_from_slice(&sha[12..20]);
-        Self { data, aux_hash, key_id }
+        Self {
+            data,
+            aux_hash,
+            key_id,
+        }
     }
 
     /// Return the raw 256-byte representation.
-    pub fn to_bytes(&self) -> [u8; 256] { self.data }
+    pub fn to_bytes(&self) -> [u8; 256] {
+        self.data
+    }
 
     /// The 8-byte key identifier (SHA-1(key)[12..20]).
-    pub fn key_id(&self) -> [u8; 8] { self.key_id }
+    pub fn key_id(&self) -> [u8; 8] {
+        self.key_id
+    }
 
     /// Compute the new-nonce hash needed for `DhGenOk/Retry/Fail` verification.
     pub fn calc_new_nonce_hash(&self, new_nonce: &[u8; 32], number: u8) -> [u8; 16] {
-        let data: Vec<u8> = new_nonce.iter()
+        let data: Vec<u8> = new_nonce
+            .iter()
             .copied()
             .chain([number])
             .chain(self.aux_hash.iter().copied())
@@ -48,5 +57,7 @@ impl std::fmt::Debug for AuthKey {
 }
 
 impl PartialEq for AuthKey {
-    fn eq(&self, other: &Self) -> bool { self.key_id == other.key_id }
+    fn eq(&self, other: &Self) -> bool {
+        self.key_id == other.key_id
+    }
 }

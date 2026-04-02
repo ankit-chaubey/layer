@@ -1,26 +1,38 @@
 //! Pollard-rho (Brent variant) integer factorization — used for PQ step.
 
 fn gcd(mut a: u128, mut b: u128) -> u128 {
-    while b != 0 { let t = b; b = a % b; a = t; }
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
     a
 }
 
 fn modpow(mut n: u128, mut e: u128, m: u128) -> u128 {
-    if m == 1 { return 0; }
+    if m == 1 {
+        return 0;
+    }
     let mut result = 1;
     n %= m;
     while e > 0 {
-        if e & 1 == 1 { result = result * n % m; }
+        if e & 1 == 1 {
+            result = result * n % m;
+        }
         e >>= 1;
         n = n * n % m;
     }
     result
 }
 
-fn abs_sub(a: u128, b: u128) -> u128 { a.max(b) - a.min(b) }
+fn abs_sub(a: u128, b: u128) -> u128 {
+    a.max(b) - a.min(b)
+}
 
 fn factorize_with(pq: u128, c: u128) -> (u64, u64) {
-    if pq.is_multiple_of(2) { return (2, (pq / 2) as u64); }
+    if pq.is_multiple_of(2) {
+        return (2, (pq / 2) as u64);
+    }
 
     let mut y = 3 * (pq / 7);
     let m = 7 * (pq / 13);
@@ -32,7 +44,9 @@ fn factorize_with(pq: u128, c: u128) -> (u64, u64) {
 
     while g == 1 {
         x = y;
-        for _ in 0..r { y = (modpow(y, 2, pq) + c) % pq; }
+        for _ in 0..r {
+            y = (modpow(y, 2, pq) + c) % pq;
+        }
         let mut k = 0;
         while k < r && g == 1 {
             ys = y;
@@ -50,7 +64,9 @@ fn factorize_with(pq: u128, c: u128) -> (u64, u64) {
         loop {
             ys = (modpow(ys, 2, pq) + c) % pq;
             g = gcd(abs_sub(x, ys), pq);
-            if g > 1 { break; }
+            if g > 1 {
+                break;
+            }
         }
     }
 
@@ -65,7 +81,9 @@ pub fn factorize(pq: u64) -> (u64, u64) {
     for attempt in [43u128, 47, 53, 59, 61] {
         let c = attempt * (n / 103);
         let (p, q) = factorize_with(n, c);
-        if p != 1 { return (p, q); }
+        if p != 1 {
+            return (p, q);
+        }
     }
     panic!("factorize failed after fixed attempts");
 }
@@ -73,6 +91,12 @@ pub fn factorize(pq: u64) -> (u64, u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn t1() { assert_eq!(factorize(1470626929934143021), (1206429347, 1218991343)); }
-    #[test] fn t2() { assert_eq!(factorize(2363612107535801713), (1518968219, 1556064227)); }
+    #[test]
+    fn t1() {
+        assert_eq!(factorize(1470626929934143021), (1206429347, 1218991343));
+    }
+    #[test]
+    fn t2() {
+        assert_eq!(factorize(2363612107535801713), (1518968219, 1556064227));
+    }
 }

@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/layer-crypto/0.4.0")]
+#![doc(html_root_url = "https://docs.rs/layer-crypto/0.4.4")]
 //! Cryptographic primitives for Telegram MTProto.
 //!
 //! Provides:
@@ -49,9 +49,17 @@ impl std::fmt::Display for DecryptError {
 }
 impl std::error::Error for DecryptError {}
 
-enum Side { Client, Server }
+enum Side {
+    Client,
+    Server,
+}
 impl Side {
-    fn x(&self) -> usize { match self { Side::Client => 0, Side::Server => 8 } }
+    fn x(&self) -> usize {
+        match self {
+            Side::Client => 0,
+            Side::Server => 8,
+        }
+    }
 }
 
 fn calc_key(auth_key: &AuthKey, msg_key: &[u8; 16], side: Side) -> ([u8; 32], [u8; 32]) {
@@ -109,7 +117,10 @@ pub(crate) fn do_encrypt_data_v2(buffer: &mut DequeBuffer, auth_key: &AuthKey, r
 ///
 /// `buffer` must start with `key_id || msg_key || ciphertext`.
 /// On success returns a slice of `buffer` containing the plaintext.
-pub fn decrypt_data_v2<'a>(buffer: &'a mut [u8], auth_key: &AuthKey) -> Result<&'a mut [u8], DecryptError> {
+pub fn decrypt_data_v2<'a>(
+    buffer: &'a mut [u8],
+    auth_key: &AuthKey,
+) -> Result<&'a mut [u8], DecryptError> {
     if buffer.len() < 24 || !(buffer.len() - 24).is_multiple_of(16) {
         return Err(DecryptError::InvalidBuffer);
     }
@@ -131,7 +142,10 @@ pub fn decrypt_data_v2<'a>(buffer: &'a mut [u8], auth_key: &AuthKey) -> Result<&
 }
 
 /// Derive `(key, iv)` from nonces for decrypting `ServerDhParams.encrypted_answer`.
-pub fn generate_key_data_from_nonce(server_nonce: &[u8; 16], new_nonce: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
+pub fn generate_key_data_from_nonce(
+    server_nonce: &[u8; 16],
+    new_nonce: &[u8; 32],
+) -> ([u8; 32], [u8; 32]) {
     let h1 = sha1!(new_nonce, server_nonce);
     let h2 = sha1!(server_nonce, new_nonce);
     let h3 = sha1!(new_nonce, new_nonce);
@@ -209,11 +223,16 @@ pub enum DhError {
 impl std::fmt::Display for DhError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::PrimeLengthInvalid  => write!(f, "dh_prime must be exactly 256 bytes"),
-            Self::PrimeTooSmall       => write!(f, "dh_prime high bit is clear (< 2048 bits)"),
-            Self::PrimeUnknown        => write!(f, "dh_prime does not match any known Telegram safe prime"),
+            Self::PrimeLengthInvalid => write!(f, "dh_prime must be exactly 256 bytes"),
+            Self::PrimeTooSmall => write!(f, "dh_prime high bit is clear (< 2048 bits)"),
+            Self::PrimeUnknown => {
+                write!(f, "dh_prime does not match any known Telegram safe prime")
+            }
             Self::GeneratorOutOfRange => write!(f, "generator g must be 2, 3, 4, 5, 6, or 7"),
-            Self::GeneratorInvalid    => write!(f, "g fails the required modular-residue check for this prime"),
+            Self::GeneratorInvalid => write!(
+                f,
+                "g fails the required modular-residue check for this prime"
+            ),
         }
     }
 }
@@ -223,7 +242,9 @@ impl std::error::Error for DhError {}
 /// Compute `big_endian_bytes mod modulus` (all values < 2^64).
 #[allow(dead_code)]
 fn prime_residue(bytes: &[u8], modulus: u64) -> u64 {
-    bytes.iter().fold(0u64, |acc, &b| (acc * 256 + b as u64) % modulus)
+    bytes
+        .iter()
+        .fold(0u64, |acc, &b| (acc * 256 + b as u64) % modulus)
 }
 
 /// Validate the Diffie-Hellman prime `p` and generator `g` received from
@@ -269,12 +290,12 @@ pub fn check_p_and_g(dh_prime: &[u8], g: u32) -> Result<(), DhError> {
     // 5. Residue condition — deterministic for the known Telegram prime, but
     //    kept for clarity and future-proofing against prime rotation.
     let valid = match g {
-        2 => true,  // p mod 8 = 7 is a fixed property of TELEGRAM_DH_PRIME
-        3 => true,  // p mod 3 = 2
+        2 => true, // p mod 8 = 7 is a fixed property of TELEGRAM_DH_PRIME
+        3 => true, // p mod 3 = 2
         4 => true,
-        5 => true,  // p mod 5 ∈ {1,4}
-        6 => true,  // p mod 24 ∈ {19,23}
-        7 => true,  // p mod 7 ∈ {3,5,6}
+        5 => true, // p mod 5 ∈ {1,4}
+        6 => true, // p mod 24 ∈ {19,23}
+        7 => true, // p mod 7 ∈ {3,5,6}
         _ => unreachable!(),
     };
     if !valid {
@@ -296,7 +317,10 @@ mod dh_tests {
 
     #[test]
     fn wrong_length_rejected() {
-        assert_eq!(check_p_and_g(&[0u8; 128], 3), Err(DhError::PrimeLengthInvalid));
+        assert_eq!(
+            check_p_and_g(&[0u8; 128], 3),
+            Err(DhError::PrimeLengthInvalid)
+        );
     }
 
     #[test]
@@ -308,7 +332,13 @@ mod dh_tests {
 
     #[test]
     fn out_of_range_g_rejected() {
-        assert_eq!(check_p_and_g(&TELEGRAM_DH_PRIME, 1),  Err(DhError::GeneratorOutOfRange));
-        assert_eq!(check_p_and_g(&TELEGRAM_DH_PRIME, 8),  Err(DhError::GeneratorOutOfRange));
+        assert_eq!(
+            check_p_and_g(&TELEGRAM_DH_PRIME, 1),
+            Err(DhError::GeneratorOutOfRange)
+        );
+        assert_eq!(
+            check_p_and_g(&TELEGRAM_DH_PRIME, 8),
+            Err(DhError::GeneratorOutOfRange)
+        );
     }
 }

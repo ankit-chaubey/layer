@@ -25,8 +25,14 @@ impl<'a> TlIterator<'a> {
     fn handle_separator(&mut self, line: &str) -> bool {
         let trimmed = line.trim();
         match trimmed {
-            "---functions---" => { self.category = Category::Functions; true }
-            "---types---"     => { self.category = Category::Types;     true }
+            "---functions---" => {
+                self.category = Category::Functions;
+                true
+            }
+            "---types---" => {
+                self.category = Category::Types;
+                true
+            }
             _ => false,
         }
     }

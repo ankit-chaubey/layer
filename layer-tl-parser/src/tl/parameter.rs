@@ -37,7 +37,9 @@ impl FromStr for Parameter {
             });
         }
 
-        let (name, ty_str) = token.split_once(':').ok_or(ParamParseError::NotImplemented)?;
+        let (name, ty_str) = token
+            .split_once(':')
+            .ok_or(ParamParseError::NotImplemented)?;
 
         if name.is_empty() || ty_str.is_empty() {
             return Err(ParamParseError::Empty);

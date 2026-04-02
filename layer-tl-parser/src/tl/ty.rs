@@ -79,10 +79,7 @@ impl FromStr for Type {
 
         // Split namespace from name
         let (namespace, name) = match name_part.rsplit_once('.') {
-            Some((ns_part, n)) => (
-                ns_part.split('.').map(String::from).collect::<Vec<_>>(),
-                n,
-            ),
+            Some((ns_part, n)) => (ns_part.split('.').map(String::from).collect::<Vec<_>>(), n),
             None => (Vec::new(), name_part),
         };
 

@@ -18,7 +18,7 @@
 
 ```toml
 [build-dependencies]
-layer-tl-gen = "0.4.0"
+layer-tl-gen = "0.4.4"
 ```
 
 ---

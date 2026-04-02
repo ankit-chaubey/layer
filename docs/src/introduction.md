@@ -42,7 +42,7 @@ Most Telegram libraries are thin wrappers around generated code or ports from Py
 <div class="feature-card">
 <div class="fc-icon">📡</div>
 <div class="fc-title">Typed Update Stream</div>
-<div class="fc-desc">NewMessage, MessageEdited, CallbackQuery, InlineQuery — all as strongly typed Rust enums.</div>
+<div class="fc-desc">NewMessage, MessageEdited, CallbackQuery, InlineQuery, ChatAction, UserStatus — all strongly typed.</div>
 </div>
 <div class="feature-card">
 <div class="fc-icon">🔧</div>
@@ -77,7 +77,7 @@ Most Telegram libraries are thin wrappers around generated code or ports from Py
 
 ```toml
 [dependencies]
-layer-client = "0.4.0"
+layer-client = "0.4.4"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -85,6 +85,18 @@ Then head to [Installation](./installation.md) for credentials setup, or jump st
 
 - [Quick Start — User Account](./quickstart-user.md) — login, send a message, receive updates
 - [Quick Start — Bot](./quickstart-bot.md) — bot token login, commands, callbacks
+
+---
+
+## What's new in v0.4.4
+
+- **`StringSessionBackend`** — portable base64 sessions, no file required
+- **`LibSqlBackend`** — libsql/Turso remote database sessions
+- **`Update::ChatAction`** and **`Update::UserStatus`** — new typed update variants
+- **`sync_update_state()`** — force immediate pts/seq reconciliation
+- 7 bug fixes (pagination, memory leaks, chunk alignment, and more)
+
+See the full [CHANGELOG](https://github.com/ankit-chaubey/layer/blob/main/CHANGELOG.md).
 
 ---
 

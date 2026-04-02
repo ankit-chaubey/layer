@@ -109,10 +109,7 @@ impl FromStr for Definition {
 
         // Parse namespace
         let (namespace, name) = match full_name.rsplit_once('.') {
-            Some((ns_part, n)) => (
-                ns_part.split('.').map(String::from).collect::<Vec<_>>(),
-                n,
-            ),
+            Some((ns_part, n)) => (ns_part.split('.').map(String::from).collect::<Vec<_>>(), n),
             None => (Vec::new(), full_name),
         };
 
@@ -139,24 +136,42 @@ impl FromStr for Definition {
                 }
                 Ok(p) => {
                     match &p {
-                        Parameter { ty: ParameterType::Flags, .. } => {
+                        Parameter {
+                            ty: ParameterType::Flags,
+                            ..
+                        } => {
                             flag_defs.push(p.name.clone());
                         }
                         // Validate generic ref is declared
                         Parameter {
-                            ty: ParameterType::Normal {
-                                ty: Type { name: tn, generic_ref: true, .. }, ..
-                            }, ..
+                            ty:
+                                ParameterType::Normal {
+                                    ty:
+                                        Type {
+                                            name: tn,
+                                            generic_ref: true,
+                                            ..
+                                        },
+                                    ..
+                                },
+                            ..
                         } if !type_defs.contains(tn) => {
-                            return Some(Err(ParseError::InvalidParam(ParamParseError::MissingDef)));
+                            return Some(Err(ParseError::InvalidParam(
+                                ParamParseError::MissingDef,
+                            )));
                         }
                         // Validate flag field is declared
                         Parameter {
-                            ty: ParameterType::Normal {
-                                flag: Some(Flag { name: fn_, .. }), ..
-                            }, ..
+                            ty:
+                                ParameterType::Normal {
+                                    flag: Some(Flag { name: fn_, .. }),
+                                    ..
+                                },
+                            ..
                         } if !flag_defs.contains(fn_) => {
-                            return Some(Err(ParseError::InvalidParam(ParamParseError::MissingDef)));
+                            return Some(Err(ParseError::InvalidParam(
+                                ParamParseError::MissingDef,
+                            )));
                         }
                         _ => {}
                     }

@@ -19,7 +19,7 @@
 
 ```toml
 [dependencies]
-layer-client = "0.4.0"
+layer-client = "0.4.4"
 tokio = { version = "1", features = ["full"] }
 ```
 

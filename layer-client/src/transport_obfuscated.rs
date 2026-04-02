@@ -7,25 +7,30 @@
 //!
 //! [MTProto Obfuscated2]: https://core.telegram.org/mtproto/mtproto-transports#obfuscated-2
 
-use sha2::{Sha256, Digest};
+use crate::InvocationError;
+use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use crate::InvocationError;
 
 // ─── ObfuscatedCipher ─────────────────────────────────────────────────────────
 
 /// Rolling AES-CTR key state.  In practice Obfuscated2 uses straight XOR with
 /// a stream derived from the initial nonce, so we model it as a key stream.
 pub struct ObfCipher {
-    key:   [u8; 32],
-    iv:    [u8; 16],
-    buf:   Vec<u8>,
-    pos:   usize,
+    key: [u8; 32],
+    iv: [u8; 16],
+    buf: Vec<u8>,
+    pos: usize,
 }
 
 impl ObfCipher {
     pub fn new(key: [u8; 32], iv: [u8; 16]) -> Self {
-        Self { key, iv, buf: Vec::new(), pos: 0 }
+        Self {
+            key,
+            iv,
+            buf: Vec::new(),
+            pos: 0,
+        }
     }
 
     /// Extend the keystream buffer using repeated SHA-256 rounds (simplified).
@@ -57,9 +62,9 @@ impl ObfCipher {
 /// After construction the initial 64-byte header has already been sent and the
 /// stream is ready for abridged MTProto messages.
 pub struct ObfuscatedStream {
-    stream:   TcpStream,
-    enc:      ObfCipher,
-    dec:      ObfCipher,
+    stream: TcpStream,
+    enc: ObfCipher,
+    dec: ObfCipher,
 }
 
 impl ObfuscatedStream {
@@ -67,18 +72,22 @@ impl ObfuscatedStream {
     ///
     /// `proxy_secret` is the MTProxy secret (32 bytes hex-decoded).  Pass
     /// `None` / zeros to use plain obfuscation without a proxy secret.
-    pub async fn connect(addr: &str, proxy_secret: Option<&[u8; 16]>) -> Result<Self, InvocationError> {
+    pub async fn connect(
+        addr: &str,
+        proxy_secret: Option<&[u8; 16]>,
+    ) -> Result<Self, InvocationError> {
         let stream = TcpStream::connect(addr).await?;
         Self::handshake(stream, proxy_secret).await
     }
 
     async fn handshake(
-        mut stream:     TcpStream,
-        proxy_secret:   Option<&[u8; 16]>,
+        mut stream: TcpStream,
+        proxy_secret: Option<&[u8; 16]>,
     ) -> Result<Self, InvocationError> {
         // Build a random 64-byte init payload as per Obfuscated2 spec.
         let mut nonce = [0u8; 64];
-        getrandom::getrandom(&mut nonce).map_err(|_| InvocationError::Deserialize("getrandom failed".into()))?;
+        getrandom::getrandom(&mut nonce)
+            .map_err(|_| InvocationError::Deserialize("getrandom failed".into()))?;
 
         // Bytes 56-60 must NOT equal certain magic values.
         // Force the protocol tag (abridged = 0xefefefefu32) at bytes 56-59.
@@ -91,14 +100,14 @@ impl ObfuscatedStream {
         let (enc_key, enc_iv, dec_key, dec_iv) = derive_keys(&nonce, proxy_secret);
 
         let mut enc = ObfCipher::new(enc_key, enc_iv);
-        let dec     = ObfCipher::new(dec_key, dec_iv);
+        let dec = ObfCipher::new(dec_key, dec_iv);
 
         // Encrypt the header with the enc cipher and send it.
         let mut encrypted_header = nonce;
         enc.apply(&mut encrypted_header[56..]); // only encrypt from byte 56 per spec
         stream.write_all(&encrypted_header).await?;
 
-        log::info!("[obfuscated] Handshake sent");
+        tracing::info!("[obfuscated] Handshake sent");
 
         Ok(Self { stream, enc, dec })
     }
@@ -109,7 +118,12 @@ impl ObfuscatedStream {
         let mut header = if words < 0x7f {
             vec![words as u8]
         } else {
-            vec![0x7f, (words & 0xff) as u8, ((words >> 8) & 0xff) as u8, ((words >> 16) & 0xff) as u8]
+            vec![
+                0x7f,
+                (words & 0xff) as u8,
+                ((words >> 8) & 0xff) as u8,
+                ((words >> 16) & 0xff) as u8,
+            ]
         };
 
         // XOR header + data before sending
@@ -150,7 +164,7 @@ impl ObfuscatedStream {
 ///
 /// Used by both [`ObfuscatedStream`] and `dc_pool` so it must be `pub`.
 pub fn derive_keys(
-    nonce:  &[u8; 64],
+    nonce: &[u8; 64],
     secret: Option<&[u8; 16]>,
 ) -> ([u8; 32], [u8; 16], [u8; 32], [u8; 16]) {
     let (enc_key, enc_iv) = derive_one(&nonce[8..40], &nonce[40..56], secret);
@@ -164,7 +178,7 @@ pub fn derive_keys(
 
 fn derive_one(key_src: &[u8], iv_src: &[u8], secret: Option<&[u8; 16]>) -> ([u8; 32], [u8; 16]) {
     let mut key = [0u8; 32];
-    let mut iv  = [0u8; 16];
+    let mut iv = [0u8; 16];
     if let Some(s) = secret {
         let mut h = Sha256::new();
         h.update(key_src);

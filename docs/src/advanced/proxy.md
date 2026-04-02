@@ -7,7 +7,7 @@
 ```rust
 use layer_client::{Client, Config, Socks5Config};
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     session_path: "session.session".into(),
     api_id:       12345,
     api_hash:     "your_hash".into(),

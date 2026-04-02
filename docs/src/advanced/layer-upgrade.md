@@ -86,7 +86,7 @@ _ => {}
 
 ```bash
 # In Cargo.toml workspace section
-version = "0.4.0"
+version = "0.4.4"
 ```
 
 Then publish in dependency order (see [Publishing](../installation.md)).

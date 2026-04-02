@@ -9,7 +9,7 @@ use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::connect(Config {
+    let (client, _shutdown) = Client::connect(Config {
         session_path: "my.session".into(),
         api_id:       std::env::var("TG_API_ID")?.parse()?,
         api_hash:     std::env::var("TG_API_HASH")?,

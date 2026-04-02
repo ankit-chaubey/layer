@@ -30,43 +30,56 @@ pub struct PossibleGapBuffer {
     /// channel_id → (buffered_updates, window_start)
     channel: HashMap<i64, (Vec<update::Update>, Instant)>,
     /// Global buffered updates (non-channel pts gaps)
-    global:  Option<(Vec<update::Update>, Instant)>,
+    global: Option<(Vec<update::Update>, Instant)>,
 }
 
 impl PossibleGapBuffer {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Buffer a global update during a possible-gap window.
     pub fn push_global(&mut self, upd: update::Update) {
-        let entry = self.global.get_or_insert_with(|| (Vec::new(), Instant::now()));
+        let entry = self
+            .global
+            .get_or_insert_with(|| (Vec::new(), Instant::now()));
         entry.0.push(upd);
     }
 
     /// Buffer a channel update during a possible-gap window.
     pub fn push_channel(&mut self, channel_id: i64, upd: update::Update) {
-        let entry = self.channel.entry(channel_id).or_insert_with(|| (Vec::new(), Instant::now()));
+        let entry = self
+            .channel
+            .entry(channel_id)
+            .or_insert_with(|| (Vec::new(), Instant::now()));
         entry.0.push(upd);
     }
 
     /// True if the global possible-gap deadline has elapsed.
     pub fn global_deadline_elapsed(&self) -> bool {
-        self.global.as_ref()
+        self.global
+            .as_ref()
             .map(|(_, t)| t.elapsed().as_millis() as u64 >= POSSIBLE_GAP_DEADLINE_MS)
             .unwrap_or(false)
     }
 
     /// True if a channel's possible-gap deadline has elapsed.
     pub fn channel_deadline_elapsed(&self, channel_id: i64) -> bool {
-        self.channel.get(&channel_id)
+        self.channel
+            .get(&channel_id)
             .map(|(_, t)| t.elapsed().as_millis() as u64 >= POSSIBLE_GAP_DEADLINE_MS)
             .unwrap_or(false)
     }
 
     /// True if the global buffer has any pending updates.
-    pub fn has_global(&self) -> bool { self.global.is_some() }
+    pub fn has_global(&self) -> bool {
+        self.global.is_some()
+    }
 
     /// True if a channel buffer has pending updates.
-    pub fn has_channel(&self, channel_id: i64) -> bool { self.channel.contains_key(&channel_id) }
+    pub fn has_channel(&self, channel_id: i64) -> bool {
+        self.channel.contains_key(&channel_id)
+    }
 
     /// Drain global buffered updates.
     pub fn drain_global(&mut self) -> Vec<update::Update> {
@@ -75,7 +88,10 @@ impl PossibleGapBuffer {
 
     /// Drain channel buffered updates.
     pub fn drain_channel(&mut self, channel_id: i64) -> Vec<update::Update> {
-        self.channel.remove(&channel_id).map(|(v, _)| v).unwrap_or_default()
+        self.channel
+            .remove(&channel_id)
+            .map(|(v, _)| v)
+            .unwrap_or_default()
     }
 }
 
@@ -88,13 +104,13 @@ impl PossibleGapBuffer {
 #[derive(Debug, Clone, Default)]
 pub struct PtsState {
     /// Main pts counter (messages, non-channel updates).
-    pub pts:  i32,
+    pub pts: i32,
     /// G-18: Secondary counter for secret-chat updates.
-    pub qts:  i32,
+    pub qts: i32,
     /// Date of the last received update (Unix timestamp).
     pub date: i32,
     /// G-19: Combined-container sequence number.
-    pub seq:  i32,
+    pub seq: i32,
     /// Per-channel pts counters.  `channel_id → pts`.
     pub channel_pts: HashMap<i64, i32>,
     /// G-16: Timestamp of last received update for deadline-based gap detection.
@@ -105,11 +121,13 @@ pub struct PtsState {
     pub getting_diff_for: HashSet<i64>,
 }
 
-
 impl PtsState {
     pub fn from_server_state(s: &tl::types::updates::State) -> Self {
         Self {
-            pts: s.pts, qts: s.qts, date: s.date, seq: s.seq,
+            pts: s.pts,
+            qts: s.qts,
+            date: s.date,
+            seq: s.seq,
             channel_pts: HashMap::new(),
             last_update_at: Some(Instant::now()),
             getting_diff_for: HashSet::new(),
@@ -123,7 +141,8 @@ impl PtsState {
 
     /// G-16: Returns true if no update has been received for > 15 minutes.
     pub fn deadline_exceeded(&self) -> bool {
-        self.last_update_at.as_ref()
+        self.last_update_at
+            .as_ref()
             .map(|t| t.elapsed().as_secs() > 15 * 60)
             .unwrap_or(false)
     }
@@ -134,7 +153,10 @@ impl PtsState {
         if new_pts == expected {
             PtsCheckResult::Ok
         } else if new_pts > expected {
-            PtsCheckResult::Gap { expected, got: new_pts }
+            PtsCheckResult::Gap {
+                expected,
+                got: new_pts,
+            }
         } else {
             PtsCheckResult::Duplicate
         }
@@ -146,7 +168,10 @@ impl PtsState {
         if new_qts == expected {
             PtsCheckResult::Ok
         } else if new_qts > expected {
-            PtsCheckResult::Gap { expected, got: new_qts }
+            PtsCheckResult::Gap {
+                expected,
+                got: new_qts,
+            }
         } else {
             PtsCheckResult::Duplicate
         }
@@ -154,19 +179,29 @@ impl PtsState {
 
     /// G-19: Check top-level seq for UpdatesCombined containers.
     pub fn check_seq(&self, _new_seq: i32, seq_start: i32) -> PtsCheckResult {
-        if self.seq == 0 { return PtsCheckResult::Ok; } // uninitialised — accept
+        if self.seq == 0 {
+            return PtsCheckResult::Ok;
+        } // uninitialised — accept
         let expected = self.seq + 1;
         if seq_start == expected {
             PtsCheckResult::Ok
         } else if seq_start > expected {
-            PtsCheckResult::Gap { expected, got: seq_start }
+            PtsCheckResult::Gap {
+                expected,
+                got: seq_start,
+            }
         } else {
             PtsCheckResult::Duplicate
         }
     }
 
     /// Check a per-channel pts value.
-    pub fn check_channel_pts(&self, channel_id: i64, new_pts: i32, pts_count: i32) -> PtsCheckResult {
+    pub fn check_channel_pts(
+        &self,
+        channel_id: i64,
+        new_pts: i32,
+        pts_count: i32,
+    ) -> PtsCheckResult {
         let local = self.channel_pts.get(&channel_id).copied().unwrap_or(0);
         if local == 0 {
             return PtsCheckResult::Ok;
@@ -175,7 +210,10 @@ impl PtsState {
         if new_pts == expected {
             PtsCheckResult::Ok
         } else if new_pts > expected {
-            PtsCheckResult::Gap { expected, got: new_pts }
+            PtsCheckResult::Gap {
+                expected,
+                got: new_pts,
+            }
         } else {
             PtsCheckResult::Duplicate
         }
@@ -183,25 +221,33 @@ impl PtsState {
 
     /// Advance the global pts.
     pub fn advance(&mut self, new_pts: i32) {
-        if new_pts > self.pts { self.pts = new_pts; }
+        if new_pts > self.pts {
+            self.pts = new_pts;
+        }
         self.touch();
     }
 
     /// Advance the qts (G-18).
     pub fn advance_qts(&mut self, new_qts: i32) {
-        if new_qts > self.qts { self.qts = new_qts; }
+        if new_qts > self.qts {
+            self.qts = new_qts;
+        }
         self.touch();
     }
 
     /// Advance seq (G-19).
     pub fn advance_seq(&mut self, new_seq: i32) {
-        if new_seq > self.seq { self.seq = new_seq; }
+        if new_seq > self.seq {
+            self.seq = new_seq;
+        }
     }
 
     /// Advance a per-channel pts.
     pub fn advance_channel(&mut self, channel_id: i64, new_pts: i32) {
         let entry = self.channel_pts.entry(channel_id).or_insert(0);
-        if new_pts > *entry { *entry = new_pts; }
+        if new_pts > *entry {
+            *entry = new_pts;
+        }
         self.touch();
     }
 }
@@ -230,38 +276,41 @@ impl Client {
             return Ok(vec![]);
         }
 
-        log::info!("[layer] getDifference (pts={pts}, qts={qts}, date={date}) …");
+        tracing::info!("[layer] getDifference (pts={pts}, qts={qts}, date={date}) …");
 
         let req = tl::functions::updates::GetDifference {
             pts,
-            pts_limit:       None,
+            pts_limit: None,
             pts_total_limit: None,
             date,
             qts,
-            qts_limit:       None,
+            qts_limit: None,
         };
 
-        let body    = self.rpc_call_raw_pub(&req).await?;
+        let body = self.rpc_call_raw_pub(&req).await?;
         let mut cur = Cursor::from_slice(&body);
-        let diff    = tl::enums::updates::Difference::deserialize(&mut cur)?;
+        let diff = tl::enums::updates::Difference::deserialize(&mut cur)?;
 
         let mut updates = Vec::new();
         match diff {
             tl::enums::updates::Difference::Empty(e) => {
                 let mut s = self.inner.pts_state.lock().await;
                 s.date = e.date;
-                s.seq  = e.seq;
+                s.seq = e.seq;
                 s.touch();
-                log::debug!("[layer] getDifference: empty (seq={})", e.seq);
+                tracing::debug!("[layer] getDifference: empty (seq={})", e.seq);
             }
             tl::enums::updates::Difference::Difference(d) => {
-                log::info!("[layer] getDifference: {} messages, {} updates",
-                    d.new_messages.len(), d.other_updates.len());
+                tracing::info!(
+                    "[layer] getDifference: {} messages, {} updates",
+                    d.new_messages.len(),
+                    d.other_updates.len()
+                );
                 self.cache_users_slice_pub(&d.users).await;
                 self.cache_chats_slice_pub(&d.chats).await;
                 for msg in d.new_messages {
                     updates.push(update::Update::NewMessage(
-                        update::IncomingMessage::from_raw(msg)
+                        update::IncomingMessage::from_raw(msg),
                     ));
                 }
                 for upd in d.other_updates {
@@ -282,13 +331,16 @@ impl Client {
                 *self.inner.pts_state.lock().await = new_state;
             }
             tl::enums::updates::Difference::Slice(d) => {
-                log::info!("[layer] getDifference slice: {} messages, {} updates",
-                    d.new_messages.len(), d.other_updates.len());
+                tracing::info!(
+                    "[layer] getDifference slice: {} messages, {} updates",
+                    d.new_messages.len(),
+                    d.other_updates.len()
+                );
                 self.cache_users_slice_pub(&d.users).await;
                 self.cache_chats_slice_pub(&d.chats).await;
                 for msg in d.new_messages {
                     updates.push(update::Update::NewMessage(
-                        update::IncomingMessage::from_raw(msg)
+                        update::IncomingMessage::from_raw(msg),
                     ));
                 }
                 for upd in d.other_updates {
@@ -306,7 +358,10 @@ impl Client {
                 *self.inner.pts_state.lock().await = new_state;
             }
             tl::enums::updates::Difference::TooLong(d) => {
-                log::warn!("[layer] getDifference: TooLong (pts={}) — re-syncing", d.pts);
+                tracing::warn!(
+                    "[layer] getDifference: TooLong (pts={}) — re-syncing",
+                    d.pts
+                );
                 self.inner.pts_state.lock().await.pts = d.pts;
                 self.sync_pts_state().await?;
             }
@@ -322,38 +377,63 @@ impl Client {
         &self,
         channel_id: i64,
     ) -> Result<Vec<update::Update>, InvocationError> {
-        let local_pts = self.inner.pts_state.lock().await
-            .channel_pts.get(&channel_id).copied().unwrap_or(0);
+        let local_pts = self
+            .inner
+            .pts_state
+            .lock()
+            .await
+            .channel_pts
+            .get(&channel_id)
+            .copied()
+            .unwrap_or(0);
 
-        let mut access_hash = self.inner.peer_cache.read().await
-            .channels.get(&channel_id).copied().unwrap_or(0);
+        let mut access_hash = self
+            .inner
+            .peer_cache
+            .read()
+            .await
+            .channels
+            .get(&channel_id)
+            .copied()
+            .unwrap_or(0);
 
         // If access_hash is missing, try to resolve it via channels.GetChannels.
         // Without a valid access_hash, Telegram always returns CHANNEL_INVALID.
         if access_hash == 0 {
-            log::debug!("[layer] channel {channel_id}: access_hash missing, attempting resolve via GetChannels");
+            tracing::debug!(
+                "[layer] channel {channel_id}: access_hash missing, attempting resolve via GetChannels"
+            );
             let input = tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
                 channel_id,
                 access_hash: 0,
             });
             let req = tl::functions::channels::GetChannels { id: vec![input] };
             if let Ok(body) = self.rpc_call_raw_pub(&req).await {
-                    let mut cur = Cursor::from_slice(&body);
-                    if let Ok(chats) = tl::enums::messages::Chats::deserialize(&mut cur) {
+                let mut cur = Cursor::from_slice(&body);
+                if let Ok(chats) = tl::enums::messages::Chats::deserialize(&mut cur) {
                     let chat_list = match chats {
                         tl::enums::messages::Chats::Chats(c) => c.chats,
                         tl::enums::messages::Chats::Slice(c) => c.chats,
                     };
                     self.cache_chats_slice_pub(&chat_list).await;
-                    access_hash = self.inner.peer_cache.read().await
-                        .channels.get(&channel_id).copied().unwrap_or(0);
+                    access_hash = self
+                        .inner
+                        .peer_cache
+                        .read()
+                        .await
+                        .channels
+                        .get(&channel_id)
+                        .copied()
+                        .unwrap_or(0);
                 }
             }
         }
 
         // Still no access_hash — nothing we can do, bail out early.
         if access_hash == 0 {
-            log::warn!("[layer] channel {channel_id}: access_hash unknown, cannot call getChannelDifference");
+            tracing::warn!(
+                "[layer] channel {channel_id}: access_hash unknown, cannot call getChannelDifference"
+            );
             return Err(InvocationError::Rpc(RpcError {
                 code: 400,
                 name: "CHANNEL_INVALID".into(),
@@ -361,7 +441,7 @@ impl Client {
             }));
         }
 
-        log::info!("[layer] getChannelDifference channel_id={channel_id} pts={local_pts}");
+        tracing::info!("[layer] getChannelDifference channel_id={channel_id} pts={local_pts}");
 
         let channel = tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
             channel_id,
@@ -369,57 +449,74 @@ impl Client {
         });
 
         let req = tl::functions::updates::GetChannelDifference {
-            force:   false,
+            force: false,
             channel,
-            filter:  tl::enums::ChannelMessagesFilter::Empty,
-            pts:     local_pts.max(1),
-            limit:   100,
+            filter: tl::enums::ChannelMessagesFilter::Empty,
+            pts: local_pts.max(1),
+            limit: 100,
         };
 
         let body = match self.rpc_call_raw_pub(&req).await {
             Ok(b) => b,
             Err(InvocationError::Rpc(ref e)) if e.name == "PERSISTENT_TIMESTAMP_OUTDATED" => {
                 // G-20: treat as empty diff — retry next gap
-                log::debug!("[layer] G-20 PERSISTENT_TIMESTAMP_OUTDATED — skipping diff");
+                tracing::debug!("[layer] G-20 PERSISTENT_TIMESTAMP_OUTDATED — skipping diff");
                 return Ok(vec![]);
             }
             Err(e) => return Err(e),
         };
         let mut cur = Cursor::from_slice(&body);
-        let diff    = tl::enums::updates::ChannelDifference::deserialize(&mut cur)?;
+        let diff = tl::enums::updates::ChannelDifference::deserialize(&mut cur)?;
 
         let mut updates = Vec::new();
 
         match diff {
             tl::enums::updates::ChannelDifference::Empty(e) => {
-                log::debug!("[layer] getChannelDifference: empty (pts={})", e.pts);
-                self.inner.pts_state.lock().await.advance_channel(channel_id, e.pts);
+                tracing::debug!("[layer] getChannelDifference: empty (pts={})", e.pts);
+                self.inner
+                    .pts_state
+                    .lock()
+                    .await
+                    .advance_channel(channel_id, e.pts);
             }
             tl::enums::updates::ChannelDifference::ChannelDifference(d) => {
-                log::info!("[layer] getChannelDifference: {} messages, {} updates",
-                    d.new_messages.len(), d.other_updates.len());
+                tracing::info!(
+                    "[layer] getChannelDifference: {} messages, {} updates",
+                    d.new_messages.len(),
+                    d.other_updates.len()
+                );
                 self.cache_users_slice_pub(&d.users).await;
                 self.cache_chats_slice_pub(&d.chats).await;
                 for msg in d.new_messages {
                     updates.push(update::Update::NewMessage(
-                        update::IncomingMessage::from_raw(msg)
+                        update::IncomingMessage::from_raw(msg),
                     ));
                 }
                 for upd in d.other_updates {
                     updates.extend(update::from_single_update_pub(upd));
                 }
-                self.inner.pts_state.lock().await.advance_channel(channel_id, d.pts);
+                self.inner
+                    .pts_state
+                    .lock()
+                    .await
+                    .advance_channel(channel_id, d.pts);
             }
             tl::enums::updates::ChannelDifference::TooLong(d) => {
-                log::warn!("[layer] getChannelDifference TooLong — replaying messages, resetting pts");
+                tracing::warn!(
+                    "[layer] getChannelDifference TooLong — replaying messages, resetting pts"
+                );
                 self.cache_users_slice_pub(&d.users).await;
                 self.cache_chats_slice_pub(&d.chats).await;
                 for msg in d.messages {
                     updates.push(update::Update::NewMessage(
-                        update::IncomingMessage::from_raw(msg)
+                        update::IncomingMessage::from_raw(msg),
                     ));
                 }
-                self.inner.pts_state.lock().await.advance_channel(channel_id, 0);
+                self.inner
+                    .pts_state
+                    .lock()
+                    .await
+                    .advance_channel(channel_id, 0);
             }
         }
 
@@ -429,16 +526,23 @@ impl Client {
     // ── Sync from server ──────────────────────────────────────────────────
 
     pub async fn sync_pts_state(&self) -> Result<(), InvocationError> {
-        let body    = self.rpc_call_raw_pub(&tl::functions::updates::GetState {}).await?;
+        let body = self
+            .rpc_call_raw_pub(&tl::functions::updates::GetState {})
+            .await?;
         let mut cur = Cursor::from_slice(&body);
         let tl::enums::updates::State::State(s) = tl::enums::updates::State::deserialize(&mut cur)?;
         let mut state = self.inner.pts_state.lock().await;
-        state.pts  = s.pts;
-        state.qts  = s.qts;
+        state.pts = s.pts;
+        state.qts = s.qts;
         state.date = s.date;
-        state.seq  = s.seq;
+        state.seq = s.seq;
         state.touch();
-        log::info!("[layer] pts synced: pts={}, qts={}, seq={}", s.pts, s.qts, s.seq);
+        tracing::info!(
+            "[layer] pts synced: pts={}, qts={}, seq={}",
+            s.pts,
+            s.qts,
+            s.seq
+        );
         Ok(())
     }
 
@@ -447,11 +551,16 @@ impl Client {
     /// G-17: Check global pts, buffer during possible-gap window, fetch diff if real gap.
     pub async fn check_and_fill_gap(
         &self,
-        new_pts:   i32,
+        new_pts: i32,
         pts_count: i32,
-        upd:       Option<update::Update>,
+        upd: Option<update::Update>,
     ) -> Result<Vec<update::Update>, InvocationError> {
-        let result = self.inner.pts_state.lock().await.check_pts(new_pts, pts_count);
+        let result = self
+            .inner
+            .pts_state
+            .lock()
+            .await
+            .check_pts(new_pts, pts_count);
         match result {
             PtsCheckResult::Ok => {
                 // Drain any buffered global updates now that we're in sync,
@@ -470,21 +579,30 @@ impl Client {
                 if let Some(u) = upd {
                     self.inner.possible_gap.lock().await.push_global(u);
                 }
-                let deadline_elapsed = self.inner.possible_gap.lock().await.global_deadline_elapsed();
+                let deadline_elapsed = self
+                    .inner
+                    .possible_gap
+                    .lock()
+                    .await
+                    .global_deadline_elapsed();
                 if deadline_elapsed {
-                    log::warn!("[layer] global pts gap: expected {expected}, got {got} — getDifference");
+                    tracing::warn!(
+                        "[layer] global pts gap: expected {expected}, got {got} — getDifference"
+                    );
                     let buffered = self.inner.possible_gap.lock().await.drain_global();
                     let mut diff_updates = self.get_difference().await?;
                     // Prepend buffered updates so ordering is maintained.
                     diff_updates.splice(0..0, buffered);
                     Ok(diff_updates)
                 } else {
-                    log::debug!("[layer] global pts gap: expected {expected}, got {got} — buffering (possible gap)");
+                    tracing::debug!(
+                        "[layer] global pts gap: expected {expected}, got {got} — buffering (possible gap)"
+                    );
                     Ok(vec![])
                 }
             }
             PtsCheckResult::Duplicate => {
-                log::debug!("[layer] global pts duplicate, discarding");
+                tracing::debug!("[layer] global pts duplicate, discarding");
                 Ok(vec![])
             }
         }
@@ -493,17 +611,22 @@ impl Client {
     /// G-18: Check qts (secret chat updates) and fill gap if needed.
     pub async fn check_and_fill_qts_gap(
         &self,
-        new_qts:   i32,
+        new_qts: i32,
         qts_count: i32,
     ) -> Result<Vec<update::Update>, InvocationError> {
-        let result = self.inner.pts_state.lock().await.check_qts(new_qts, qts_count);
+        let result = self
+            .inner
+            .pts_state
+            .lock()
+            .await
+            .check_qts(new_qts, qts_count);
         match result {
             PtsCheckResult::Ok => {
                 self.inner.pts_state.lock().await.advance_qts(new_qts);
                 Ok(vec![])
             }
             PtsCheckResult::Gap { expected, got } => {
-                log::warn!("[layer] qts gap: expected {expected}, got {got} — getDifference");
+                tracing::warn!("[layer] qts gap: expected {expected}, got {got} — getDifference");
                 self.get_difference().await
             }
             PtsCheckResult::Duplicate => Ok(vec![]),
@@ -513,17 +636,22 @@ impl Client {
     /// G-19: Check top-level seq and fill gap if needed.
     pub async fn check_and_fill_seq_gap(
         &self,
-        new_seq:   i32,
+        new_seq: i32,
         seq_start: i32,
     ) -> Result<Vec<update::Update>, InvocationError> {
-        let result = self.inner.pts_state.lock().await.check_seq(new_seq, seq_start);
+        let result = self
+            .inner
+            .pts_state
+            .lock()
+            .await
+            .check_seq(new_seq, seq_start);
         match result {
             PtsCheckResult::Ok => {
                 self.inner.pts_state.lock().await.advance_seq(new_seq);
                 Ok(vec![])
             }
             PtsCheckResult::Gap { expected, got } => {
-                log::warn!("[layer] seq gap: expected {expected}, got {got} — getDifference");
+                tracing::warn!("[layer] seq gap: expected {expected}, got {got} — getDifference");
                 self.get_difference().await
             }
             PtsCheckResult::Duplicate => Ok(vec![]),
@@ -534,26 +662,50 @@ impl Client {
     pub async fn check_and_fill_channel_gap(
         &self,
         channel_id: i64,
-        new_pts:    i32,
-        pts_count:  i32,
-        upd:        Option<update::Update>,
+        new_pts: i32,
+        pts_count: i32,
+        upd: Option<update::Update>,
     ) -> Result<Vec<update::Update>, InvocationError> {
         // Fix #4: if a diff is already in flight for this channel, skip — prevents
         // 1 gap from spawning N concurrent getChannelDifference tasks.
-        if self.inner.pts_state.lock().await.getting_diff_for.contains(&channel_id) {
-            log::debug!("[layer] channel {channel_id} diff already in flight, skipping");
+        if self
+            .inner
+            .pts_state
+            .lock()
+            .await
+            .getting_diff_for
+            .contains(&channel_id)
+        {
+            tracing::debug!("[layer] channel {channel_id} diff already in flight, skipping");
             if let Some(u) = upd {
-                self.inner.possible_gap.lock().await.push_channel(channel_id, u);
+                self.inner
+                    .possible_gap
+                    .lock()
+                    .await
+                    .push_channel(channel_id, u);
             }
             return Ok(vec![]);
         }
 
-        let result = self.inner.pts_state.lock().await
+        let result = self
+            .inner
+            .pts_state
+            .lock()
+            .await
             .check_channel_pts(channel_id, new_pts, pts_count);
         match result {
             PtsCheckResult::Ok => {
-                let mut buffered = self.inner.possible_gap.lock().await.drain_channel(channel_id);
-                self.inner.pts_state.lock().await.advance_channel(channel_id, new_pts);
+                let mut buffered = self
+                    .inner
+                    .possible_gap
+                    .lock()
+                    .await
+                    .drain_channel(channel_id);
+                self.inner
+                    .pts_state
+                    .lock()
+                    .await
+                    .advance_channel(channel_id, new_pts);
                 if let Some(u) = upd {
                     buffered.push(u);
                 }
@@ -561,19 +713,44 @@ impl Client {
             }
             PtsCheckResult::Gap { expected, got } => {
                 if let Some(u) = upd {
-                    self.inner.possible_gap.lock().await.push_channel(channel_id, u);
+                    self.inner
+                        .possible_gap
+                        .lock()
+                        .await
+                        .push_channel(channel_id, u);
                 }
-                let deadline_elapsed = self.inner.possible_gap.lock().await
+                let deadline_elapsed = self
+                    .inner
+                    .possible_gap
+                    .lock()
+                    .await
                     .channel_deadline_elapsed(channel_id);
                 if deadline_elapsed {
-                    log::warn!("[layer] channel {channel_id} pts gap: expected {expected}, got {got} — getChannelDifference");
+                    tracing::warn!(
+                        "[layer] channel {channel_id} pts gap: expected {expected}, got {got} — getChannelDifference"
+                    );
                     // Fix #4: mark this channel as having a diff in flight.
-                    self.inner.pts_state.lock().await.getting_diff_for.insert(channel_id);
-                    let buffered = self.inner.possible_gap.lock().await.drain_channel(channel_id);
+                    self.inner
+                        .pts_state
+                        .lock()
+                        .await
+                        .getting_diff_for
+                        .insert(channel_id);
+                    let buffered = self
+                        .inner
+                        .possible_gap
+                        .lock()
+                        .await
+                        .drain_channel(channel_id);
                     match self.get_channel_difference(channel_id).await {
                         Ok(mut diff_updates) => {
                             // Fix #4: diff complete, allow future gaps to be handled.
-                            self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
+                            self.inner
+                                .pts_state
+                                .lock()
+                                .await
+                                .getting_diff_for
+                                .remove(&channel_id);
                             diff_updates.splice(0..0, buffered);
                             Ok(diff_updates)
                         }
@@ -582,16 +759,25 @@ impl Client {
                         // for this channel on every incoming update.
                         Err(InvocationError::Rpc(ref e))
                             if e.name == "CHANNEL_INVALID"
-                            || e.name == "CHANNEL_PRIVATE"
-                            || e.name == "CHANNEL_NOT_MODIFIED" =>
+                                || e.name == "CHANNEL_PRIVATE"
+                                || e.name == "CHANNEL_NOT_MODIFIED" =>
                         {
-                            log::warn!(
+                            tracing::warn!(
                                 "[layer] channel {channel_id}: {} — skipping gap, advancing pts to {got}",
                                 e.name
                             );
                             // Fix #4: diff complete (errored out), allow future gaps.
-                            self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
-                            self.inner.pts_state.lock().await.advance_channel(channel_id, got);
+                            self.inner
+                                .pts_state
+                                .lock()
+                                .await
+                                .getting_diff_for
+                                .remove(&channel_id);
+                            self.inner
+                                .pts_state
+                                .lock()
+                                .await
+                                .advance_channel(channel_id, got);
                             Ok(buffered)
                         }
                         Err(InvocationError::Deserialize(ref msg)) => {
@@ -599,26 +785,42 @@ impl Client {
                             // something we can't parse for this channel.  Treat the same as
                             // CHANNEL_INVALID: advance pts to `got` so we don't retry on every
                             // subsequent update and flood the logs.
-                            log::warn!(
+                            tracing::warn!(
                                 "[layer] channel {channel_id}: deserialize error ({msg}) — skipping gap, advancing pts to {got}"
                             );
-                            self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
-                            self.inner.pts_state.lock().await.advance_channel(channel_id, got);
+                            self.inner
+                                .pts_state
+                                .lock()
+                                .await
+                                .getting_diff_for
+                                .remove(&channel_id);
+                            self.inner
+                                .pts_state
+                                .lock()
+                                .await
+                                .advance_channel(channel_id, got);
                             Ok(buffered)
                         }
                         Err(e) => {
                             // Fix #4: also clear on unexpected errors so we don't get stuck.
-                            self.inner.pts_state.lock().await.getting_diff_for.remove(&channel_id);
+                            self.inner
+                                .pts_state
+                                .lock()
+                                .await
+                                .getting_diff_for
+                                .remove(&channel_id);
                             Err(e)
                         }
                     }
                 } else {
-                    log::debug!("[layer] channel {channel_id} pts gap: expected {expected}, got {got} — buffering");
+                    tracing::debug!(
+                        "[layer] channel {channel_id} pts gap: expected {expected}, got {got} — buffering"
+                    );
                     Ok(vec![])
                 }
             }
             PtsCheckResult::Duplicate => {
-                log::debug!("[layer] channel {channel_id} pts duplicate, discarding");
+                tracing::debug!("[layer] channel {channel_id} pts duplicate, discarding");
                 Ok(vec![])
             }
         }
@@ -629,12 +831,14 @@ impl Client {
     pub async fn check_update_deadline(&self) -> Result<(), InvocationError> {
         let exceeded = self.inner.pts_state.lock().await.deadline_exceeded();
         if exceeded {
-            log::info!("[layer] G-16 update deadline exceeded — fetching getDifference");
+            tracing::info!("[layer] G-16 update deadline exceeded — fetching getDifference");
             let updates = self.get_difference().await?;
-            for u in updates { let _ = self.inner.update_tx.send(u); }
+            for u in updates {
+                if self.inner.update_tx.try_send(u).is_err() {
+                    tracing::warn!("[layer] update channel full — dropping diff update");
+                }
+            }
         }
         Ok(())
     }
 }
-
-

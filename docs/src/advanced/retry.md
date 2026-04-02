@@ -10,7 +10,7 @@ By default, `layer-client` uses `AutoSleep`: it transparently sleeps for the req
 use layer_client::{Config, AutoSleep};
 use std::sync::Arc;
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     retry_policy: Arc::new(AutoSleep::default()),
     ..Default::default()
 }).await?;
@@ -25,7 +25,7 @@ If you want to handle FLOOD_WAIT yourself:
 ```rust
 use layer_client::NoRetries;
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     retry_policy: Arc::new(NoRetries),
     ..Default::default()
 }).await?;
@@ -85,7 +85,7 @@ impl RetryPolicy for CappedSleep {
     }
 }
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     retry_policy: Arc::new(CappedSleep {
         max_wait_secs: 30,
         max_attempts:  3,

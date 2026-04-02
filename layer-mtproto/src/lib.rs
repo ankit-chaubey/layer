@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/layer-mtproto/0.4.0")]
+#![doc(html_root_url = "https://docs.rs/layer-mtproto/0.4.4")]
 //! MTProto session and transport abstractions.
 //!
 //! This crate handles:
@@ -17,7 +17,7 @@ pub mod message;
 pub mod session;
 pub mod transport;
 
+pub use authentication::{Finished, finish, step1, step2, step3};
+pub use encrypted::EncryptedSession;
 pub use message::{Message, MessageId};
 pub use session::Session;
-pub use encrypted::EncryptedSession;
-pub use authentication::{Finished, step1, step2, step3, finish};

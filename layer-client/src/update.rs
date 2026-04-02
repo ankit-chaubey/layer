@@ -27,7 +27,11 @@ impl IncomingMessage {
     pub fn text(&self) -> Option<&str> {
         match &self.raw {
             tl::enums::Message::Message(m) => {
-                if m.message.is_empty() { None } else { Some(&m.message) }
+                if m.message.is_empty() {
+                    None
+                } else {
+                    Some(&m.message)
+                }
             }
             _ => None,
         }
@@ -38,7 +42,7 @@ impl IncomingMessage {
         match &self.raw {
             tl::enums::Message::Message(m) => m.id,
             tl::enums::Message::Service(m) => m.id,
-            tl::enums::Message::Empty(m)   => m.id,
+            tl::enums::Message::Empty(m) => m.id,
         }
     }
 
@@ -139,11 +143,9 @@ impl IncomingMessage {
     /// Reply count (number of replies in a thread).
     pub fn reply_count(&self) -> Option<i32> {
         match &self.raw {
-            tl::enums::Message::Message(m) => {
-                m.replies.as_ref().map(|r| match r {
-                    tl::enums::MessageReplies::MessageReplies(x) => x.replies,
-                })
-            }
+            tl::enums::Message::Message(m) => m.replies.as_ref().map(|r| match r {
+                tl::enums::MessageReplies::MessageReplies(x) => x.replies,
+            }),
             _ => None,
         }
     }
@@ -151,12 +153,10 @@ impl IncomingMessage {
     /// ID of the message this one is replying to.
     pub fn reply_to_message_id(&self) -> Option<i32> {
         match &self.raw {
-            tl::enums::Message::Message(m) => {
-                m.reply_to.as_ref().and_then(|r| match r {
-                    tl::enums::MessageReplyHeader::MessageReplyHeader(h) => h.reply_to_msg_id,
-                    _ => None,
-                })
-            }
+            tl::enums::Message::Message(m) => m.reply_to.as_ref().and_then(|r| match r {
+                tl::enums::MessageReplyHeader::MessageReplyHeader(h) => h.reply_to_msg_id,
+                _ => None,
+            }),
             _ => None,
         }
     }
@@ -174,11 +174,11 @@ impl IncomingMessage {
     ) -> Result<Option<IncomingMessage>, Error> {
         let reply_id = match self.reply_to_message_id() {
             Some(id) => id,
-            None     => return Ok(None),
+            None => return Ok(None),
         };
         let peer = match self.peer_id() {
             Some(p) => p.clone(),
-            None    => return Ok(None),
+            None => return Ok(None),
         };
         let msgs = client.get_messages_by_id(peer, &[reply_id]).await?;
         Ok(msgs.into_iter().next())
@@ -190,14 +190,17 @@ impl IncomingMessage {
     pub fn date_utc(&self) -> Option<chrono::DateTime<chrono::Utc>> {
         use chrono::TimeZone;
         let ts = self.date();
-        if ts == 0 { return None; }
+        if ts == 0 {
+            return None;
+        }
         chrono::Utc.timestamp_opt(ts as i64, 0).single()
     }
 
     /// The last edit time as a [`chrono::DateTime<chrono::Utc>`], if edited.
     pub fn edit_date_utc(&self) -> Option<chrono::DateTime<chrono::Utc>> {
         use chrono::TimeZone;
-        self.edit_date().and_then(|ts| chrono::Utc.timestamp_opt(ts as i64, 0).single())
+        self.edit_date()
+            .and_then(|ts| chrono::Utc.timestamp_opt(ts as i64, 0).single())
     }
 
     /// The media attached to this message, if any.
@@ -268,15 +271,19 @@ impl IncomingMessage {
     /// Number of reactions on this message, if any.
     pub fn reaction_count(&self) -> i32 {
         match &self.raw {
-            tl::enums::Message::Message(m) => {
-                m.reactions.as_ref().map(|r| match r {
-                    tl::enums::MessageReactions::MessageReactions(x) => {
-                        x.results.iter().map(|res| match res {
+            tl::enums::Message::Message(m) => m
+                .reactions
+                .as_ref()
+                .map(|r| match r {
+                    tl::enums::MessageReactions::MessageReactions(x) => x
+                        .results
+                        .iter()
+                        .map(|res| match res {
                             tl::enums::ReactionCount::ReactionCount(c) => c.count,
-                        }).sum()
-                    }
-                }).unwrap_or(0)
-            }
+                        })
+                        .sum(),
+                })
+                .unwrap_or(0),
             _ => 0,
         }
     }
@@ -335,11 +342,15 @@ impl IncomingMessage {
     pub async fn reply(&self, client: &mut Client, text: impl Into<String>) -> Result<(), Error> {
         let peer = match self.peer_id() {
             Some(p) => p.clone(),
-            None    => return Err(Error::Deserialize("cannot reply: unknown peer".into())),
+            None => return Err(Error::Deserialize("cannot reply: unknown peer".into())),
         };
         let msg_id = self.id();
-        client.send_message_to_peer_ex(peer, &crate::InputMessage::text(text.into())
-            .reply_to(Some(msg_id))).await
+        client
+            .send_message_to_peer_ex(
+                peer,
+                &crate::InputMessage::text(text.into()).reply_to(Some(msg_id)),
+            )
+            .await
     }
 }
 
@@ -351,7 +362,7 @@ pub struct MessageDeletion {
     /// IDs of the deleted messages.
     pub message_ids: Vec<i32>,
     /// Channel ID, if the deletion happened in a channel / supergroup.
-    pub channel_id:  Option<i64>,
+    pub channel_id: Option<i64>,
 }
 
 impl MessageDeletion {
@@ -366,43 +377,119 @@ impl MessageDeletion {
 /// A user pressed an inline keyboard button on a bot message.
 #[derive(Debug, Clone)]
 pub struct CallbackQuery {
-    pub query_id:        i64,
-    pub user_id:         i64,
-    pub message_id:      Option<i32>,
-    pub chat_instance:   i64,
+    pub query_id: i64,
+    pub user_id: i64,
+    pub message_id: Option<i32>,
+    pub chat_instance: i64,
     /// Raw `data` bytes from the button.
-    pub data_raw:        Option<Vec<u8>>,
+    pub data_raw: Option<Vec<u8>>,
     /// Game short name (if a game button was pressed).
     pub game_short_name: Option<String>,
     /// G-38: The peer (chat/channel/user) where the button was pressed.
     /// `None` for inline-message callback queries.
-    pub chat_peer:       Option<tl::enums::Peer>,
+    pub chat_peer: Option<tl::enums::Peer>,
     /// G-38: For inline-message callbacks — the message ID token.
-    pub inline_msg_id:   Option<tl::enums::InputBotInlineMessageId>,
+    pub inline_msg_id: Option<tl::enums::InputBotInlineMessageId>,
 }
 
 impl CallbackQuery {
     /// Button data as a UTF-8 string, if valid.
     pub fn data(&self) -> Option<&str> {
-        self.data_raw.as_ref().and_then(|d| std::str::from_utf8(d).ok())
+        self.data_raw
+            .as_ref()
+            .and_then(|d| std::str::from_utf8(d).ok())
     }
 
-    /// Answer the callback query (removes the loading indicator on the client).
-    pub async fn answer(
-        &self,
-        client: &mut Client,
-        text:   Option<&str>,
-    ) -> Result<(), Error> {
-        client.answer_callback_query(self.query_id, text, false).await.map(|_| ())
+    /// Begin building an answer for this callback query.
+    ///
+    /// Finish with `.send(&client).await`:
+    ///
+    /// ```rust,no_run
+    /// query.answer().text("Done!").send(&client).await?;
+    /// query.answer().alert("No permission!").send(&client).await?;
+    /// query.answer().url("https://example.com/game").send(&client).await?;
+    /// query.answer()
+    ///     .text("Cached")
+    ///     .cache_time(std::time::Duration::from_secs(60))
+    ///     .send(&client).await?;
+    /// ```
+    pub fn answer(&self) -> Answer<'_> {
+        Answer {
+            query_id: self.query_id,
+            message: None,
+            alert: false,
+            url: None,
+            cache_time: 0,
+            _marker: std::marker::PhantomData,
+        }
     }
 
-    /// Answer with a popup alert.
-    pub async fn answer_alert(
-        &self,
-        client: &mut Client,
-        text:   &str,
-    ) -> Result<(), Error> {
-        client.answer_callback_query(self.query_id, Some(text), true).await.map(|_| ())
+    /// Answer the callback query (flat helper — prefer `answer()` builder).
+    pub async fn answer_flat(&self, client: &mut Client, text: Option<&str>) -> Result<(), Error> {
+        client
+            .answer_callback_query(self.query_id, text, false)
+            .await
+            .map(|_| ())
+    }
+
+    /// Answer with a popup alert (flat helper — prefer `answer().alert(…)`).
+    pub async fn answer_alert(&self, client: &mut Client, text: &str) -> Result<(), Error> {
+        client
+            .answer_callback_query(self.query_id, Some(text), true)
+            .await
+            .map(|_| ())
+    }
+}
+
+// ─── Answer builder (G-08) ────────────────────────────────────────────────────
+
+/// Fluent builder returned by [`CallbackQuery::answer`]. Finalize with `.send(&client).await`.
+pub struct Answer<'a> {
+    query_id: i64,
+    message: Option<String>,
+    alert: bool,
+    url: Option<String>,
+    cache_time: i32,
+    _marker: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> Answer<'a> {
+    /// Show `text` as a toast notification (fades automatically).
+    pub fn text<S: Into<String>>(mut self, text: S) -> Self {
+        self.message = Some(text.into());
+        self.alert = false;
+        self
+    }
+
+    /// Show `text` as a modal alert the user must dismiss.
+    pub fn alert<S: Into<String>>(mut self, text: S) -> Self {
+        self.message = Some(text.into());
+        self.alert = true;
+        self
+    }
+
+    /// Open `url` on the client (e.g. to launch a game).
+    pub fn url<S: Into<String>>(mut self, url: S) -> Self {
+        self.url = Some(url.into());
+        self
+    }
+
+    /// Cache this answer for `duration` so repeated presses don't reach the bot.
+    pub fn cache_time(mut self, duration: std::time::Duration) -> Self {
+        self.cache_time = duration.as_secs().min(i32::MAX as u64) as i32;
+        self
+    }
+
+    /// Send the answer to Telegram.
+    pub async fn send(self, client: &Client) -> Result<(), Error> {
+        let req = tl::functions::messages::SetBotCallbackAnswer {
+            alert: self.alert,
+            query_id: self.query_id,
+            message: self.message,
+            url: self.url,
+            cache_time: self.cache_time,
+        };
+        client.rpc_call_raw_pub(&req).await.map(|_| ())
     }
 }
 
@@ -412,16 +499,18 @@ impl CallbackQuery {
 #[derive(Debug, Clone)]
 pub struct InlineQuery {
     pub query_id: i64,
-    pub user_id:  i64,
-    pub query:    String,
-    pub offset:   String,
+    pub user_id: i64,
+    pub query: String,
+    pub offset: String,
     /// Peer of the chat the user sent the inline query from, if available.
-    pub peer:     Option<tl::enums::Peer>,
+    pub peer: Option<tl::enums::Peer>,
 }
 
 impl InlineQuery {
     /// The text the user typed after the bot username.
-    pub fn query(&self) -> &str { &self.query }
+    pub fn query(&self) -> &str {
+        &self.query
+    }
 }
 
 // ─── InlineSend ──────────────────────────────────────────────────────────────
@@ -429,11 +518,11 @@ impl InlineQuery {
 /// A user chose an inline result and sent it.
 #[derive(Debug, Clone)]
 pub struct InlineSend {
-    pub user_id:  i64,
-    pub query:    String,
-    pub id:       String,
+    pub user_id: i64,
+    pub query: String,
+    pub id: String,
     /// Message ID of the sent message, if available.
-    pub msg_id:   Option<tl::enums::InputBotInlineMessageId>,
+    pub msg_id: Option<tl::enums::InputBotInlineMessageId>,
 }
 
 impl InlineSend {
@@ -453,24 +542,26 @@ impl InlineSend {
     /// ```
     pub async fn edit_message(
         &self,
-        client:       &Client,
-        new_text:     &str,
+        client: &Client,
+        new_text: &str,
         reply_markup: Option<tl::enums::ReplyMarkup>,
     ) -> Result<bool, Error> {
-        let msg_id = match self.msg_id.clone() {
-            Some(id) => id,
-            None => return Err(Error::Deserialize(
-                "InlineSend::edit_message — msg_id is None (bot_inline_send had no peer_type)".into()
-            )),
-        };
+        let msg_id =
+            match self.msg_id.clone() {
+                Some(id) => id,
+                None => return Err(Error::Deserialize(
+                    "InlineSend::edit_message — msg_id is None (bot_inline_send had no peer_type)"
+                        .into(),
+                )),
+            };
         let req = tl::functions::messages::EditInlineBotMessage {
-            no_webpage:   false,
+            no_webpage: false,
             invert_media: false,
-            id:           msg_id,
-            message:      Some(new_text.to_string()),
-            media:        None,
+            id: msg_id,
+            message: Some(new_text.to_string()),
+            media: None,
             reply_markup,
-            entities:     None,
+            entities: None,
         };
         let body = client.rpc_call_raw(&req).await?;
         // Returns Bool
@@ -485,6 +576,59 @@ impl InlineSend {
 pub struct RawUpdate {
     /// Constructor ID of the inner update.
     pub constructor_id: u32,
+}
+
+// ─── UserStatusUpdate (G-22) ─────────────────────────────────────────────────
+
+/// A user's online / offline status changed.
+///
+/// Delivered as [`Update::UserStatus`].
+///
+/// # Example
+/// ```rust,no_run
+/// # use layer_client::{Update, update::UserStatusUpdate};
+/// # async fn example(mut stream: layer_client::UpdateStream) {
+/// while let Some(upd) = stream.next().await {
+///     if let Update::UserStatus(s) = upd {
+///         println!("user {} status: {:?}", s.user_id, s.status);
+///     }
+/// }
+/// # }
+/// ```
+#[derive(Debug, Clone)]
+pub struct UserStatusUpdate {
+    /// The bare user ID whose status changed.
+    pub user_id: i64,
+    /// New online/offline/recently/etc. status.
+    pub status: tl::enums::UserStatus,
+}
+
+// ─── ChatActionUpdate (G-23) ─────────────────────────────────────────────────
+
+/// A user is performing a chat action (typing, uploading, recording…).
+///
+/// Delivered as [`Update::UserTyping`].  Covers DMs, groups, and channels.
+///
+/// # Example
+/// ```rust,no_run
+/// # use layer_client::{Update, update::ChatActionUpdate};
+/// # async fn example(mut stream: layer_client::UpdateStream) {
+/// while let Some(upd) = stream.next().await {
+///     if let Update::UserTyping(a) = upd {
+///         println!("user {} is typing in {:?}", a.user_id, a.peer);
+///     }
+/// }
+/// # }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ChatActionUpdate {
+    /// The peer (chat / channel) the action is happening in.
+    /// For DM typing updates (`updateUserTyping`) this is the user's own peer.
+    pub peer: tl::enums::Peer,
+    /// The bare user ID performing the action.
+    pub user_id: i64,
+    /// What the user is currently doing (typing, uploading video, etc.).
+    pub action: tl::enums::SendMessageAction,
 }
 
 /// A high-level event received from Telegram.
@@ -503,18 +647,22 @@ pub enum Update {
     InlineQuery(InlineQuery),
     /// A user chose an inline result and sent it (bots only).
     InlineSend(InlineSend),
+    /// A user's online status changed (G-22).
+    UserStatus(UserStatusUpdate),
+    /// A user is typing / uploading / recording in a chat (G-23).
+    UserTyping(ChatActionUpdate),
     /// A raw TL update not mapped to any of the above variants.
     Raw(RawUpdate),
 }
 
 // ─── MTProto update container IDs ────────────────────────────────────────────
 
-const ID_UPDATES_TOO_LONG:      u32 = 0xe317af7e;
-const ID_UPDATE_SHORT_MESSAGE:  u32 = 0x313bc7f8;
+const ID_UPDATES_TOO_LONG: u32 = 0xe317af7e;
+const ID_UPDATE_SHORT_MESSAGE: u32 = 0x313bc7f8;
 const ID_UPDATE_SHORT_CHAT_MSG: u32 = 0x4d6deea5;
-const ID_UPDATE_SHORT:          u32 = 0x78d4dec1;
-const ID_UPDATES:               u32 = 0x74ae4240;
-const ID_UPDATES_COMBINED:      u32 = 0x725b04c3;
+const ID_UPDATE_SHORT: u32 = 0x78d4dec1;
+const ID_UPDATES: u32 = 0x74ae4240;
+const ID_UPDATES_COMBINED: u32 = 0x725b04c3;
 
 // ─── Parser ──────────────────────────────────────────────────────────────────
 
@@ -527,31 +675,48 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
 
     match cid {
         ID_UPDATES_TOO_LONG => {
-            log::warn!("[layer] updatesTooLong — call client.get_difference() to recover missed updates");
+            tracing::warn!(
+                "[layer] updatesTooLong — call client.get_difference() to recover missed updates"
+            );
             vec![]
         }
 
         ID_UPDATE_SHORT_MESSAGE => {
             let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShortMessage::deserialize(&mut cur) {
-                Ok(m)  => vec![Update::NewMessage(make_short_dm(m))],
-                Err(e) => { log::debug!("[layer] updateShortMessage parse error (unknown constructor or newer layer): {e}"); vec![] }
+                Ok(m) => vec![Update::NewMessage(make_short_dm(m))],
+                Err(e) => {
+                    tracing::debug!(
+                        "[layer] updateShortMessage parse error (unknown constructor or newer layer): {e}"
+                    );
+                    vec![]
+                }
             }
         }
 
         ID_UPDATE_SHORT_CHAT_MSG => {
             let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShortChatMessage::deserialize(&mut cur) {
-                Ok(m)  => vec![Update::NewMessage(make_short_chat(m))],
-                Err(e) => { log::debug!("[layer] updateShortChatMessage parse error (unknown constructor or newer layer): {e}"); vec![] }
+                Ok(m) => vec![Update::NewMessage(make_short_chat(m))],
+                Err(e) => {
+                    tracing::debug!(
+                        "[layer] updateShortChatMessage parse error (unknown constructor or newer layer): {e}"
+                    );
+                    vec![]
+                }
             }
         }
 
         ID_UPDATE_SHORT => {
             let mut cur = Cursor::from_slice(&bytes[4..]); // skip constructor prefix
             match tl::types::UpdateShort::deserialize(&mut cur) {
-                Ok(m)  => from_single_update(m.update),
-                Err(e) => { log::debug!("[layer] updateShort parse error (unknown constructor or newer layer): {e}"); vec![] }
+                Ok(m) => from_single_update(m.update),
+                Err(e) => {
+                    tracing::debug!(
+                        "[layer] updateShort parse error (unknown constructor or newer layer): {e}"
+                    );
+                    vec![]
+                }
             }
         }
 
@@ -561,7 +726,12 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
                 Ok(tl::enums::Updates::Updates(u)) => {
                     u.updates.into_iter().flat_map(from_single_update).collect()
                 }
-                Err(e) => { log::debug!("[layer] Updates parse error (unknown constructor or newer layer): {e}"); vec![] }
+                Err(e) => {
+                    tracing::debug!(
+                        "[layer] Updates parse error (unknown constructor or newer layer): {e}"
+                    );
+                    vec![]
+                }
                 _ => vec![],
             }
         }
@@ -572,7 +742,12 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
                 Ok(tl::enums::Updates::Combined(u)) => {
                     u.updates.into_iter().flat_map(from_single_update).collect()
                 }
-                Err(e) => { log::debug!("[layer] UpdatesCombined parse error (unknown constructor or newer layer): {e}"); vec![] }
+                Err(e) => {
+                    tracing::debug!(
+                        "[layer] UpdatesCombined parse error (unknown constructor or newer layer): {e}"
+                    );
+                    vec![]
+                }
                 _ => vec![],
             }
         }
@@ -603,41 +778,76 @@ fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
             channel_id: Some(u.channel_id),
         })],
         BotCallbackQuery(u) => vec![Update::CallbackQuery(CallbackQuery {
-            query_id:        u.query_id,
-            user_id:         u.user_id,
-            message_id:      Some(u.msg_id),
-            chat_instance:   u.chat_instance,
-            data_raw:        u.data,
+            query_id: u.query_id,
+            user_id: u.user_id,
+            message_id: Some(u.msg_id),
+            chat_instance: u.chat_instance,
+            data_raw: u.data,
             game_short_name: u.game_short_name,
-            chat_peer:       Some(u.peer),
-            inline_msg_id:   None,
+            chat_peer: Some(u.peer),
+            inline_msg_id: None,
         })],
         InlineBotCallbackQuery(u) => vec![Update::CallbackQuery(CallbackQuery {
-            query_id:        u.query_id,
-            user_id:         u.user_id,
-            message_id:      None,
-            chat_instance:   u.chat_instance,
-            data_raw:        u.data,
+            query_id: u.query_id,
+            user_id: u.user_id,
+            message_id: None,
+            chat_instance: u.chat_instance,
+            data_raw: u.data,
             game_short_name: u.game_short_name,
-            chat_peer:       None,
-            inline_msg_id:   Some(u.msg_id),
+            chat_peer: None,
+            inline_msg_id: Some(u.msg_id),
         })],
         BotInlineQuery(u) => vec![Update::InlineQuery(InlineQuery {
             query_id: u.query_id,
-            user_id:  u.user_id,
-            query:    u.query,
-            offset:   u.offset,
-            peer:     None,
+            user_id: u.user_id,
+            query: u.query,
+            offset: u.offset,
+            peer: None,
         })],
         BotInlineSend(u) => vec![Update::InlineSend(InlineSend {
             user_id: u.user_id,
-            query:   u.query,
-            id:      u.id,
-            msg_id:  u.msg_id,
+            query: u.query,
+            id: u.id,
+            msg_id: u.msg_id,
+        })],
+        // G-22: typed UserStatus variant
+        UserStatus(u) => vec![Update::UserStatus(UserStatusUpdate {
+            user_id: u.user_id,
+            status: u.status,
+        })],
+        // G-23: typed ChatAction variant — DM typing
+        UserTyping(u) => vec![Update::UserTyping(ChatActionUpdate {
+            peer: tl::enums::Peer::User(tl::types::PeerUser { user_id: u.user_id }),
+            user_id: u.user_id,
+            action: u.action,
+        })],
+        // G-23: group typing
+        ChatUserTyping(u) => vec![Update::UserTyping(ChatActionUpdate {
+            peer: tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: u.chat_id }),
+            user_id: match u.from_id {
+                tl::enums::Peer::User(ref p) => p.user_id,
+                tl::enums::Peer::Chat(ref p) => p.chat_id,
+                tl::enums::Peer::Channel(ref p) => p.channel_id,
+            },
+            action: u.action,
+        })],
+        // G-23: channel / supergroup typing
+        ChannelUserTyping(u) => vec![Update::UserTyping(ChatActionUpdate {
+            peer: tl::enums::Peer::Channel(tl::types::PeerChannel {
+                channel_id: u.channel_id,
+            }),
+            user_id: match u.from_id {
+                tl::enums::Peer::User(ref p) => p.user_id,
+                tl::enums::Peer::Chat(ref p) => p.chat_id,
+                tl::enums::Peer::Channel(ref p) => p.channel_id,
+            },
+            action: u.action,
         })],
         other => {
             let cid = tl_constructor_id(&other);
-            vec![Update::Raw(RawUpdate { constructor_id: cid })]
+            vec![Update::Raw(RawUpdate {
+                constructor_id: cid,
+            })]
         }
     }
 }
@@ -807,106 +1017,114 @@ fn tl_constructor_id(upd: &tl::enums::Update) -> u32 {
 
 fn make_short_dm(m: tl::types::UpdateShortMessage) -> IncomingMessage {
     let msg = tl::types::Message {
-        out:               m.out,
-        mentioned:         m.mentioned,
-        media_unread:      m.media_unread,
-        silent:            m.silent,
-        post:              false,
-        from_scheduled:    false,
-        legacy:            false,
-        edit_hide:         false,
-        pinned:            false,
-        noforwards:        false,
-        invert_media:      false,
-        offline:           false,
+        out: m.out,
+        mentioned: m.mentioned,
+        media_unread: m.media_unread,
+        silent: m.silent,
+        post: false,
+        from_scheduled: false,
+        legacy: false,
+        edit_hide: false,
+        pinned: false,
+        noforwards: false,
+        invert_media: false,
+        offline: false,
         video_processing_pending: false,
-        id:                m.id,
-        from_id:           Some(tl::enums::Peer::User(tl::types::PeerUser { user_id: m.user_id })),
-        peer_id:           tl::enums::Peer::User(tl::types::PeerUser { user_id: m.user_id }),
-        saved_peer_id:     None,
-        fwd_from:          m.fwd_from,
-        via_bot_id:        m.via_bot_id,
+        id: m.id,
+        from_id: Some(tl::enums::Peer::User(tl::types::PeerUser {
+            user_id: m.user_id,
+        })),
+        peer_id: tl::enums::Peer::User(tl::types::PeerUser { user_id: m.user_id }),
+        saved_peer_id: None,
+        fwd_from: m.fwd_from,
+        via_bot_id: m.via_bot_id,
         via_business_bot_id: None,
-        reply_to:          m.reply_to,
-        date:              m.date,
-        message:           m.message,
-        media:             None,
-        reply_markup:      None,
-        entities:          m.entities,
-        views:             None,
-        forwards:          None,
-        replies:           None,
-        edit_date:         None,
-        post_author:       None,
-        grouped_id:        None,
-        reactions:         None,
+        reply_to: m.reply_to,
+        date: m.date,
+        message: m.message,
+        media: None,
+        reply_markup: None,
+        entities: m.entities,
+        views: None,
+        forwards: None,
+        replies: None,
+        edit_date: None,
+        post_author: None,
+        grouped_id: None,
+        reactions: None,
         restriction_reason: None,
-        ttl_period:        None,
+        ttl_period: None,
         quick_reply_shortcut_id: None,
-        effect:            None,
-        factcheck:         None,
+        effect: None,
+        factcheck: None,
         report_delivery_until_date: None,
         paid_message_stars: None,
-        suggested_post:    None,
-        from_rank:           None,
+        suggested_post: None,
+        from_rank: None,
         from_boosts_applied: None,
         paid_suggested_post_stars: false,
         paid_suggested_post_ton: false,
         schedule_repeat_period: None,
         summary_from_language: None,
     };
-    IncomingMessage { raw: tl::enums::Message::Message(msg) }
+    IncomingMessage {
+        raw: tl::enums::Message::Message(msg),
+    }
 }
 
 fn make_short_chat(m: tl::types::UpdateShortChatMessage) -> IncomingMessage {
     let msg = tl::types::Message {
-        out:               m.out,
-        mentioned:         m.mentioned,
-        media_unread:      m.media_unread,
-        silent:            m.silent,
-        post:              false,
-        from_scheduled:    false,
-        legacy:            false,
-        edit_hide:         false,
-        pinned:            false,
-        noforwards:        false,
-        invert_media:      false,
-        offline:           false,
+        out: m.out,
+        mentioned: m.mentioned,
+        media_unread: m.media_unread,
+        silent: m.silent,
+        post: false,
+        from_scheduled: false,
+        legacy: false,
+        edit_hide: false,
+        pinned: false,
+        noforwards: false,
+        invert_media: false,
+        offline: false,
         video_processing_pending: false,
-        id:                m.id,
-        from_id:           Some(tl::enums::Peer::User(tl::types::PeerUser { user_id: m.from_id })),
-        peer_id:           tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: m.chat_id }),
-        saved_peer_id:     None,
-        fwd_from:          m.fwd_from,
-        via_bot_id:        m.via_bot_id,
+        id: m.id,
+        from_id: Some(tl::enums::Peer::User(tl::types::PeerUser {
+            user_id: m.from_id,
+        })),
+        peer_id: tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: m.chat_id }),
+        saved_peer_id: None,
+        fwd_from: m.fwd_from,
+        via_bot_id: m.via_bot_id,
         via_business_bot_id: None,
-        reply_to:          m.reply_to,
-        date:              m.date,
-        message:           m.message,
-        media:             None,
-        reply_markup:      None,
-        entities:          m.entities,
-        views:             None,
-        forwards:          None,
-        replies:           None,
-        edit_date:         None,
-        post_author:       None,
-        grouped_id:        None,
-        reactions:         None,
+        reply_to: m.reply_to,
+        date: m.date,
+        message: m.message,
+        media: None,
+        reply_markup: None,
+        entities: m.entities,
+        views: None,
+        forwards: None,
+        replies: None,
+        edit_date: None,
+        post_author: None,
+        grouped_id: None,
+        reactions: None,
         restriction_reason: None,
-        ttl_period:        None,
+        ttl_period: None,
         quick_reply_shortcut_id: None,
-        effect:            None,
-        factcheck:         None,
+        effect: None,
+        factcheck: None,
         report_delivery_until_date: None,
         paid_message_stars: None,
-        suggested_post:    None,
-        from_rank:           None,
+        suggested_post: None,
+        from_rank: None,
         from_boosts_applied: None,
         paid_suggested_post_stars: false,
         paid_suggested_post_ton: false,
         schedule_repeat_period: None,
         summary_from_language: None,
     };
-    IncomingMessage { raw: tl::enums::Message::Message(msg) }
+    IncomingMessage {
+        raw: tl::enums::Message::Message(msg),
+    }
 }

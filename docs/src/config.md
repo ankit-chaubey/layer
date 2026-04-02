@@ -7,7 +7,7 @@ use layer_client::{Config, AutoSleep, TransportKind, Socks5Config};
 use layer_client::session_backend::{BinaryFileBackend, InMemoryBackend};
 use std::sync::Arc;
 
-let client = Client::connect(Config {
+let (client, _shutdown) = Client::connect(Config {
     // Required
     api_id:   12345,
     api_hash: "your_api_hash".into(),

@@ -1,7 +1,7 @@
 //! RSA padding used by Telegram's auth key exchange.
 
-use num_bigint::BigUint;
 use crate::{aes, sha256};
+use num_bigint::BigUint;
 
 /// An RSA public key (n, e).
 pub struct Key {
@@ -60,7 +60,9 @@ pub fn encrypt_hashed(data: &[u8], key: &Key, random_bytes: &[u8; 224]) -> Vec<u
         // temp_key_xor = temp_key XOR SHA256(aes_encrypted)
         let hash = sha256!(&data_with_hash);
         let mut xored = temp_key;
-        for (a, b) in xored.iter_mut().zip(hash.iter()) { *a ^= b; }
+        for (a, b) in xored.iter_mut().zip(hash.iter()) {
+            *a ^= b;
+        }
 
         let mut candidate = Vec::with_capacity(256);
         candidate.extend_from_slice(&xored);
@@ -75,6 +77,8 @@ pub fn encrypt_hashed(data: &[u8], key: &Key, random_bytes: &[u8; 224]) -> Vec<u
     let payload = BigUint::from_bytes_be(&key_aes_encrypted);
     let encrypted = payload.modpow(&key.e, &key.n);
     let mut block = encrypted.to_bytes_be();
-    while block.len() < 256 { block.insert(0, 0); }
+    while block.len() < 256 {
+        block.insert(0, 0);
+    }
     block
 }

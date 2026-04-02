@@ -20,12 +20,12 @@
 //! # async fn do_expensive_work() {}
 //! ```
 
+use crate::{Client, InvocationError, PeerRef};
+use layer_tl_types as tl;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
-use layer_tl_types as tl;
-use crate::{Client, InvocationError};
 
 // ─── TypingGuard ─────────────────────────────────────────────────────────────
 
@@ -42,9 +42,10 @@ impl TypingGuard {
     /// Send `action` to `peer` and keep repeating it until the guard is dropped.
     pub async fn start(
         client: &Client,
-        peer:   tl::enums::Peer,
+        peer: impl Into<PeerRef>,
         action: tl::enums::SendMessageAction,
     ) -> Result<Self, InvocationError> {
+        let peer = peer.into().resolve(client).await?;
         Self::start_ex(client, peer, action, None, Duration::from_secs(4)).await
     }
 
@@ -58,17 +59,19 @@ impl TypingGuard {
     ///   Telegram drops the indicator after ~5 s; ≤ 4 s is
     ///   recommended.
     pub async fn start_ex(
-        client:       &Client,
-        peer:         tl::enums::Peer,
-        action:       tl::enums::SendMessageAction,
-        topic_id:     Option<i32>,
+        client: &Client,
+        peer: tl::enums::Peer,
+        action: tl::enums::SendMessageAction,
+        topic_id: Option<i32>,
         repeat_delay: Duration,
     ) -> Result<Self, InvocationError> {
         // Send once immediately so the indicator appears without delay.
-        client.send_chat_action_ex(peer.clone(), action.clone(), topic_id).await?;
+        client
+            .send_chat_action_ex(peer.clone(), action.clone(), topic_id)
+            .await?;
 
-        let stop   = Arc::new(Notify::new());
-        let stop2  = stop.clone();
+        let stop = Arc::new(Notify::new());
+        let stop2 = stop.clone();
         let client = client.clone();
 
         let task = tokio::spawn(async move {
@@ -76,7 +79,7 @@ impl TypingGuard {
                 tokio::select! {
                     _ = tokio::time::sleep(repeat_delay) => {
                         if let Err(e) = client.send_chat_action_ex(peer.clone(), action.clone(), topic_id).await {
-                            log::warn!("[typing_guard] Failed to refresh typing action: {e}");
+                            tracing::warn!("[typing_guard] Failed to refresh typing action: {e}");
                             break;
                         }
                     }
@@ -85,10 +88,15 @@ impl TypingGuard {
             }
             // Cancel the action
             let cancel = tl::enums::SendMessageAction::SendMessageCancelAction;
-            let _ = client.send_chat_action_ex(peer.clone(), cancel, topic_id).await;
+            let _ = client
+                .send_chat_action_ex(peer.clone(), cancel, topic_id)
+                .await;
         });
 
-        Ok(Self { stop, task: Some(task) })
+        Ok(Self {
+            stop,
+            task: Some(task),
+        })
     }
 
     /// Cancel the typing indicator immediately without waiting for the drop.
@@ -112,11 +120,13 @@ impl Client {
     /// Start a scoped typing indicator that auto-cancels when dropped.
     ///
     /// This is a convenience wrapper around [`TypingGuard::start`].
-    pub async fn typing(
-        &self,
-        peer: tl::enums::Peer,
-    ) -> Result<TypingGuard, InvocationError> {
-        TypingGuard::start(self, peer, tl::enums::SendMessageAction::SendMessageTypingAction).await
+    pub async fn typing(&self, peer: impl Into<PeerRef>) -> Result<TypingGuard, InvocationError> {
+        TypingGuard::start(
+            self,
+            peer,
+            tl::enums::SendMessageAction::SendMessageTypingAction,
+        )
+        .await
     }
 
     /// Start a scoped typing indicator in a **forum topic** thread.
@@ -124,40 +134,53 @@ impl Client {
     /// `topic_id` is the `top_msg_id` of the forum topic.
     pub async fn typing_in_topic(
         &self,
-        peer:     tl::enums::Peer,
+        peer: impl Into<PeerRef>,
         topic_id: i32,
     ) -> Result<TypingGuard, InvocationError> {
+        let peer = peer.into().resolve(self).await?;
         TypingGuard::start_ex(
-            self, peer,
+            self,
+            peer,
             tl::enums::SendMessageAction::SendMessageTypingAction,
             Some(topic_id),
             std::time::Duration::from_secs(4),
-        ).await
+        )
+        .await
     }
 
     /// Start a scoped "uploading document" action that auto-cancels when dropped.
     pub async fn uploading_document(
         &self,
-        peer: tl::enums::Peer,
+        peer: impl Into<PeerRef>,
     ) -> Result<TypingGuard, InvocationError> {
-        TypingGuard::start(self, peer, tl::enums::SendMessageAction::SendMessageUploadDocumentAction(
-            tl::types::SendMessageUploadDocumentAction { progress: 0 }
-        )).await
+        TypingGuard::start(
+            self,
+            peer,
+            tl::enums::SendMessageAction::SendMessageUploadDocumentAction(
+                tl::types::SendMessageUploadDocumentAction { progress: 0 },
+            ),
+        )
+        .await
     }
 
     /// Start a scoped "recording video" action that auto-cancels when dropped.
     pub async fn recording_video(
         &self,
-        peer: tl::enums::Peer,
+        peer: impl Into<PeerRef>,
     ) -> Result<TypingGuard, InvocationError> {
-        TypingGuard::start(self, peer, tl::enums::SendMessageAction::SendMessageRecordVideoAction).await
+        TypingGuard::start(
+            self,
+            peer,
+            tl::enums::SendMessageAction::SendMessageRecordVideoAction,
+        )
+        .await
     }
 
     /// Send a chat action with optional forum topic support (internal helper).
     pub(crate) async fn send_chat_action_ex(
         &self,
-        peer:     tl::enums::Peer,
-        action:   tl::enums::SendMessageAction,
+        peer: tl::enums::Peer,
+        action: tl::enums::SendMessageAction,
         topic_id: Option<i32>,
     ) -> Result<(), InvocationError> {
         let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);

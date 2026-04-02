@@ -3,15 +3,17 @@ use std::io::{self, BufRead, Write};
 use layer_client::{Client, Config, SignInError, update::Update};
 use layer_tl_types as tl;
 
-const API_ID:    i32  = 0;   // https://my.telegram.org
-const API_HASH:  &str = "";
-const PHONE:     &str = "";  // user login, leave empty if using bot
-const BOT_TOKEN: &str = "";  // bot login, leave empty if using user
+const API_ID: i32 = 0; // https://my.telegram.org
+const API_HASH: &str = "";
+const PHONE: &str = ""; // user login, leave empty if using bot
+const BOT_TOKEN: &str = ""; // bot login, leave empty if using user
 
 #[tokio::main]
 async fn main() {
     if std::env::var("RUST_LOG").is_err() {
-        unsafe { std::env::set_var("RUST_LOG", "layer_client=info"); }
+        unsafe {
+            std::env::set_var("RUST_LOG", "layer_client=info");
+        }
     }
     env_logger::init();
 
@@ -28,10 +30,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let (client, _shutdown) = Client::connect(Config {
-        api_id:   API_ID,
+        api_id: API_ID,
         api_hash: API_HASH.to_string(),
         ..Default::default()
-    }).await?;
+    })
+    .await?;
 
     let is_bot = if !client.is_authorized().await? {
         let bot = login(&client).await?;
@@ -45,7 +48,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let me = client.get_me().await?;
     if is_bot {
-        println!("🤖 Running as bot: @{}", me.username.as_deref().unwrap_or("unknown"));
+        println!(
+            "🤖 Running as bot: @{}",
+            me.username.as_deref().unwrap_or("unknown")
+        );
     } else {
         println!("👤 Running as user: {} [id={}]", display_name(&me), me.id);
     }
@@ -72,13 +78,13 @@ async fn login(client: &Client) -> Result<bool, Box<dyn std::error::Error>> {
 
     println!("📱 Sending login code to {PHONE} …");
     let token = client.request_login_code(PHONE).await?;
-    let code  = prompt("Enter the code: ")?;
+    let code = prompt("Enter the code: ")?;
 
     match client.sign_in(&token, &code).await {
         Ok(name) => println!("✅ Signed in as {name}"),
         Err(SignInError::PasswordRequired(pw_token)) => {
             let hint = pw_token.hint().unwrap_or("(no hint)");
-            let pw   = prompt(&format!("2FA password (hint: {hint}): "))?;
+            let pw = prompt(&format!("2FA password (hint: {hint}): "))?;
             client.check_password(*pw_token, pw.trim()).await?;
             println!("✅ 2FA complete");
         }
@@ -94,8 +100,17 @@ async fn login(client: &Client) -> Result<bool, Box<dyn std::error::Error>> {
 
 async fn ping_check(client: &Client) {
     let t = std::time::Instant::now();
-    match client.invoke(&tl::functions::Ping { ping_id: 0xDEAD_BEEF }).await {
-        Ok(tl::enums::Pong::Pong(p)) => println!("🏓 Ping OK  rtt={}ms  msg_id={}", t.elapsed().as_millis(), p.msg_id),
+    match client
+        .invoke(&tl::functions::Ping {
+            ping_id: 0xDEAD_BEEF,
+        })
+        .await
+    {
+        Ok(tl::enums::Pong::Pong(p)) => println!(
+            "🏓 Ping OK  rtt={}ms  msg_id={}",
+            t.elapsed().as_millis(),
+            p.msg_id
+        ),
         Err(e) => println!("❌ Ping failed: {e}"),
     }
 }
@@ -116,32 +131,50 @@ async fn listen(client: &Client, my_id: i64, is_bot: bool) {
                 let Some(peer) = msg.peer_id() else { continue };
 
                 // never echo in Saved Messages — out flag is not set there
-                if is_self_chat(peer, my_id) { continue; }
+                if is_self_chat(peer, my_id) {
+                    continue;
+                }
 
                 match text {
                     ".ping" => {
                         let t = std::time::Instant::now();
-                        match client.invoke(&tl::functions::Ping { ping_id: 0xDEAD_BEEF }).await {
+                        match client
+                            .invoke(&tl::functions::Ping {
+                                ping_id: 0xDEAD_BEEF,
+                            })
+                            .await
+                        {
                             Ok(_) => {
                                 let rtt = t.elapsed().as_millis();
-                                let _ = client.send_message_to_peer(peer.clone(), &format!("🏓 pong | {rtt}ms")).await;
+                                let _ = client
+                                    .send_message_to_peer(
+                                        peer.clone(),
+                                        &format!("🏓 pong | {rtt}ms"),
+                                    )
+                                    .await;
                             }
                             Err(_) => {
-                                let _ = client.send_message_to_peer(peer.clone(), "🏓 pong | timeout").await;
+                                let _ = client
+                                    .send_message_to_peer(peer.clone(), "🏓 pong | timeout")
+                                    .await;
                             }
                         }
                     }
                     ".me" if !is_bot => {
                         if let Ok(me) = client.get_me().await {
-                            let _ = client.send_message_to_peer(
-                                peer.clone(),
-                                &format!("👤 {} | id: {}", display_name(&me), me.id),
-                            ).await;
+                            let _ = client
+                                .send_message_to_peer(
+                                    peer.clone(),
+                                    &format!("👤 {} | id: {}", display_name(&me), me.id),
+                                )
+                                .await;
                         }
                     }
                     ".read" if !is_bot => {
                         let _ = client.mark_as_read(peer.clone()).await;
-                        let _ = client.send_message_to_peer(peer.clone(), "✅ Marked as read").await;
+                        let _ = client
+                            .send_message_to_peer(peer.clone(), "✅ Marked as read")
+                            .await;
                     }
                     _ => {}
                 }
@@ -154,7 +187,9 @@ async fn listen(client: &Client, my_id: i64, is_bot: bool) {
             }
             Update::CallbackQuery(cb) => {
                 println!("🔘 callback [id={}]: {:?}", cb.query_id, cb.data());
-                let _ = client.answer_callback_query(cb.query_id, Some("Got it!"), false).await;
+                let _ = client
+                    .answer_callback_query(cb.query_id, Some("Got it!"), false)
+                    .await;
             }
             Update::InlineQuery(iq) if is_bot => {
                 println!("🔍 inline [id={}]: {}", iq.query_id, iq.query());
@@ -169,7 +204,7 @@ async fn listen(client: &Client, my_id: i64, is_bot: bool) {
 
 fn display_name(user: &tl::types::User) -> String {
     let first = user.first_name.as_deref().unwrap_or("");
-    let last  = user.last_name.as_deref().unwrap_or("");
+    let last = user.last_name.as_deref().unwrap_or("");
     format!("{} {}", first, last).trim().to_string()
 }
 

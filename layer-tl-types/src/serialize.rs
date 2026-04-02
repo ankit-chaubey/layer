@@ -78,12 +78,15 @@ impl Serializable for &[u8] {
         let (header_len, header): (usize, Vec<u8>) = if len <= 253 {
             (1, vec![len as u8])
         } else {
-            (4, vec![
-                0xfe,
-                (len & 0xff) as u8,
-                ((len >> 8) & 0xff) as u8,
-                ((len >> 16) & 0xff) as u8,
-            ])
+            (
+                4,
+                vec![
+                    0xfe,
+                    (len & 0xff) as u8,
+                    ((len >> 8) & 0xff) as u8,
+                    ((len >> 16) & 0xff) as u8,
+                ],
+            )
         };
 
         let total = header_len + len;
@@ -114,7 +117,9 @@ impl<T: Serializable> Serializable for Vec<T> {
     fn serialize(&self, buf: &mut impl Extend<u8>) {
         0x1cb5c415u32.serialize(buf);
         (self.len() as i32).serialize(buf);
-        for item in self { item.serialize(buf); }
+        for item in self {
+            item.serialize(buf);
+        }
     }
 }
 
@@ -122,7 +127,9 @@ impl<T: Serializable> Serializable for Vec<T> {
 impl<T: Serializable> Serializable for crate::RawVec<T> {
     fn serialize(&self, buf: &mut impl Extend<u8>) {
         (self.0.len() as i32).serialize(buf);
-        for item in &self.0 { item.serialize(buf); }
+        for item in &self.0 {
+            item.serialize(buf);
+        }
     }
 }
 
@@ -132,6 +139,8 @@ impl<T: Serializable> Serializable for crate::RawVec<T> {
 /// When `None`, nothing is written (the flags word already encodes absence).
 impl<T: Serializable> Serializable for Option<T> {
     fn serialize(&self, buf: &mut impl Extend<u8>) {
-        if let Some(v) = self { v.serialize(buf); }
+        if let Some(v) = self {
+            v.serialize(buf);
+        }
     }
 }

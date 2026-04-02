@@ -18,6 +18,7 @@
 - [Bot Login](./authentication/bot-login.md)
 - [Two-Factor Auth (2FA)](./authentication/2fa.md)
 - [Session Persistence](./authentication/session.md)
+- [Session Backends](./authentication/session-backends.md)
 
 ---
 
@@ -28,6 +29,7 @@
 - [Inline Keyboards](./messaging/keyboards.md)
 - [Media & Files](./messaging/media.md)
 - [Message Formatting](./messaging/formatting.md)
+- [Reactions](./messaging/reactions.md)
 
 ---
 
@@ -45,7 +47,10 @@
 - [Client Methods](./api/client.md)
 - [InputMessage Builder](./api/input-message.md)
 - [Participants & Members](./api/participants.md)
+- [Admin & Ban Rights](./api/admin-rights.md)
 - [Dialogs & History](./api/dialogs.md)
+- [Search](./api/search.md)
+- [Typing Guard](./api/typing-guard.md)
 
 ---
 

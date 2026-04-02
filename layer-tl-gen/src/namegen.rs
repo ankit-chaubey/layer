@@ -7,13 +7,13 @@ use layer_tl_parser::tl::{Definition, Parameter, ParameterType, Type};
 /// Map a TL primitive name to a Rust built-in type string, if applicable.
 pub(crate) fn builtin_type(name: &str) -> Option<&'static str> {
     Some(match name {
-        "Bool"   => "bool",
-        "true"   => "bool",
-        "int"    => "i32",
-        "long"   => "i64",
+        "Bool" => "bool",
+        "true" => "bool",
+        "int" => "i32",
+        "long" => "i64",
         "double" => "f64",
         "string" => "String",
-        "bytes"  => "Vec<u8>",
+        "bytes" => "Vec<u8>",
         "int128" => "[u8; 16]",
         "int256" => "[u8; 32]",
         "Vector" => "Vec",
@@ -92,7 +92,7 @@ pub(crate) fn def_qual_name(def: &Definition) -> String {
 /// Enum variant name derived from the definition (strips the return type prefix).
 pub(crate) fn def_variant_name(def: &Definition) -> String {
     let full = def_type_name(def);
-    let ty   = type_name(&def.ty);
+    let ty = type_name(&def.ty);
 
     let variant = if full.starts_with(&ty) {
         &full[ty.len()..]
@@ -111,7 +111,8 @@ pub(crate) fn def_variant_name(def: &Definition) -> String {
         }
         // All-numeric suffix — use from last uppercase
         v if !v.is_empty() && v.chars().all(char::is_numeric) => {
-            let pos = full.as_bytes()
+            let pos = full
+                .as_bytes()
                 .iter()
                 .rposition(|c| c.is_ascii_uppercase())
                 .unwrap_or(0);
@@ -191,7 +192,9 @@ fn type_path(ty: &Type, turbofish: bool) -> String {
     };
 
     if let Some(arg) = &ty.generic_arg {
-        if turbofish { s.push_str("::"); }
+        if turbofish {
+            s.push_str("::");
+        }
         s.push('<');
         s.push_str(&type_qual_name(arg));
         s.push('>');
@@ -205,12 +208,12 @@ fn type_path(ty: &Type, turbofish: bool) -> String {
 /// The Rust attribute name for a parameter (handles reserved keywords).
 pub(crate) fn param_attr_name(param: &Parameter) -> String {
     match param.name.as_str() {
-        "final"  => "r#final".into(),
-        "loop"   => "r#loop".into(),
-        "self"   => "is_self".into(),
+        "final" => "r#final".into(),
+        "loop" => "r#loop".into(),
+        "self" => "is_self".into(),
         "static" => "r#static".into(),
-        "type"   => "r#type".into(),
-        other    => other.to_ascii_lowercase(),
+        "type" => "r#type".into(),
+        other => other.to_ascii_lowercase(),
     }
 }
 

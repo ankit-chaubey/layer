@@ -6,8 +6,8 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::pts::{PtsCheckResult, PtsState};
     use std::collections::{HashMap, HashSet};
-    use crate::pts::{PtsState, PtsCheckResult};
 
     fn fresh(pts: i32) -> PtsState {
         PtsState {
@@ -36,7 +36,10 @@ mod tests {
         // pts=105, pts_count=1 → expected=101, got=105 → Gap
         assert_eq!(
             state.check_pts(105, 1),
-            PtsCheckResult::Gap { expected: 101, got: 105 }
+            PtsCheckResult::Gap {
+                expected: 101,
+                got: 105
+            }
         );
     }
 
@@ -80,7 +83,10 @@ mod tests {
         state.qts = 10;
         assert_eq!(
             state.check_qts(15, 1),
-            PtsCheckResult::Gap { expected: 11, got: 15 }
+            PtsCheckResult::Gap {
+                expected: 11,
+                got: 15
+            }
         );
     }
 
@@ -116,7 +122,10 @@ mod tests {
         // next expected = 6; seq_start=8 → Gap
         assert_eq!(
             state.check_seq(8, 8),
-            PtsCheckResult::Gap { expected: 6, got: 8 }
+            PtsCheckResult::Gap {
+                expected: 6,
+                got: 8
+            }
         );
     }
 
@@ -150,7 +159,10 @@ mod tests {
         state.channel_pts.insert(42, 100);
         assert_eq!(
             state.check_channel_pts(42, 105, 1),
-            PtsCheckResult::Gap { expected: 101, got: 105 }
+            PtsCheckResult::Gap {
+                expected: 101,
+                got: 105
+            }
         );
     }
 
@@ -158,7 +170,10 @@ mod tests {
     fn channel_duplicate() {
         let mut state = fresh(0);
         state.channel_pts.insert(42, 100);
-        assert_eq!(state.check_channel_pts(42, 99, 1), PtsCheckResult::Duplicate);
+        assert_eq!(
+            state.check_channel_pts(42, 99, 1),
+            PtsCheckResult::Duplicate
+        );
     }
 
     #[test]
@@ -169,7 +184,7 @@ mod tests {
         state.advance_channel(1, 55);
         assert_eq!(state.channel_pts[&1], 55);
         assert_eq!(state.channel_pts[&2], 200); // unaffected
-        assert_eq!(state.pts, 100);             // global pts unaffected
+        assert_eq!(state.pts, 100); // global pts unaffected
     }
 
     #[test]

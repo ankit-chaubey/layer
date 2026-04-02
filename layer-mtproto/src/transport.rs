@@ -38,14 +38,17 @@ pub trait Tagged {
 /// Wraps a `Transport` and applies MTProto Abridged framing.
 /// Use [`ObfuscatedAbridged`] instead if your ISP blocks plain Telegram.
 pub struct AbridgedTransport<T: Transport> {
-    inner:     T,
+    inner: T,
     init_sent: bool,
 }
 
 impl<T: Transport> AbridgedTransport<T> {
     /// Create a new [`AbridgedTransport`] wrapping `inner`.
     pub fn new(inner: T) -> Self {
-        Self { inner, init_sent: false }
+        Self {
+            inner,
+            init_sent: false,
+        }
     }
 
     /// Send one MTProto message with Abridged length-prefix framing.
@@ -58,7 +61,12 @@ impl<T: Transport> AbridgedTransport<T> {
         let header: Vec<u8> = if len < 127 {
             vec![len as u8]
         } else {
-            vec![0x7f, (len & 0xff) as u8, ((len >> 8) & 0xff) as u8, ((len >> 16) & 0xff) as u8]
+            vec![
+                0x7f,
+                (len & 0xff) as u8,
+                ((len >> 8) & 0xff) as u8,
+                ((len >> 16) & 0xff) as u8,
+            ]
         };
         self.inner.send(&header)?;
         self.inner.send(data)
@@ -120,9 +128,15 @@ impl ObfuscatedAbridged {
         let mut init = [0u8; 64];
         loop {
             getrandom::getrandom(&mut init).expect("getrandom");
-            if init[0] == 0xef { continue; }
-            if init[4..8] == [0u8; 4] { continue; }
-            if FORBIDDEN.iter().any(|f| f == &init[..4]) { continue; }
+            if init[0] == 0xef {
+                continue;
+            }
+            if init[4..8] == [0u8; 4] {
+                continue;
+            }
+            if FORBIDDEN.iter().any(|f| f == &init[..4]) {
+                continue;
+            }
             break;
         }
         // Embed Abridged tag at bytes 56-59.
@@ -132,7 +146,11 @@ impl ObfuscatedAbridged {
         let mut enc = init.to_vec();
         cipher.encrypt(&mut enc);
         init[56..64].copy_from_slice(&enc[56..64]);
-        Ok(Self { stream, cipher, header: Some(init) })
+        Ok(Self {
+            stream,
+            cipher,
+            header: Some(init),
+        })
     }
 
     /// Send one MTProto message, encrypting with the obfuscated cipher and
@@ -145,7 +163,12 @@ impl ObfuscatedAbridged {
         let mut frame: Vec<u8> = if len < 127 {
             vec![len as u8]
         } else {
-            vec![0x7f, (len & 0xff) as u8, ((len >> 8) & 0xff) as u8, ((len >> 16) & 0xff) as u8]
+            vec![
+                0x7f,
+                (len & 0xff) as u8,
+                ((len >> 8) & 0xff) as u8,
+                ((len >> 16) & 0xff) as u8,
+            ]
         };
         frame.extend_from_slice(data);
         self.cipher.encrypt(&mut frame);

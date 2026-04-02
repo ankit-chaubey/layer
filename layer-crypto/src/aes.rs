@@ -18,9 +18,13 @@ pub fn ige_encrypt(buffer: &mut [u8], key: &[u8; 32], iv: &[u8; 32]) {
 
     for block in buffer.chunks_mut(16) {
         next_iv2.copy_from_slice(block);
-        for i in 0..16 { block[i] ^= iv1[i]; }
+        for i in 0..16 {
+            block[i] ^= iv1[i];
+        }
         cipher.encrypt_block(GenericArray::from_mut_slice(block));
-        for i in 0..16 { block[i] ^= iv2[i]; }
+        for i in 0..16 {
+            block[i] ^= iv2[i];
+        }
         iv1.copy_from_slice(block);
         std::mem::swap(&mut iv2, &mut next_iv2);
     }
@@ -38,9 +42,13 @@ pub fn ige_decrypt(buffer: &mut [u8], key: &[u8; 32], iv: &[u8; 32]) {
 
     for block in buffer.chunks_mut(16) {
         next_iv1.copy_from_slice(block);
-        for i in 0..16 { block[i] ^= iv2[i]; }
+        for i in 0..16 {
+            block[i] ^= iv2[i];
+        }
         cipher.decrypt_block(GenericArray::from_mut_slice(block));
-        for i in 0..16 { block[i] ^= iv1[i]; }
+        for i in 0..16 {
+            block[i] ^= iv1[i];
+        }
         std::mem::swap(&mut iv1, &mut next_iv1);
         iv2.copy_from_slice(block);
     }

@@ -1,6 +1,6 @@
 # Update Types
 
-All Telegram events flow through `stream_updates()` as variants of the `Update` enum. Here is every variant, what it carries, and how to handle it.
+All Telegram events flow through `stream_updates()` as variants of the `Update` enum. Every variant is strongly typed — no raw JSON or untagged maps.
 
 ```rust
 use layer_client::update::Update;
@@ -8,77 +8,57 @@ use layer_client::update::Update;
 let mut updates = client.stream_updates();
 while let Some(update) = updates.next().await {
     match update {
-        Update::NewMessage(msg)     => { /* ... */ }
-        Update::MessageEdited(msg)  => { /* ... */ }
-        Update::MessageDeleted(del) => { /* ... */ }
-        Update::CallbackQuery(cb)   => { /* ... */ }
-        Update::InlineQuery(iq)     => { /* ... */ }
-        Update::InlineSend(is)      => { /* ... */ }
-        Update::Raw(raw)            => { /* ... */ }
-        _ => {}
+        Update::NewMessage(msg)       => { /* new message arrived */ }
+        Update::MessageEdited(msg)    => { /* message was edited */ }
+        Update::MessageDeleted(del)   => { /* message(s) were deleted */ }
+        Update::CallbackQuery(cb)     => { /* inline button pressed */ }
+        Update::InlineQuery(iq)       => { /* @bot inline query */ }
+        Update::InlineSend(is)        => { /* inline result chosen */ }
+        Update::ChatAction(action)    => { /* user typing / uploading */ }
+        Update::UserStatus(status)    => { /* contact online status */ }
+        Update::Raw(raw)              => { /* unrecognised update */ }
+        _ => {}   // required: Update is #[non_exhaustive]
     }
 }
 ```
+
+> **Note:** As of v0.4.4, `Update` is `#[non_exhaustive]`. Your match arms **must** include a `_ => {}` fallback or the code will fail to compile when new variants are added.
 
 ---
 
 ## NewMessage
 
-Fires for every new message received in any chat the account participates in.
+Fires for every new message the account receives in any chat.
 
 ```rust
 Update::NewMessage(msg) => {
-    // Filter out your own sent messages
-    if msg.outgoing() { return; }
+    if msg.outgoing() { return; }  // skip messages you sent
 
-    let text     = msg.text().unwrap_or("");
-    let msg_id   = msg.id();
-    let date     = msg.date_utc();  // chrono::DateTime<Utc>
-    let is_post  = msg.post();      // from a channel
-    let has_media = msg.media().is_some();
+    let text    = msg.text().unwrap_or("");
+    let msg_id  = msg.id();
+    let peer    = msg.peer_id();   // the chat it arrived in
+    let sender  = msg.sender_id(); // who sent it
 
     println!("[{msg_id}] {text}");
 }
 ```
 
-**Key accessors on `IncomingMessage`:**
-
-| Method | Returns | Notes |
-|---|---|---|
-| `id()` | `i32` | Unique message ID within the chat |
-| `text()` | `Option<&str>` | Plain text content |
-| `peer_id()` | `Option<&Peer>` | The chat it was sent in |
-| `sender_id()` | `Option<&Peer>` | Who sent it |
-| `outgoing()` | `bool` | Sent by the logged-in account |
-| `date()` | `i32` | Unix timestamp |
-| `date_utc()` | `Option<DateTime<Utc>>` | Parsed chrono datetime |
-| `edit_date()` | `Option<i32>` | When last edited |
-| `media()` | `Option<&MessageMedia>` | Attached media |
-| `entities()` | `Option<&Vec<MessageEntity>>` | Formatting regions |
-| `mentioned()` | `bool` | Account was @mentioned |
-| `silent()` | `bool` | Sent without notification |
-| `pinned()` | `bool` | A pin notification |
-| `post()` | `bool` | From a channel |
-| `noforwards()` | `bool` | Cannot be forwarded |
-| `reply_to_message_id()` | `Option<i32>` | ID of replied-to message |
-| `reply_markup()` | `Option<&ReplyMarkup>` | Keyboard attached to this message |
-| `forward_count()` | `Option<i32>` | How many times forwarded |
-| `view_count()` | `Option<i32>` | View count (channels) |
-| `reply_count()` | `Option<i32>` | Comment count |
-| `grouped_id()` | `Option<i64>` | Album group ID |
-| `forward_header()` | `Option<&MessageFwdHeader>` | Forward origin info |
+See [IncomingMessage](./incoming-message.md) for the full list of accessors.
 
 ---
 
 ## MessageEdited
 
-Same structure as `NewMessage` — carries the updated version of the message.
+Same structure as `NewMessage` — carries the new version of the edited message.
 
 ```rust
 Update::MessageEdited(msg) => {
-    println!("Message {} was edited: {}", msg.id(), msg.text().unwrap_or(""));
-    if let Some(edit_time) = msg.edit_date_utc() {
-        println!("Edited at: {edit_time}");
+    println!("Edited [{id}]: {text}",
+        id   = msg.id(),
+        text = msg.text().unwrap_or(""),
+    );
+    if let Some(when) = msg.edit_date_utc() {
+        println!("  Edited at: {when}");
     }
 }
 ```
@@ -87,16 +67,15 @@ Update::MessageEdited(msg) => {
 
 ## MessageDeleted
 
-Contains only message IDs — content is gone by the time this fires.
+Contains only the message IDs, not the content (which is gone).
 
 ```rust
 Update::MessageDeleted(del) => {
-    println!("Deleted {} messages", del.messages().len());
-    println!("IDs: {:?}", del.messages());
+    println!("Deleted IDs: {:?}", del.messages());
 
-    // For channel deletions, the channel ID is available
+    // For channel deletions, channel_id is set
     if let Some(ch_id) = del.channel_id() {
-        println!("In channel: {ch_id}");
+        println!("  In channel: {ch_id}");
     }
 }
 ```
@@ -105,67 +84,142 @@ Update::MessageDeleted(del) => {
 
 ## CallbackQuery
 
-Fired when a user presses an inline keyboard button on a bot message.
+Fires when a user presses an inline keyboard button.
 
 ```rust
 Update::CallbackQuery(cb) => {
-    let data    = cb.data().unwrap_or("");
-    let qid     = cb.query_id;
-    let from    = cb.sender_id();
-    let msg_id  = cb.msg_id;
+    let data  = cb.data().unwrap_or("");
+    let qid   = cb.query_id;
 
     match data {
-        "action:confirm" => {
-            // answer() shows a brief toast to the user
-            cb.answer(&client, "✅ Confirmed!").await?;
+        "yes" => {
+            // edit the message, then acknowledge
+            client.edit_message(peer, cb.msg_id, "You said yes!").await?;
+            client.answer_callback_query(qid, None, false).await?;
         }
-        "action:cancel" => {
-            // answer_alert() shows a modal popup
-            cb.answer_alert(&client, "❌ Cancelled").await?;
+        "no" => {
+            cb.answer(&client, "Cancelled.").await?;
         }
         _ => {
-            // Must always answer — otherwise spinner shows forever
-            client.answer_callback_query(qid, None, false).await?;
+            client.answer_callback_query(qid, Some("Unknown"), false).await?;
         }
     }
 }
 ```
 
-> **WARNING:** You **must** call `answer_callback_query` for every `CallbackQuery`. If you don't, the button shows a loading spinner to the user indefinitely.
+See [Callback Queries](./callbacks.md) for full reference.
 
 ---
 
 ## InlineQuery
 
-Fired when a user types `@yourbot something` in any chat.
+Fires when a user types `@yourbot <query>` in any chat.
 
 ```rust
 Update::InlineQuery(iq) => {
-    let query  = iq.query();   // the typed text
-    let qid    = iq.query_id;
-    let offset = iq.offset();  // for pagination
+    let q   = iq.query();
+    let qid = iq.query_id;
 
-    let results = vec![
-        make_article("1", "Result title", "Result text"),
-    ];
+    let results = build_results(q);
 
-    // cache_time = seconds to cache the results (0 = no cache)
-    // is_personal = true if results differ per user
-    // next_offset = Some("page2") for pagination
-    client.answer_inline_query(qid, results, 300, false, None).await?;
+    client.answer_inline_query(
+        qid,
+        results,
+        300,   // cache seconds
+        false, // is_personal
+        None,  // next_offset
+    ).await?;
 }
 ```
+
+See [Inline Mode](./inline-mode.md) for result builders.
 
 ---
 
 ## InlineSend
 
-Fired when the user selects one of your inline results and it gets sent.
+Fires when the user actually sends a chosen inline result.
 
 ```rust
 Update::InlineSend(is) => {
-    println!("User chose result id: {}", is.id());
-    // Useful for analytics or follow-up actions
+    let result_id   = is.result_id();
+    let query       = is.query();
+    let inline_msg  = is.message_id(); // Option — present only if inline_feedback is on
+
+    println!("User sent inline result '{result_id}' for query '{query}'");
+}
+```
+
+To edit the sent inline message:
+
+```rust
+if let Some(inline_msg_id) = is.message_id() {
+    client.edit_inline_message(
+        inline_msg_id,
+        "Updated content!",
+    ).await?;
+}
+```
+
+---
+
+## ChatAction — New in v0.4.4
+
+Fires when a user starts or stops typing, uploading, recording, etc. in a chat the account is in.
+
+```rust
+Update::ChatAction(action) => {
+    let user   = action.user_id();    // Option<i64>
+    let peer   = action.peer();       // the chat
+    let action = action.action();     // tl::enums::SendMessageAction
+
+    match action {
+        tl::enums::SendMessageAction::SendMessageTypingAction => {
+            println!("user {:?} is typing in {:?}", user, peer);
+        }
+        tl::enums::SendMessageAction::SendMessageUploadPhotoAction(_) => {
+            println!("user {:?} is uploading a photo", user);
+        }
+        tl::enums::SendMessageAction::SendMessageRecordAudioAction => {
+            println!("user {:?} is recording audio", user);
+        }
+        tl::enums::SendMessageAction::SendMessageCancelAction => {
+            println!("user {:?} stopped", user);
+        }
+        _ => {}
+    }
+}
+```
+
+---
+
+## UserStatus — New in v0.4.4
+
+Fires when a contact's online/offline status changes. Only received for contacts or people in mutual chats (depending on their privacy settings).
+
+```rust
+Update::UserStatus(status) => {
+    let user_id = status.user_id();    // i64
+    let online  = status.status();     // tl::enums::UserStatus
+
+    match online {
+        tl::enums::UserStatus::UserStatusOnline(s) => {
+            println!("user {user_id} went online (expires {})", s.expires);
+        }
+        tl::enums::UserStatus::UserStatusOffline(s) => {
+            println!("user {user_id} went offline (was online {})", s.was_online);
+        }
+        tl::enums::UserStatus::UserStatusRecently => {
+            println!("user {user_id}: seen recently");
+        }
+        tl::enums::UserStatus::UserStatusLastWeek(_) => {
+            println!("user {user_id}: seen last week");
+        }
+        tl::enums::UserStatus::UserStatusLastMonth(_) => {
+            println!("user {user_id}: seen last month");
+        }
+        _ => {}
+    }
 }
 ```
 
@@ -173,23 +227,23 @@ Update::InlineSend(is) => {
 
 ## Raw
 
-Any TL update variant not mapped to one of the above. Carries the constructor ID for identification.
+Any update that doesn't map to a named variant is passed through as `Update::Raw`:
 
 ```rust
 Update::Raw(raw) => {
-    println!("Unhandled update: 0x{:08x}", raw.constructor_id);
-
-    // You can decode it manually using the TL types
-    // if you know the constructor:
-    // let upd: tl::enums::Update = ...;
+    // raw.constructor_id() — the TL constructor ID (u32)
+    // raw.bytes()          — the raw serialised bytes
+    println!("Unhandled update: 0x{:08x}", raw.constructor_id());
 }
 ```
 
-Use this as a catch-all for new update types as the Telegram API evolves, or to handle specialized updates like `updateBotChatInviteRequester`, `updateBotStopped`, etc.
+Use this as an escape hatch to handle updates that `layer-client` doesn't yet have a typed variant for.
 
 ---
 
-## Concurrent handling pattern
+## Concurrent handling
+
+Spawn each update in its own Tokio task to prevent one slow handler from blocking others:
 
 ```rust
 use std::sync::Arc;
@@ -198,13 +252,24 @@ let client = Arc::new(client);
 let mut updates = client.stream_updates();
 
 while let Some(update) = updates.next().await {
-    let c = client.clone();
+    let client = client.clone();
     tokio::spawn(async move {
-        if let Err(e) = handle(update, &c).await {
-            eprintln!("Error: {e}");
+        if let Err(e) = handle(update, &client).await {
+            eprintln!("Handler error: {e}");
         }
     });
 }
-```
 
-This ensures slow handlers don't block the receive loop.
+async fn handle(
+    update: Update,
+    client: &Client,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    match update {
+        Update::NewMessage(msg) if !msg.outgoing() => {
+            // …
+        }
+        _ => {}
+    }
+    Ok(())
+}
+```

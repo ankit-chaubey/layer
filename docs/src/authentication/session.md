@@ -1,23 +1,29 @@
 # Session Persistence
 
-A session stores your auth key, DC address, and peer access hash cache. Without it, you'd need to log in on every run.
+A session stores your auth key, DC address, and peer access-hash cache. Without it, you'd need to log in on every run.
 
 ## Binary file (default)
 
 ```rust
-Config {
+use layer_client::{Client, Config};
+
+let (client, _shutdown) = Client::connect(Config {
     session_path: "my.session".into(),
+    api_id:       12345,
+    api_hash:     "abc123".into(),
     ..Default::default()
-}
+}).await?;
 ```
 
-After login:
+After login, save to disk:
 
 ```rust
 client.save_session().await?;
 ```
 
-The file is created at the given path and loaded automatically on the next `Client::connect`. Keep it in `.gitignore` — it's equivalent to your account password.
+The file is created at `session_path` and reloaded automatically on the next `Client::connect`. **Keep it in `.gitignore` — it grants full API access to your account.**
+
+---
 
 ## In-memory (ephemeral)
 
@@ -26,33 +32,62 @@ Nothing written to disk. Useful for tests or short-lived scripts:
 ```rust
 use layer_client::session_backend::InMemoryBackend;
 
-// Using InMemoryBackend directly via Config
-Config {
-    // session_path is ignored when using a custom backend
-    ..Default::default()
-}
+let (client, _shutdown) = Client::builder()
+    .session(InMemoryBackend::new())
+    .api_id(12345)
+    .api_hash("abc123")
+    .connect()
+    .await?;
 ```
 
-With an in-memory session, login is required on every run.
+Login is required on every run since nothing persists.
+
+---
 
 ## SQLite (robust, long-running servers)
 
-Enable the feature flag:
-
 ```toml
-layer-client = { version = "0.4.0", features = ["sqlite-session"] }
+layer-client = { version = "0.4.4", features = ["sqlite-session"] }
 ```
 
 ```rust
-// SQLite session is automatically used when the feature is enabled
-// and the session file has a .db extension
-Config {
+let (client, _shutdown) = Client::connect(Config {
     session_path: "session.db".into(),
     ..Default::default()
-}
+}).await?;
 ```
 
-SQLite is more robust against crash-corruption than the binary file format, making it ideal for production bots.
+SQLite is more resilient against crash-corruption than the binary format. Ideal for production bots.
+
+---
+
+## String session — New in v0.4.4
+
+Encode the entire session as a portable base64 string. Store it in an env var, a DB column, or CI secrets:
+
+```rust
+// Export (after login)
+let s = client.export_session_string().await?;
+// → "AQAAAAEDAADtE1lMHBT7...=="
+
+// Restore
+let (client, _shutdown) = Client::with_string_session(
+    &s, api_id, api_hash,
+).await?;
+
+// Or via builder
+use layer_client::session_backend::StringSessionBackend;
+let (client, _shutdown) = Client::builder()
+    .session(StringSessionBackend::new(&s))
+    .api_id(api_id)
+    .api_hash(api_hash)
+    .connect()
+    .await?;
+```
+
+See [Session Backends](./session-backends.md) for the full guide including LibSQL (Turso) backend.
+
+---
 
 ## What's stored in a session
 
@@ -66,6 +101,8 @@ SQLite is more robust against crash-corruption than the binary file format, maki
 | Sequence numbers | For message ordering |
 | Peer cache | User/channel access hashes (speeds up API calls) |
 
+---
+
 ## Security
 
 > **SECURITY:** A stolen session file gives full API access to your account. Protect it like a password.
@@ -75,17 +112,19 @@ SQLite is more robust against crash-corruption than the binary file format, maki
 - Never log or print session file contents
 - If compromised: revoke from **Telegram → Settings → Devices → Terminate session**
 
+---
+
 ## Multi-session / multi-account
 
-Each `Client::connect` call loads one session. For multiple accounts, use multiple files:
+Each `Client::connect` loads one session. For multiple accounts, use multiple files:
 
 ```rust
-let client_a = Client::connect(Config {
+let (client_a, _) = Client::connect(Config {
     session_path: "account_a.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
 
-let client_b = Client::connect(Config {
+let (client_b, _) = Client::connect(Config {
     session_path: "account_b.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;

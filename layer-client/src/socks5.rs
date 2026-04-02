@@ -15,9 +15,9 @@
 //! };
 //! ```
 
+use crate::InvocationError;
 use tokio::net::TcpStream;
 use tokio_socks::tcp::Socks5Stream;
-use crate::InvocationError;
 
 /// SOCKS5 proxy configuration.
 #[derive(Clone, Debug)]
@@ -31,14 +31,17 @@ pub struct Socks5Config {
 impl Socks5Config {
     /// Create an unauthenticated SOCKS5 config.
     pub fn new(proxy_addr: impl Into<String>) -> Self {
-        Self { proxy_addr: proxy_addr.into(), auth: None }
+        Self {
+            proxy_addr: proxy_addr.into(),
+            auth: None,
+        }
     }
 
     /// Create a SOCKS5 config with username/password authentication.
     pub fn with_auth(
         proxy_addr: impl Into<String>,
-        username:   impl Into<String>,
-        password:   impl Into<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
     ) -> Self {
         Self {
             proxy_addr: proxy_addr.into(),
@@ -50,25 +53,21 @@ impl Socks5Config {
     ///
     /// Returns a [`TcpStream`] tunnelled through the proxy to `target`.
     pub async fn connect(&self, target: &str) -> Result<TcpStream, InvocationError> {
-        log::info!("[socks5] Connecting via {} → {target}", self.proxy_addr);
+        tracing::info!("[socks5] Connecting via {} → {target}", self.proxy_addr);
         let stream = match &self.auth {
-            None => {
-                Socks5Stream::connect(self.proxy_addr.as_str(), target)
-                    .await
-                    .map_err(|e| InvocationError::Io(std::io::Error::other(e)))?
-            }
-            Some((user, pass)) => {
-                Socks5Stream::connect_with_password(
-                    self.proxy_addr.as_str(),
-                    target,
-                    user.as_str(),
-                    pass.as_str(),
-                )
+            None => Socks5Stream::connect(self.proxy_addr.as_str(), target)
                 .await
-                .map_err(|e| InvocationError::Io(std::io::Error::other(e)))?
-            }
+                .map_err(|e| InvocationError::Io(std::io::Error::other(e)))?,
+            Some((user, pass)) => Socks5Stream::connect_with_password(
+                self.proxy_addr.as_str(),
+                target,
+                user.as_str(),
+                pass.as_str(),
+            )
+            .await
+            .map_err(|e| InvocationError::Io(std::io::Error::other(e)))?,
         };
-        log::info!("[socks5] Connected ✓");
+        tracing::info!("[socks5] Connected ✓");
         Ok(stream.into_inner())
     }
 }

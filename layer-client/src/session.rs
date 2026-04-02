@@ -18,11 +18,12 @@ use std::path::Path;
 
 /// One entry in the DC address table.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DcEntry {
-    pub dc_id:       i32,
-    pub addr:        String,
-    pub auth_key:    Option<[u8; 256]>,
-    pub first_salt:  i64,
+    pub dc_id: i32,
+    pub addr: String,
+    pub auth_key: Option<[u8; 256]>,
+    pub first_salt: i64,
     pub time_offset: i32,
 }
 
@@ -31,6 +32,7 @@ pub struct DcEntry {
 /// Snapshot of the MTProto update-sequence state that we persist so that
 /// `catch_up: true` can call `updates.getDifference` with the *pre-shutdown* pts.
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UpdatesStateSnap {
     /// Main persistence counter (messages, non-channel updates).
     pub pts: i32,
@@ -47,7 +49,9 @@ pub struct UpdatesStateSnap {
 impl UpdatesStateSnap {
     /// Returns `true` when we have a real state from the server (pts > 0).
     #[inline]
-    pub fn is_initialised(&self) -> bool { self.pts > 0 }
+    pub fn is_initialised(&self) -> bool {
+        self.pts > 0
+    }
 
     /// Advance (or insert) a per-channel pts value.
     pub fn set_channel_pts(&mut self, channel_id: i64, pts: i32) {
@@ -60,7 +64,8 @@ impl UpdatesStateSnap {
 
     /// Look up the stored pts for a channel, returns 0 if unknown.
     pub fn channel_pts(&self, channel_id: i64) -> i32 {
-        self.channels.iter()
+        self.channels
+            .iter()
             .find(|c| c.0 == channel_id)
             .map(|c| c.1)
             .unwrap_or(0)
@@ -72,27 +77,29 @@ impl UpdatesStateSnap {
 /// A cached access-hash entry so that the peer can be addressed across restarts
 /// without re-resolving it from Telegram.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CachedPeer {
     /// Bare Telegram peer ID (always positive).
-    pub id:          i64,
+    pub id: i64,
     /// Access hash bound to the current session.
     pub access_hash: i64,
     /// `true` → channel / supergroup.  `false` → user.
-    pub is_channel:  bool,
+    pub is_channel: bool,
 }
 
 // ─── PersistedSession ─────────────────────────────────────────────────────────
 
 /// Everything that needs to survive a process restart.
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PersistedSession {
-    pub home_dc_id:    i32,
-    pub dcs:           Vec<DcEntry>,
+    pub home_dc_id: i32,
+    pub dcs: Vec<DcEntry>,
     /// Update counters to enable reliable catch-up after a disconnect.
     pub updates_state: UpdatesStateSnap,
     /// Peer access-hash cache so that the client can reach out to any previously
     /// seen user or channel without re-resolving them.
-    pub peers:         Vec<CachedPeer>,
+    pub peers: Vec<CachedPeer>,
 }
 
 impl PersistedSession {
@@ -110,8 +117,13 @@ impl PersistedSession {
         for d in &self.dcs {
             b.extend_from_slice(&d.dc_id.to_le_bytes());
             match &d.auth_key {
-                Some(k) => { b.push(1); b.extend_from_slice(k); }
-                None    => { b.push(0); }
+                Some(k) => {
+                    b.push(1);
+                    b.extend_from_slice(k);
+                }
+                None => {
+                    b.push(0);
+                }
             }
             b.extend_from_slice(&d.first_salt.to_le_bytes());
             b.extend_from_slice(&d.time_offset.to_le_bytes());
@@ -143,15 +155,14 @@ impl PersistedSession {
         b
     }
 
-    /// Encode the session to a URL-safe base64 string (no padding).
-    /// This is the portable "string session" format, similar to Pyrogram/Telethon.
-    pub fn to_string(&self) -> String {
-        use base64::Engine as _;
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(self.to_bytes())
-    }
-
+    /// Atomically save the session to `path`.
+    ///
+    /// Writes to `<path>.tmp` first, then renames into place so a crash
+    /// mid-write never corrupts the existing session file.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        std::fs::write(path, self.to_bytes())
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, self.to_bytes())?;
+        std::fs::rename(&tmp, path)
     }
 
     // ── Deserialise (v1 + v2) ─────────────────────────────────────────────
@@ -174,10 +185,26 @@ impl PersistedSession {
                 s
             }};
         }
-        macro_rules! r_i32 { () => { i32::from_le_bytes(r!(4).try_into().unwrap()) }; }
-        macro_rules! r_i64 { () => { i64::from_le_bytes(r!(8).try_into().unwrap()) }; }
-        macro_rules! r_u8  { () => { r!(1)[0] }; }
-        macro_rules! r_u16 { () => { u16::from_le_bytes(r!(2).try_into().unwrap()) }; }
+        macro_rules! r_i32 {
+            () => {
+                i32::from_le_bytes(r!(4).try_into().unwrap())
+            };
+        }
+        macro_rules! r_i64 {
+            () => {
+                i64::from_le_bytes(r!(8).try_into().unwrap())
+            };
+        }
+        macro_rules! r_u8 {
+            () => {
+                r!(1)[0]
+            };
+        }
+        macro_rules! r_u16 {
+            () => {
+                u16::from_le_bytes(r!(2).try_into().unwrap())
+            };
+        }
 
         let first_byte = r_u8!();
 
@@ -192,22 +219,28 @@ impl PersistedSession {
         };
 
         let dc_count = r_u8!() as usize;
-        let mut dcs  = Vec::with_capacity(dc_count);
+        let mut dcs = Vec::with_capacity(dc_count);
         for _ in 0..dc_count {
-            let dc_id       = r_i32!();
-            let has_key     = r_u8!();
-            let auth_key    = if has_key == 1 {
+            let dc_id = r_i32!();
+            let has_key = r_u8!();
+            let auth_key = if has_key == 1 {
                 let mut k = [0u8; 256];
                 k.copy_from_slice(r!(256));
                 Some(k)
             } else {
                 None
             };
-            let first_salt  = r_i64!();
+            let first_salt = r_i64!();
             let time_offset = r_i32!();
-            let al          = r_u8!() as usize;
-            let addr        = String::from_utf8_lossy(r!(al)).into_owned();
-            dcs.push(DcEntry { dc_id, addr, auth_key, first_salt, time_offset });
+            let al = r_u8!() as usize;
+            let addr = String::from_utf8_lossy(r!(al)).into_owned();
+            dcs.push(DcEntry {
+                dc_id,
+                addr,
+                auth_key,
+                first_salt,
+                time_offset,
+            });
         }
 
         if !is_v2 {
@@ -215,35 +248,45 @@ impl PersistedSession {
                 home_dc_id,
                 dcs,
                 updates_state: UpdatesStateSnap::default(),
-                peers:         Vec::new(),
+                peers: Vec::new(),
             });
         }
 
-        let pts      = r_i32!();
-        let qts      = r_i32!();
-        let date     = r_i32!();
-        let seq      = r_i32!();
+        let pts = r_i32!();
+        let qts = r_i32!();
+        let date = r_i32!();
+        let seq = r_i32!();
         let ch_count = r_u16!() as usize;
         let mut channels = Vec::with_capacity(ch_count);
         for _ in 0..ch_count {
-            let cid  = r_i64!();
+            let cid = r_i64!();
             let cpts = r_i32!();
             channels.push((cid, cpts));
         }
 
         let peer_count = r_u16!() as usize;
-        let mut peers  = Vec::with_capacity(peer_count);
+        let mut peers = Vec::with_capacity(peer_count);
         for _ in 0..peer_count {
-            let id          = r_i64!();
+            let id = r_i64!();
             let access_hash = r_i64!();
-            let is_channel  = r_u8!() != 0;
-            peers.push(CachedPeer { id, access_hash, is_channel });
+            let is_channel = r_u8!() != 0;
+            peers.push(CachedPeer {
+                id,
+                access_hash,
+                is_channel,
+            });
         }
 
         Ok(Self {
             home_dc_id,
             dcs,
-            updates_state: UpdatesStateSnap { pts, qts, date, seq, channels },
+            updates_state: UpdatesStateSnap {
+                pts,
+                qts,
+                date,
+                seq,
+                channels,
+            },
             peers,
         })
     }
@@ -260,6 +303,13 @@ impl PersistedSession {
     pub fn load(path: &Path) -> io::Result<Self> {
         let buf = std::fs::read(path)?;
         Self::from_bytes(&buf)
+    }
+}
+
+impl std::fmt::Display for PersistedSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use base64::Engine as _;
+        f.write_str(&base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(self.to_bytes()))
     }
 }
 

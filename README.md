@@ -81,53 +81,41 @@ layer/
 
 ---
 
-## 🆕 What's New in v0.4.0
+## 🆕 What's New in v0.4.4
 
-### TL Schema — Layer 223 → 224
-- Updated `api.tl` from Layer 223 to **Layer 224** (2,329 definitions, up from 2,295)
-- All generated types, functions and enums in `layer-tl-types` reflect Layer 224
+### Session Backends
+- **`StringSessionBackend`** — portable base64-encoded session. Store it in an env var, a DB column, or anywhere — then restore it on the next run:
+  ```rust
+  // Export
+  let s = client.export_session_string().await?;
+  // Restore
+  let (client, _shutdown) = Client::with_string_session(&s).await?;
+  ```
+- **`export_session_string()`** — serialises the live session (auth key + DC + peer cache) to a printable string
+- **`LibSqlBackend`** — session backend for libsql/Turso databases (`features = ["libsql-session"]`)
 
-### MTProto Core Fixes
-- `bad_msg` auto-resend — messages rejected by the server are automatically re-queued
-- `seq_no` correction for error codes 32/33
-- Outgoing `MsgsAck` handling with periodic flush
-- Message container batching for lower round-trip overhead
-- `gzip_packed` support for large outgoing requests
-- `future_salts` prefetch and rotation before expiry
-- `time_offset` correction applied to all outgoing `msg_id` values
-- `msg_resend_req` handling from a sent-body cache
+### New Update Variants
+- **`Update::ChatAction(ChatActionUpdate)`** — fires when a user starts/stops typing, uploading, recording, etc.
+- **`Update::UserStatus(UserStatusUpdate)`** — fires when a contact's online status changes
 
-### Connection / Session
-- Sent message body tracking for resend
-- `pending_ack` batching system
-- `new_session_created` / `DestroySession` lifecycle handling
-- New `disconnect()` method for graceful teardown
+### New Client Method
+- **`sync_update_state()`** — forces an immediate `updates.getState` round-trip to reconcile pts/seq after long disconnects
 
-### Update Engine
-- pts / seq / qts tracking with gap detection
-- Per-channel `getChannelDifference` loop
-- Update deadline detection triggers `getDifference` on stale sequences
-- `PossibleGapBuffer` for out-of-order update recovery
+### Bug Fixes (7)
+- `iter_participants` no longer silently truncates at 200 members — pagination now correct for large channels/groups
+- `GlobalSearchBuilder::fetch` no longer returns duplicate results across page boundaries
+- `DownloadIter` last-chunk zero-padding fixed — chunk trimmed to exact file size
+- `send_chat_action` with `top_msg_id` (forum topic) no longer panics when used on a basic group
+- `answer_inline_query` with an empty result list no longer triggers RPC `400 RESULTS_TOO_MUCH`
+- `PossibleGapBuffer` memory leak fixed — buffered updates now released after gap is resolved via `getDifference`
+- `ban_participant` with a temporary unix timestamp no longer overflows on 32-bit targets
 
-### New Client APIs
-- `send_reaction()` — send a message reaction
-- `set_admin_rights()` — promote a user with `AdminRightsBuilder`
-- `set_banned_rights()` — restrict a user with `BanRights`
-- `iter_participants()` — lazy async iterator over all members
-- `get_profile_photos()` — fetch a user's profile photo list
-- `get_permissions()` — retrieve effective permissions of a user
-- `edit_inline_message()` — edit a message sent via inline mode
+### Comprehensive Docs Rewrite
+- All 25+ documentation pages audited, corrected, and expanded for 0.4.4
+- New pages: **Session Backends**, **Search**, **Reactions**, **Admin & Ban Rights**, **Typing Guard**
+- `SUMMARY.md` updated with all new sections
 
-### Search
-- `SearchBuilder` — fluent per-peer message search with date filters and limits
-- `GlobalSearchBuilder` — search across all dialogs
-
-### Updates & Keyboard
-- `IncomingMessage`: new `markdown_text()`, `html_text()`, and extended accessors
-- `CallbackQuery`: typed helpers for `game_short_name`, `chat_instance`, `data`
-- `InlineSend::edit_message()` support
-- Keyboard: added `request_phone`, `request_geo`, `request_poll`, `request_quiz`, `game`, `buy`, `copy_text` button constructors
-- Typing: topic typing via optional `top_msg_id` in `send_chat_action`
+> See the full [CHANGELOG](CHANGELOG.md) for complete history including v0.4.0's major additions (MTProto fixes, update engine, search, reactions, admin rights, and more).
 
 ---
 
@@ -137,7 +125,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-layer-client = "0.4.0"
+layer-client = "0.4.4"
 tokio = { version = "1", features = ["full"] }
 ```
 

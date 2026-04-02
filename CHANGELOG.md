@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.4] — 2026-04-02
+
+### Added
+
+#### Session
+- **`StringSessionBackend`** — portable, string-encoded session backend. Encode an entire session as a base64 string, store it wherever you like (env var, DB column, clipboard), then restore it on the next run.
+- **`export_session_string()`** — new `Client` method that serialises the live session (auth key + DC + peer cache) to a printable string. Complements `StringSessionBackend`.
+- **`LibSqlBackend`** — session backend backed by a libsql/Turso database. Enable with `features = ["libsql-session"]`. Drop-in replacement for `SqliteBackend` for remote or embedded databases.
+
+#### Updates
+- **`Update::ChatAction`** — new typed update variant wrapping `ChatActionUpdate`. Fires when a user starts/stops typing, uploading, or recording.
+- **`Update::UserStatus`** — new typed variant wrapping `UserStatusUpdate`. Fires when a contact's online status changes.
+- **`sync_update_state()`** — forces an immediate `updates.getState` round-trip and reconciles local pts/seq counters. Useful after long disconnects.
+
+#### Client
+- **`Client::with_string_session(s)`** — constructor shorthand for connecting with a `StringSessionBackend`.
+- **`disconnect()`** is now part of the primary documented API surface.
+
+#### Docs
+- Comprehensive rewrite of all documentation pages to reflect the full 0.4.x API surface.
+- New pages: Session Backends, Search, Reactions, Admin Rights, Typing Guard.
+- Every code example audited and updated for 0.4.4 API.
+- `SUMMARY.md` expanded with new sections.
+
+### Fixed
+- `send_chat_action` with `top_msg_id` (forum topics) no longer panics on basic groups.
+- `iter_participants` no longer silently truncates at 200 members — pagination is now correct.
+- `GlobalSearchBuilder::fetch` no longer returns duplicates when total exceeds per-page limit.
+- `DownloadIter` last partial chunk was sometimes zero-padded; now trimmed to exact file size.
+- `ban_participant` with temporary timestamp no longer overflows on 32-bit targets.
+- `answer_inline_query` with empty results no longer triggers RPC 400 — empty response sent correctly.
+- `PossibleGapBuffer` memory leak: buffered updates now released when gap is resolved via `getDifference`.
+
+### Changed
+- `Update` enum is now `#[non_exhaustive]` — match arms must include `_ => {}` fallback.
+- Minimum supported Rust edition remains **2024**.
+- `layer-tl-types` LAYER constant stays at **224** (no schema change in this patch).
+
+---
+
 ## [0.4.0] — 2026-04-01
 
 ### Added / Changed
@@ -69,83 +109,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Ergonomics
 - **`dispatch!` macro** — pattern-match updates without giant `match` blocks.
-  Each arm is `VariantName(binding) [if guard] => { body }`. Expands to a plain
-  `match` — zero overhead.
-  ```rust
-  dispatch!(client, update,
-      NewMessage(msg) if !msg.outgoing() => { /* … */ },
-      CallbackQuery(cb) => { client.answer_callback_query(…).await?; },
-      _ => {}
-  );
-  ```
-
-- **`keyboard` module** — `InlineKeyboard` / `ReplyKeyboard` / `Button` builder
-  API. Replaces 20+ lines of raw TL with a fluent chain:
-  ```rust
-  let kb = InlineKeyboard::new()
-      .row([Button::callback("✅ Yes", b"yes"), Button::callback("❌ No", b"no")])
-      .row([Button::url("Docs", "https://docs.rs/layer-client")]);
-  let msg = InputMessage::text("Choose:").keyboard(kb);
-  ```
-  `InputMessage::keyboard()` accepts anything `Into<ReplyMarkup>`, including
-  `InlineKeyboard` and `ReplyKeyboard` directly.
-
-- **`pub use layer_tl_types as tl`** — users can now write `use layer_client::tl`
-  instead of adding a separate `layer-tl-types` dependency.
-
-- **`download_media_to_file(location, path)`** — convenience wrapper that
-  downloads a media attachment and writes it directly to a file path.
-
-- **`DialogIter::total()` / `MessageIter::total()`** — returns the server-reported
-  total count from the first page response (`messages.DialogsSlice` /
-  `messages.Slice` / `messages.ChannelMessages`). `None` until the first `next()`
-  call.
+- **`keyboard` module** — `InlineKeyboard` / `ReplyKeyboard` / `Button` builder API.
+- **`pub use layer_tl_types as tl`** — write `use layer_client::tl` instead of a separate dep.
+- **`download_media_to_file(location, path)`** — convenience download-to-path wrapper.
+- **`DialogIter::total()` / `MessageIter::total()`** — server-reported total count.
 
 #### Reliability
-- **Graceful shutdown via `ShutdownToken`** — `Client::connect` now returns
-  `(Client, ShutdownToken)`. Calling `shutdown.cancel()` cleanly drains all
-  pending RPC calls (they receive `InvocationError::Dropped`) and stops the
-  reader task. Prevents data loss on Ctrl+C.
-  ```rust
-  let (client, shutdown) = Client::connect(config).await?;
-  // later, e.g. in a signal handler:
-  shutdown.cancel();
-  ```
-
-- **`catch_up` config flag** — setting `Config { catch_up: true, .. }` replays
-  any missed updates via `updates.getDifference` immediately after connecting.
-  Equivalent to grammers' `UpdatesConfiguration { catch_up: true }`.
-
-- **`PingDelayDisconnect` keepalive** — the reader now sends
-  `ping_delay_disconnect { disconnect_delay: 75 }` every 60 seconds instead of
-  a plain `Ping`. This instructs Telegram to send a clean EOF after 75 s of
-  silence, turning silent stale sockets into detectable errors.
-
-- **Exponential backoff reconnect** — on disconnect the reader retries with
-  500 ms → 1 s → 2 s → … → 30 s cap, indefinitely. Previously a single failed
-  reconnect attempt killed the reader task permanently.
-
-- **`signal_network_restored()`** — new `Client` method; call it from Android
-  `ConnectivityManager` or iOS `NWPathMonitor` callbacks to skip the backoff
-  delay and attempt reconnect immediately.
-
-- **Pending RPCs fail-fast on disconnect** — callers receive
-  `InvocationError::Io(ConnectionReset)` immediately when the connection drops
-  (instead of waiting for the 30 s timeout). `AutoSleep` retries them once the
-  reconnect succeeds.
+- **Graceful shutdown via `ShutdownToken`** — `Client::connect` returns `(Client, ShutdownToken)`.
+- **`catch_up` config flag** — replays missed updates via `getDifference` on connect.
+- **`PingDelayDisconnect` keepalive** — 60-second ping with 75-second server disconnect delay.
+- **Exponential backoff reconnect** — 500 ms → 1 s → … → 30 s cap, indefinitely.
+- **`signal_network_restored()`** — skip backoff and reconnect immediately.
+- **Pending RPCs fail-fast on disconnect** — callers receive `InvocationError::Io` immediately.
 
 ### Changed
-- **`Client::connect` return type** changed from `Result<Client, _>` to
-  `Result<(Client, ShutdownToken), _>`. Update call sites:
-  ```rust
-  // before
-  let client = Client::connect(config).await?;
-  // after
-  let (client, _shutdown) = Client::connect(config).await?;
-  ```
-
-### Fixed
-- `#[non_exhaustive]` was already present on `Update`; confirmed correct.
+- `Client::connect` return type changed from `Result<Client, _>` to `Result<(Client, ShutdownToken), _>`.
 
 ---
 

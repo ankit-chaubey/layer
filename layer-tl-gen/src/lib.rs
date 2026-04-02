@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/layer-tl-gen/0.4.0")]
+#![doc(html_root_url = "https://docs.rs/layer-tl-gen/0.4.4")]
 //! Build-time code generator that transforms a parsed TL schema into Rust source files.
 //!
 //! Intended to be used from a `build.rs` script.
@@ -26,9 +26,9 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod codegen;
 mod grouper;
 mod metadata;
 mod namegen;
-pub mod codegen;
 
-pub use codegen::{generate, Config, Outputs};
+pub use codegen::{Config, Outputs, generate};

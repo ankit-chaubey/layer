@@ -54,8 +54,8 @@ impl Message {
     /// ```
     pub fn to_plaintext_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(8 + 8 + 4 + self.body.len());
-        buf.extend(0i64.to_le_bytes());           // auth_key_id = 0
-        buf.extend(self.id.0.to_le_bytes());      // message_id
+        buf.extend(0i64.to_le_bytes()); // auth_key_id = 0
+        buf.extend(self.id.0.to_le_bytes()); // message_id
         buf.extend((self.body.len() as u32).to_le_bytes()); // length
         buf.extend(&self.body);
         buf

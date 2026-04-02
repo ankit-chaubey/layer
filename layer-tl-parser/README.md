@@ -18,7 +18,7 @@
 
 ```toml
 [dependencies]
-layer-tl-parser = "0.4.0"
+layer-tl-parser = "0.4.4"
 ```
 
 ---

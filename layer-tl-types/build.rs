@@ -20,19 +20,19 @@ fn main() -> io::Result<()> {
 
     let schemas: &[(&str, bool, bool)] = &[
         // (path,         feature:tl-api, feature:tl-mtproto)
-        ("tl/api.tl",     true,  false),
-        ("tl/mtproto.tl", false, true ),
+        ("tl/api.tl", true, false),
+        ("tl/mtproto.tl", false, true),
     ];
 
     for (path, api_feature, mtproto_feature) in schemas {
-        let enabled = (*api_feature     && cfg!(feature = "tl-api"))
-                   || (*mtproto_feature && cfg!(feature = "tl-mtproto"));
+        let enabled = (*api_feature && cfg!(feature = "tl-api"))
+            || (*mtproto_feature && cfg!(feature = "tl-mtproto"));
         if !enabled {
             continue;
         }
 
-        let content = fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("Cannot read {path}: {e}"));
+        let content =
+            fs::read_to_string(path).unwrap_or_else(|e| panic!("Cannot read {path}: {e}"));
 
         // Cargo rebuild trigger
         println!("cargo:rerun-if-changed={path}");
@@ -40,7 +40,8 @@ fn main() -> io::Result<()> {
         // Extract `// LAYER N` from anywhere in the file
         for line in content.lines() {
             if let Some(rest) = line.strip_prefix("// LAYER ")
-                && let Ok(n) = rest.trim().parse::<i32>() {
+                && let Ok(n) = rest.trim().parse::<i32>()
+            {
                 layer = layer.max(n);
                 break;
             }
@@ -49,19 +50,19 @@ fn main() -> io::Result<()> {
         for result in parse_tl_file(&content) {
             match result {
                 Ok(def) => all_defs.push(def),
-                Err(e)  => eprintln!("cargo:warning=TL parse error in {path}: {e}"),
+                Err(e) => eprintln!("cargo:warning=TL parse error in {path}: {e}"),
             }
         }
     }
 
     // ── Build config from features ──────────────────────────────────────────
     let config = Config {
-        gen_name_for_id:            cfg!(feature = "name-for-id"),
-        deserializable_functions:   cfg!(feature = "deserializable-functions"),
-        impl_debug:                 cfg!(feature = "impl-debug"),
-        impl_from_type:             cfg!(feature = "impl-from-type"),
-        impl_from_enum:             cfg!(feature = "impl-from-enum"),
-        impl_serde:                 cfg!(feature = "impl-serde"),
+        gen_name_for_id: cfg!(feature = "name-for-id"),
+        deserializable_functions: cfg!(feature = "deserializable-functions"),
+        impl_debug: cfg!(feature = "impl-debug"),
+        impl_from_type: cfg!(feature = "impl-from-type"),
+        impl_from_enum: cfg!(feature = "impl-from-enum"),
+        impl_serde: cfg!(feature = "impl-serde"),
     };
 
     // ── Generate code ───────────────────────────────────────────────────────
