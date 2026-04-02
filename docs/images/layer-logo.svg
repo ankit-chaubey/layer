@@ -1,0 +1,19 @@
+
+<svg width="900" height="320" viewBox="0 0 900 320" xmlns="http://www.w3.org/2000/svg">
+<rect x="80" y="220" width="140" height="32" rx="10" fill="#1E90FF"/>
+<rect x="75" y="200" width="140" height="32" rx="10" fill="#46AAFF"/>
+<rect x="70" y="180" width="140" height="32" rx="10" fill="#6EBEFF"/>
+<rect x="65" y="160" width="140" height="32" rx="10" fill="#96D2FF"/>
+
+<circle cx="90" cy="140" r="5" fill="white"/>
+<circle cx="120" cy="130" r="5" fill="white"/>
+<circle cx="150" cy="145" r="5" fill="white"/>
+<circle cx="180" cy="132" r="5" fill="white"/>
+
+<line x1="90" y1="140" x2="120" y2="130" stroke="white" stroke-width="2"/>
+<line x1="120" y1="130" x2="150" y2="145" stroke="white" stroke-width="2"/>
+<line x1="150" y1="145" x2="180" y2="132" stroke="white" stroke-width="2"/>
+
+<text x="260" y="180" font-size="90" font-family="Arial" fill="#1E293B">Layer</text>
+<text x="265" y="225" font-size="30" font-family="Arial" fill="#1E90FF">Rust MTProto Framework</text>
+</svg>
