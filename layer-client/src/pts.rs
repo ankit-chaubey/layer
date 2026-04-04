@@ -15,7 +15,7 @@ use std::time::Instant;
 use layer_tl_types as tl;
 use layer_tl_types::{Cursor, Deserializable};
 
-use crate::{Client, InvocationError, RpcError, update};
+use crate::{Client, InvocationError, RpcError, attach_client_to_update, update};
 
 // ─── PossibleGapBuffer (G-17) ─────────────────────────────────────────────────
 
@@ -347,7 +347,7 @@ impl Client {
                     self.cache_chats_slice_pub(&d.chats).await;
                     for msg in d.new_messages {
                         all_updates.push(update::Update::NewMessage(
-                            update::IncomingMessage::from_raw(msg),
+                            update::IncomingMessage::from_raw(msg).with_client(self.clone()),
                         ));
                     }
                     for upd in d.other_updates {
@@ -388,7 +388,7 @@ impl Client {
                     self.cache_chats_slice_pub(&d.chats).await;
                     for msg in d.new_messages {
                         all_updates.push(update::Update::NewMessage(
-                            update::IncomingMessage::from_raw(msg),
+                            update::IncomingMessage::from_raw(msg).with_client(self.clone()),
                         ));
                     }
                     for upd in d.other_updates {
@@ -528,7 +528,7 @@ impl Client {
                 self.cache_chats_slice_pub(&d.chats).await;
                 for msg in d.new_messages {
                     updates.push(update::Update::NewMessage(
-                        update::IncomingMessage::from_raw(msg),
+                        update::IncomingMessage::from_raw(msg).with_client(self.clone()),
                     ));
                 }
                 for upd in d.other_updates {
@@ -548,7 +548,7 @@ impl Client {
                 self.cache_chats_slice_pub(&d.chats).await;
                 for msg in d.messages {
                     updates.push(update::Update::NewMessage(
-                        update::IncomingMessage::from_raw(msg),
+                        update::IncomingMessage::from_raw(msg).with_client(self.clone()),
                     ));
                 }
                 self.inner
@@ -975,7 +975,7 @@ impl Client {
                             .remove(&channel_id);
                         updates.splice(0..0, buffered);
                         for u in updates {
-                            if utx.try_send(u).is_err() {
+                            if utx.try_send(attach_client_to_update(u, &c)).is_err() {
                                 tracing::warn!(
                                     "[layer] update channel full — dropping ch gap update"
                                 );

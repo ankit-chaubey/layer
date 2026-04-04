@@ -12,15 +12,54 @@ use crate::{Client, InvocationError as Error};
 // ─── IncomingMessage ─────────────────────────────────────────────────────────
 
 /// A new or edited message.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct IncomingMessage {
     /// The underlying TL message object.
     pub raw: tl::enums::Message,
+    /// An embedded client reference, populated for messages received via
+    /// `stream_updates()` and returned from send/search/history APIs.
+    /// When present, the clientless action methods (`reply`, `respond`,
+    /// `edit`, `delete`, `pin`, `unpin`, `react`, …) can be called without
+    /// passing a `&Client` argument.
+    pub client: Option<Client>,
+}
+
+impl std::fmt::Debug for IncomingMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IncomingMessage")
+            .field("raw", &self.raw)
+            .field("has_client", &self.client.is_some())
+            .finish()
+    }
 }
 
 impl IncomingMessage {
     pub fn from_raw(raw: tl::enums::Message) -> Self {
-        Self { raw }
+        Self { raw, client: None }
+    }
+
+    /// Attach a `Client` so the clientless action methods work.
+    ///
+    /// Returns `self` for chaining:
+    /// ```rust,no_run
+    /// # use layer_client::update::IncomingMessage;
+    /// # fn ex(raw: layer_tl_types::enums::Message, client: layer_client::Client) {
+    /// let msg = IncomingMessage::from_raw(raw).with_client(client);
+    /// # }
+    /// ```
+    pub fn with_client(mut self, client: Client) -> Self {
+        self.client = Some(client);
+        self
+    }
+
+    /// Convenience: return an error when no client is embedded.
+    fn require_client(&self, method: &str) -> Result<&Client, Error> {
+        self.client.as_ref().ok_or_else(|| {
+            Error::Deserialize(format!(
+                "{method}: this IncomingMessage has no embedded client — \
+                 use the `_with` variant and pass a &Client explicitly"
+            ))
+        })
     }
 
     /// The message text (or caption for media messages).
@@ -361,10 +400,29 @@ impl IncomingMessage {
         crate::media::Document::from_media(self.media()?)
     }
 
-    // ── Convenience action methods (mirrors grammers Message API) ─────────────
+    // ── Convenience action methods ──────────────────────────────────────────
+    //
+    // Two tiers for every action:
+    //  1. Clientless  — `msg.reply("hi").await?`
+    //     Uses the embedded `self.client`. Returns an error if the message was
+    //     constructed without `.with_client(…)`.
+    //  2. Explicit    — `msg.reply_with(&client, "hi").await?`
+    //     Always works, even when no client is embedded.
 
-    /// Reply to this message with plain text (shorthand).
-    pub async fn reply(&self, client: &mut Client, text: impl Into<String>) -> Result<(), Error> {
+    // ── reply ───────────────────────────────────────────────────────────────
+
+    /// Reply to this message (clientless — requires an embedded client).
+    ///
+    /// Returns the sent message so you can chain further operations on it.
+    pub async fn reply(&self, text: impl Into<String>) -> Result<IncomingMessage, Error> {
+        let client = self.require_client("reply")?.clone();
+        self.reply_with(&client, text).await
+    }
+
+    /// Reply to this message with a plain string.
+    ///
+    /// Returns the sent message so you can chain further operations on it.
+    pub async fn reply_with(&self, client: &Client, text: impl Into<String>) -> Result<IncomingMessage, Error> {
         let peer = match self.peer_id() {
             Some(p) => p.clone(),
             None => return Err(Error::Deserialize("cannot reply: unknown peer".into())),
@@ -378,8 +436,14 @@ impl IncomingMessage {
             .await
     }
 
-    /// Reply to this message with a full [`InputMessage`](crate::InputMessage) (supports media, keyboards, etc.).
-    pub async fn reply_ex(&self, client: &Client, msg: crate::InputMessage) -> Result<(), Error> {
+    /// Reply with a full [`InputMessage`](crate::InputMessage) (clientless).
+    pub async fn reply_ex(&self, msg: crate::InputMessage) -> Result<IncomingMessage, Error> {
+        let client = self.require_client("reply_ex")?.clone();
+        self.reply_ex_with(&client, msg).await
+    }
+
+    /// Reply with a full [`InputMessage`](crate::InputMessage).
+    pub async fn reply_ex_with(&self, client: &Client, msg: crate::InputMessage) -> Result<IncomingMessage, Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -389,8 +453,16 @@ impl IncomingMessage {
             .await
     }
 
-    /// Send a new message to the same chat **without** quoting this message.
-    pub async fn respond(&self, client: &Client, text: impl Into<String>) -> Result<(), Error> {
+    // ── respond ─────────────────────────────────────────────────────────────
+
+    /// Send to the same chat without quoting (clientless).
+    pub async fn respond(&self, text: impl Into<String>) -> Result<IncomingMessage, Error> {
+        let client = self.require_client("respond")?.clone();
+        self.respond_with(&client, text).await
+    }
+
+    /// Send to the same chat without quoting.
+    pub async fn respond_with(&self, client: &Client, text: impl Into<String>) -> Result<IncomingMessage, Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -400,8 +472,14 @@ impl IncomingMessage {
             .await
     }
 
-    /// Send a full [`InputMessage`](crate::InputMessage) to the same chat without quoting.
-    pub async fn respond_ex(&self, client: &Client, msg: crate::InputMessage) -> Result<(), Error> {
+    /// Full [`InputMessage`] to the same chat without quoting (clientless).
+    pub async fn respond_ex(&self, msg: crate::InputMessage) -> Result<IncomingMessage, Error> {
+        let client = self.require_client("respond_ex")?.clone();
+        self.respond_ex_with(&client, msg).await
+    }
+
+    /// Full [`InputMessage`] to the same chat without quoting.
+    pub async fn respond_ex_with(&self, client: &Client, msg: crate::InputMessage) -> Result<IncomingMessage, Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -409,8 +487,16 @@ impl IncomingMessage {
         client.send_message_to_peer_ex(peer, &msg).await
     }
 
-    /// Edit the text of this message.
-    pub async fn edit(&self, client: &Client, new_text: impl Into<String>) -> Result<(), Error> {
+    // ── edit ────────────────────────────────────────────────────────────────
+
+    /// Edit this message (clientless).
+    pub async fn edit(&self, new_text: impl Into<String>) -> Result<(), Error> {
+        let client = self.require_client("edit")?.clone();
+        self.edit_with(&client, new_text).await
+    }
+
+    /// Edit this message.
+    pub async fn edit_with(&self, client: &Client, new_text: impl Into<String>) -> Result<(), Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -418,13 +504,29 @@ impl IncomingMessage {
         client.edit_message(peer, self.id(), new_text.into().as_str()).await
     }
 
+    // ── delete ──────────────────────────────────────────────────────────────
+
+    /// Delete this message (clientless).
+    pub async fn delete(&self) -> Result<(), Error> {
+        let client = self.require_client("delete")?.clone();
+        self.delete_with(&client).await
+    }
+
     /// Delete this message.
-    pub async fn delete(&self, client: &Client) -> Result<(), Error> {
+    pub async fn delete_with(&self, client: &Client) -> Result<(), Error> {
         client.delete_messages(vec![self.id()], true).await
     }
 
-    /// Mark this message (and all messages before it in the same chat) as read.
-    pub async fn mark_as_read(&self, client: &Client) -> Result<(), Error> {
+    // ── mark_as_read ────────────────────────────────────────────────────────
+
+    /// Mark this message (and all before it) as read (clientless).
+    pub async fn mark_as_read(&self) -> Result<(), Error> {
+        let client = self.require_client("mark_as_read")?.clone();
+        self.mark_as_read_with(&client).await
+    }
+
+    /// Mark this message (and all before it) as read.
+    pub async fn mark_as_read_with(&self, client: &Client) -> Result<(), Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -432,8 +534,16 @@ impl IncomingMessage {
         client.mark_as_read(peer).await
     }
 
-    /// Pin this message in the chat (silently — no notification).
-    pub async fn pin(&self, client: &Client) -> Result<(), Error> {
+    // ── pin ─────────────────────────────────────────────────────────────────
+
+    /// Pin this message silently (clientless).
+    pub async fn pin(&self) -> Result<(), Error> {
+        let client = self.require_client("pin")?.clone();
+        self.pin_with(&client).await
+    }
+
+    /// Pin this message silently.
+    pub async fn pin_with(&self, client: &Client) -> Result<(), Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -441,8 +551,16 @@ impl IncomingMessage {
         client.pin_message(peer, self.id(), true, false, false).await
     }
 
-    /// Unpin this message from the chat.
-    pub async fn unpin(&self, client: &Client) -> Result<(), Error> {
+    // ── unpin ───────────────────────────────────────────────────────────────
+
+    /// Unpin this message (clientless).
+    pub async fn unpin(&self) -> Result<(), Error> {
+        let client = self.require_client("unpin")?.clone();
+        self.unpin_with(&client).await
+    }
+
+    /// Unpin this message.
+    pub async fn unpin_with(&self, client: &Client) -> Result<(), Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -450,8 +568,16 @@ impl IncomingMessage {
         client.unpin_message(peer, self.id()).await
     }
 
-    /// Forward this message to another chat.
-    pub async fn forward_to(
+    // ── forward_to ──────────────────────────────────────────────────────────
+
+    /// Forward to another chat (clientless).
+    pub async fn forward_to(&self, destination: impl Into<crate::PeerRef>) -> Result<(), Error> {
+        let client = self.require_client("forward_to")?.clone();
+        self.forward_to_with(&client, destination).await
+    }
+
+    /// Forward to another chat.
+    pub async fn forward_to_with(
         &self,
         client: &Client,
         destination: impl Into<crate::PeerRef>,
@@ -465,10 +591,16 @@ impl IncomingMessage {
             .await
     }
 
-    /// Download the media attached to this message to `path`.
-    ///
-    /// Returns `true` if media was found and downloaded, `false` if there is no media.
-    pub async fn download_media(
+    // ── download_media ──────────────────────────────────────────────────────
+
+    /// Download attached media to `path` (clientless).
+    pub async fn download_media(&self, path: impl AsRef<std::path::Path>) -> Result<bool, Error> {
+        let client = self.require_client("download_media")?.clone();
+        self.download_media_with(&client, path).await
+    }
+
+    /// Download attached media to `path`. Returns `true` if media was found.
+    pub async fn download_media_with(
         &self,
         client: &Client,
         path: impl AsRef<std::path::Path>,
@@ -481,17 +613,28 @@ impl IncomingMessage {
         }
     }
 
-    /// Send a reaction to this message.
+    // ── react ───────────────────────────────────────────────────────────────
+
+    /// Send a reaction (clientless).
     ///
     /// # Example
     /// ```rust,no_run
-    /// # async fn f(client: layer_client::Client, msg: layer_client::update::IncomingMessage)
+    /// # async fn f(msg: layer_client::update::IncomingMessage)
     /// #   -> Result<(), layer_client::InvocationError> {
     /// use layer_client::reactions::InputReactions;
-    /// msg.react(&client, InputReactions::emoticon("👍")).await?;
+    /// msg.react(InputReactions::emoticon("👍")).await?;
     /// # Ok(()) }
     /// ```
     pub async fn react(
+        &self,
+        reactions: impl Into<crate::reactions::InputReactions>,
+    ) -> Result<(), Error> {
+        let client = self.require_client("react")?.clone();
+        self.react_with(&client, reactions).await
+    }
+
+    /// Send a reaction.
+    pub async fn react_with(
         &self,
         client: &Client,
         reactions: impl Into<crate::reactions::InputReactions>,
@@ -503,9 +646,52 @@ impl IncomingMessage {
         client.send_reaction(peer, self.id(), reactions).await
     }
 
-    /// Fetch the message this is a reply to. Returns `None` if this message is not a reply.
-    pub async fn get_reply(&self, client: &Client) -> Result<Option<IncomingMessage>, Error> {
+    // ── get_reply ───────────────────────────────────────────────────────────
+
+    /// Fetch the message this is a reply to (clientless).
+    pub async fn get_reply(&self) -> Result<Option<IncomingMessage>, Error> {
+        let client = self.require_client("get_reply")?.clone();
+        self.get_reply_with(&client).await
+    }
+
+    /// Fetch the message this is a reply to.
+    pub async fn get_reply_with(&self, client: &Client) -> Result<Option<IncomingMessage>, Error> {
         client.get_reply_to_message(self).await
+    }
+
+    // ── sender helpers ──────────────────────────────────────────────────────
+
+    /// The sender's bare user-ID, if this is a user message.
+    ///
+    /// Returns `None` for anonymous channel posts.
+    pub fn sender_user_id(&self) -> Option<i64> {
+        match self.sender_id()? {
+            tl::enums::Peer::User(u) => Some(u.user_id),
+            _ => None,
+        }
+    }
+
+    /// The chat/channel-ID the sender belongs to (non-user senders).
+    pub fn sender_chat_id(&self) -> Option<i64> {
+        match self.sender_id()? {
+            tl::enums::Peer::Chat(c) => Some(c.chat_id),
+            tl::enums::Peer::Channel(c) => Some(c.channel_id),
+            _ => None,
+        }
+    }
+
+    /// Fetch the sender as a typed [`User`](crate::types::User) (clientless, async).
+    ///
+    /// Returns `None` if the sender is not a user, or if the user is not in
+    /// the local peer cache.  Performs a network call if needed.
+    pub async fn sender_user(&self) -> Result<Option<crate::types::User>, Error> {
+        let uid = match self.sender_user_id() {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+        let client = self.require_client("sender_user")?.clone();
+        let users = client.get_users_by_id(&[uid]).await?;
+        Ok(users.into_iter().next().flatten())
     }
 }
 
@@ -580,7 +766,7 @@ impl CallbackQuery {
     }
 
     /// Answer the callback query (flat helper — prefer `answer()` builder).
-    pub async fn answer_flat(&self, client: &mut Client, text: Option<&str>) -> Result<(), Error> {
+    pub async fn answer_flat(&self, client: &Client, text: Option<&str>) -> Result<(), Error> {
         client
             .answer_callback_query(self.query_id, text, false)
             .await
@@ -588,7 +774,7 @@ impl CallbackQuery {
     }
 
     /// Answer with a popup alert (flat helper — prefer `answer().alert(…)`).
-    pub async fn answer_alert(&self, client: &mut Client, text: &str) -> Result<(), Error> {
+    pub async fn answer_alert(&self, client: &Client, text: &str) -> Result<(), Error> {
         client
             .answer_callback_query(self.query_id, Some(text), true)
             .await
@@ -1247,6 +1433,7 @@ fn make_short_dm(m: tl::types::UpdateShortMessage) -> IncomingMessage {
     };
     IncomingMessage {
         raw: tl::enums::Message::Message(msg),
+        client: None,
     }
 }
 
@@ -1304,5 +1491,6 @@ fn make_short_chat(m: tl::types::UpdateShortChatMessage) -> IncomingMessage {
     };
     IncomingMessage {
         raw: tl::enums::Message::Message(msg),
+        client: None,
     }
 }
