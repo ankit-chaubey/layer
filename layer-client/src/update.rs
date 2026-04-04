@@ -1063,17 +1063,25 @@ pub enum Update {
 
 // ─── MTProto update container IDs ────────────────────────────────────────────
 
+#[allow(dead_code)]
 const ID_UPDATES_TOO_LONG: u32 = 0xe317af7e;
+#[allow(dead_code)]
 const ID_UPDATE_SHORT_MESSAGE: u32 = 0x313bc7f8;
+#[allow(dead_code)]
 const ID_UPDATE_SHORT_CHAT_MSG: u32 = 0x4d6deea5;
+#[allow(dead_code)]
 const ID_UPDATE_SHORT: u32 = 0x78d4dec1;
+#[allow(dead_code)]
 const ID_UPDATES: u32 = 0x74ae4240;
+#[allow(dead_code)]
 const ID_UPDATES_COMBINED: u32 = 0x725b04c3;
+#[allow(dead_code)]
 const ID_UPDATE_SHORT_SENT_MSG: u32 = 0x9015e101;
 
 // ─── Parser ──────────────────────────────────────────────────────────────────
 
 /// Parse raw update container bytes into high-level [`Update`] values.
+#[allow(dead_code)]
 pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
     if bytes.len() < 4 {
         return vec![];
