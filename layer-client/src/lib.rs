@@ -2195,28 +2195,61 @@ impl Client {
         use layer_tl_types::{Cursor, Deserializable};
         use crate::pts::PtsCheckResult;
 
-        // Extract (seq, seq_start) for containers that carry seq.
+        // Parse the container ONCE and capture seq_info, users, chats, and the
+        // bare update list together.  The old code parsed twice (once for seq_info,
+        // once for raw updates) and both times discarded users/chats, so the
+        // PeerCache was never populated from incoming update containers — hence
+        // the "no access_hash for user X, using 0" warnings.
+        struct ParsedContainer {
+            seq_info: Option<(i32, i32)>,
+            users:    Vec<tl::enums::User>,
+            chats:    Vec<tl::enums::Chat>,
+            updates:  Vec<tl::enums::Update>,
+        }
+
         let mut cur = Cursor::from_slice(body);
-        let seq_info: Option<(i32, i32)> = match cid {
+        let parsed: ParsedContainer = match cid {
             0x74ae4240 => {
-                // updates#74ae4240 — seq_start == seq
+                // updates#74ae4240
                 match tl::enums::Updates::deserialize(&mut cur) {
-                    Ok(tl::enums::Updates::Updates(u)) => Some((u.seq, u.seq)),
-                    _ => None,
+                    Ok(tl::enums::Updates::Updates(u)) => ParsedContainer {
+                        seq_info: Some((u.seq, u.seq)),
+                        users:    u.users,
+                        chats:    u.chats,
+                        updates:  u.updates,
+                    },
+                    _ => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![] },
                 }
             }
             0x725b04c3 => {
                 // updatesCombined#725b04c3
                 match tl::enums::Updates::deserialize(&mut cur) {
-                    Ok(tl::enums::Updates::Combined(u)) => Some((u.seq, u.seq_start)),
-                    _ => None,
+                    Ok(tl::enums::Updates::Combined(u)) => ParsedContainer {
+                        seq_info: Some((u.seq, u.seq_start)),
+                        users:    u.users,
+                        chats:    u.chats,
+                        updates:  u.updates,
+                    },
+                    _ => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![] },
                 }
             }
-            _ => None,
+            0x78d4dec1 => {
+                // updateShort — no users/chats/seq
+                match tl::types::UpdateShort::deserialize(&mut Cursor::from_slice(body)) {
+                    Ok(u) => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![u.update] },
+                    Err(_) => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![] },
+                }
+            }
+            _ => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![] },
         };
 
+        // Feed users/chats into the PeerCache so access_hash lookups work.
+        if !parsed.users.is_empty() || !parsed.chats.is_empty() {
+            self.cache_users_and_chats(&parsed.users, &parsed.chats).await;
+        }
+
         // Fix B5: synchronous seq gate — check before processing any updates.
-        if let Some((seq, seq_start)) = seq_info {
+        if let Some((seq, seq_start)) = parsed.seq_info {
             if seq != 0 {
                 let result = self
                     .inner
@@ -2264,32 +2297,7 @@ impl Client {
             }
         }
 
-        // Flatten the container into bare tl::enums::Update items.
-        let mut cur = Cursor::from_slice(body);
-        let mut raw: Vec<tl::enums::Update> = match cid {
-            0x78d4dec1 => {
-                // updateShort
-                match tl::types::UpdateShort::deserialize(&mut cur) {
-                    Ok(u) => vec![u.update],
-                    Err(_) => vec![],
-                }
-            }
-            0x74ae4240 => {
-                // updates
-                match tl::enums::Updates::deserialize(&mut cur) {
-                    Ok(tl::enums::Updates::Updates(u)) => u.updates,
-                    _ => vec![],
-                }
-            }
-            0x725b04c3 => {
-                // updatesCombined
-                match tl::enums::Updates::deserialize(&mut cur) {
-                    Ok(tl::enums::Updates::Combined(u)) => u.updates,
-                    _ => vec![],
-                }
-            }
-            _ => vec![],
-        };
+        let mut raw: Vec<tl::enums::Update> = parsed.updates;
 
         // Fix B1: sort by (pts - pts_count) before dispatching — mirrors grammers'
         // updates.sort_by_key(update_sort_key).  Without this, an out-of-order batch
@@ -2306,7 +2314,7 @@ impl Client {
         // (In our spawn-per-update model we can't track unresolved gaps inline, but
         // advancing here at minimum prevents premature seq advancement before the
         // container's pts checks have even been spawned.)
-        if let Some((seq, _)) = seq_info {
+        if let Some((seq, _)) = parsed.seq_info {
             if seq != 0 {
                 self.inner.pts_state.lock().await.advance_seq(seq);
             }
@@ -5047,9 +5055,30 @@ async fn recv_abridged(stream: &mut TcpStream) -> Result<Vec<u8>, InvocationErro
 /// Receive a plaintext (pre-auth) frame and deserialize it.
 async fn recv_frame_plain<T: Deserializable>(
     stream: &mut TcpStream,
-    _kind: &FrameKind,
+    kind: &FrameKind,
 ) -> Result<T, InvocationError> {
-    let raw = recv_abridged(stream).await?; // DH always uses abridged for plaintext
+    // DH handshake frames use the same transport framing as all other frames.
+    // The old code hardcoded recv_abridged here, which worked only when transport
+    // was Abridged.  With Intermediate or Full, Telegram responds with a 4-byte
+    // LE length prefix but we tried to parse it as a 1-byte Abridged header —
+    // mangling the length, reading garbage bytes, and corrupting the auth key.
+    // Every single subsequent decrypt then failed with AuthKeyMismatch.
+    let raw = match kind {
+        FrameKind::Abridged => recv_abridged(stream).await?,
+        FrameKind::Intermediate | FrameKind::Full { .. } => {
+            let mut len_buf = [0u8; 4];
+            stream.read_exact(&mut len_buf).await?;
+            let len = u32::from_le_bytes(len_buf) as usize;
+            if len == 0 || len > 1 << 24 {
+                return Err(InvocationError::Deserialize(format!(
+                    "plaintext frame: implausible length {len}"
+                )));
+            }
+            let mut buf = vec![0u8; len];
+            stream.read_exact(&mut buf).await?;
+            buf
+        }
+    };
     if raw.len() < 20 {
         return Err(InvocationError::Deserialize(
             "plaintext frame too short".into(),
@@ -5061,6 +5090,11 @@ async fn recv_frame_plain<T: Deserializable>(
         ));
     }
     let body_len = u32::from_le_bytes(raw[16..20].try_into().unwrap()) as usize;
+    if 20 + body_len > raw.len() {
+        return Err(InvocationError::Deserialize(
+            "plaintext frame: body_len exceeds frame size".into(),
+        ));
+    }
     let mut cur = Cursor::from_slice(&raw[20..20 + body_len]);
     T::deserialize(&mut cur).map_err(Into::into)
 }
