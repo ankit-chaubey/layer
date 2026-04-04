@@ -97,6 +97,103 @@ impl User {
         }
     }
 
+    /// All active usernames (including the primary username).
+    pub fn usernames(&self) -> Vec<&str> {
+        let mut names = Vec::new();
+        // Primary username
+        if let Some(u) = self.inner().username.as_deref() {
+            names.push(u);
+        }
+        // Additional usernames
+        if let Some(extras) = &self.inner().usernames {
+            for u in extras {
+                let tl::enums::Username::Username(un) = u;
+                if un.active {
+                    names.push(un.username.as_str());
+                }
+            }
+        }
+        names
+    }
+
+    /// The user's current online status.
+    pub fn status(&self) -> Option<&tl::enums::UserStatus> {
+        self.inner().status.as_ref()
+    }
+
+    /// Profile photo, if set.
+    pub fn photo(&self) -> Option<&tl::types::UserProfilePhoto> {
+        match self.inner().photo.as_ref()? {
+            tl::enums::UserProfilePhoto::UserProfilePhoto(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// `true` if this is the currently logged-in user.
+    pub fn is_self(&self) -> bool {
+        self.inner().is_self
+    }
+
+    /// `true` if this user is in the logged-in user's contact list.
+    pub fn contact(&self) -> bool {
+        self.inner().contact
+    }
+
+    /// `true` if the logged-in user is also in this user's contact list.
+    pub fn mutual_contact(&self) -> bool {
+        self.inner().mutual_contact
+    }
+
+    /// `true` if this account has been flagged as a scam.
+    pub fn scam(&self) -> bool {
+        self.inner().scam
+    }
+
+    /// `true` if this account has been restricted (e.g. spam-banned).
+    pub fn restricted(&self) -> bool {
+        self.inner().restricted
+    }
+
+    /// `true` if the bot does not display in inline mode publicly.
+    pub fn bot_privacy(&self) -> bool {
+        self.inner().bot_nochats
+    }
+
+    /// `true` if the bot supports being added to groups.
+    pub fn bot_supports_chats(&self) -> bool {
+        !self.inner().bot_nochats
+    }
+
+    /// `true` if the bot can be used inline even without a location share.
+    pub fn bot_inline_geo(&self) -> bool {
+        self.inner().bot_inline_geo
+    }
+
+    /// `true` if this account belongs to Telegram support staff.
+    pub fn support(&self) -> bool {
+        self.inner().support
+    }
+
+    /// Language code reported by the user's client.
+    pub fn lang_code(&self) -> Option<&str> {
+        self.inner().lang_code.as_deref()
+    }
+
+    /// Restriction reasons (why this account is unavailable in certain regions).
+    pub fn restriction_reason(&self) -> Vec<&tl::enums::RestrictionReason> {
+        self.inner()
+            .restriction_reason
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .collect()
+    }
+
+    /// Bot inline placeholder text (shown in the compose bar when the user activates inline mode).
+    pub fn bot_inline_placeholder(&self) -> Option<&str> {
+        self.inner().bot_inline_placeholder.as_deref()
+    }
+
     /// Convert to a `Peer` for use in API calls.
     pub fn as_peer(&self) -> tl::enums::Peer {
         tl::enums::Peer::User(tl::types::PeerUser { user_id: self.id() })
@@ -190,6 +287,17 @@ impl std::fmt::Display for Group {
 
 // ─── Channel ──────────────────────────────────────────────────────────────────
 
+/// The kind of a channel or supergroup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelKind {
+    /// A broadcast channel (posts only, no member replies by default).
+    Broadcast,
+    /// A supergroup (all members can post).
+    Megagroup,
+    /// A gigagroup / broadcast group (large public broadcast supergroup).
+    Gigagroup,
+}
+
 /// Wrapper around a Telegram channel or supergroup (`tl::types::Channel`).
 #[derive(Debug, Clone)]
 pub struct Channel {
@@ -253,6 +361,62 @@ impl Channel {
     /// Approximate member count (may be `None` for private channels).
     pub fn participants_count(&self) -> Option<i32> {
         self.raw.participants_count
+    }
+
+    /// The kind of this channel.
+    ///
+    /// Returns `ChannelKind::Megagroup` for supergroups, `ChannelKind::Broadcast` for
+    /// broadcast channels, and `ChannelKind::Gigagroup` for large broadcast groups.
+    pub fn kind(&self) -> ChannelKind {
+        if self.raw.megagroup {
+            ChannelKind::Megagroup
+        } else if self.raw.gigagroup {
+            ChannelKind::Gigagroup
+        } else {
+            ChannelKind::Broadcast
+        }
+    }
+
+    /// All active usernames (including the primary username).
+    pub fn usernames(&self) -> Vec<&str> {
+        let mut names = Vec::new();
+        if let Some(u) = self.raw.username.as_deref() {
+            names.push(u);
+        }
+        if let Some(extras) = &self.raw.usernames {
+            for u in extras {
+                let tl::enums::Username::Username(un) = u;
+                if un.active {
+                    names.push(un.username.as_str());
+                }
+            }
+        }
+        names
+    }
+
+    /// Profile photo, if set.
+    pub fn photo(&self) -> Option<&tl::types::ChatPhoto> {
+        match &self.raw.photo {
+            tl::enums::ChatPhoto::ChatPhoto(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Admin rights granted to the logged-in user in this channel, if any.
+    pub fn admin_rights(&self) -> Option<&tl::types::ChatAdminRights> {
+        match self.raw.admin_rights.as_ref()? {
+            tl::enums::ChatAdminRights::ChatAdminRights(r) => Some(r),
+        }
+    }
+
+    /// Restriction reasons (why this channel is unavailable in certain regions).
+    pub fn restriction_reason(&self) -> Vec<&tl::enums::RestrictionReason> {
+        self.raw
+            .restriction_reason
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .collect()
     }
 
     /// Convert to a `Peer`.

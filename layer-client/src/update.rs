@@ -338,7 +338,32 @@ impl IncomingMessage {
         Some(crate::parsers::generate_html(text, entities))
     }
 
-    /// Reply to this message with plain text.
+    /// Service message action (e.g. "user joined", "call started").\
+    /// Returns `None` for regular text/media messages.
+    pub fn action(&self) -> Option<&tl::enums::MessageAction> {
+        match &self.raw {
+            tl::enums::Message::Service(m) => Some(&m.action),
+            _ => None,
+        }
+    }
+
+    /// Extract a `Photo` from the message media, if present.
+    ///
+    /// Shorthand for `Photo::from_media(msg.media()?)`.
+    pub fn photo(&self) -> Option<crate::media::Photo> {
+        crate::media::Photo::from_media(self.media()?)
+    }
+
+    /// Extract a `Document` from the message media, if present.
+    ///
+    /// Shorthand for `Document::from_media(msg.media()?)`.
+    pub fn document(&self) -> Option<crate::media::Document> {
+        crate::media::Document::from_media(self.media()?)
+    }
+
+    // ── Convenience action methods (mirrors grammers Message API) ─────────────
+
+    /// Reply to this message with plain text (shorthand).
     pub async fn reply(&self, client: &mut Client, text: impl Into<String>) -> Result<(), Error> {
         let peer = match self.peer_id() {
             Some(p) => p.clone(),
@@ -351,6 +376,136 @@ impl IncomingMessage {
                 &crate::InputMessage::text(text.into()).reply_to(Some(msg_id)),
             )
             .await
+    }
+
+    /// Reply to this message with a full [`InputMessage`](crate::InputMessage) (supports media, keyboards, etc.).
+    pub async fn reply_ex(&self, client: &Client, msg: crate::InputMessage) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot reply_ex: unknown peer".into()))?;
+        client
+            .send_message_to_peer_ex(peer, &msg.reply_to(Some(self.id())))
+            .await
+    }
+
+    /// Send a new message to the same chat **without** quoting this message.
+    pub async fn respond(&self, client: &Client, text: impl Into<String>) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot respond: unknown peer".into()))?;
+        client
+            .send_message_to_peer_ex(peer, &crate::InputMessage::text(text.into()))
+            .await
+    }
+
+    /// Send a full [`InputMessage`](crate::InputMessage) to the same chat without quoting.
+    pub async fn respond_ex(&self, client: &Client, msg: crate::InputMessage) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot respond_ex: unknown peer".into()))?;
+        client.send_message_to_peer_ex(peer, &msg).await
+    }
+
+    /// Edit the text of this message.
+    pub async fn edit(&self, client: &Client, new_text: impl Into<String>) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot edit: unknown peer".into()))?;
+        client.edit_message(peer, self.id(), new_text.into().as_str()).await
+    }
+
+    /// Delete this message.
+    pub async fn delete(&self, client: &Client) -> Result<(), Error> {
+        client.delete_messages(vec![self.id()], true).await
+    }
+
+    /// Mark this message (and all messages before it in the same chat) as read.
+    pub async fn mark_as_read(&self, client: &Client) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot mark_as_read: unknown peer".into()))?;
+        client.mark_as_read(peer).await
+    }
+
+    /// Pin this message in the chat (silently — no notification).
+    pub async fn pin(&self, client: &Client) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot pin: unknown peer".into()))?;
+        client.pin_message(peer, self.id(), true, false, false).await
+    }
+
+    /// Unpin this message from the chat.
+    pub async fn unpin(&self, client: &Client) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot unpin: unknown peer".into()))?;
+        client.unpin_message(peer, self.id()).await
+    }
+
+    /// Forward this message to another chat.
+    pub async fn forward_to(
+        &self,
+        client: &Client,
+        destination: impl Into<crate::PeerRef>,
+    ) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot forward: unknown source peer".into()))?;
+        client
+            .forward_messages(destination, &[self.id()], peer)
+            .await
+    }
+
+    /// Download the media attached to this message to `path`.
+    ///
+    /// Returns `true` if media was found and downloaded, `false` if there is no media.
+    pub async fn download_media(
+        &self,
+        client: &Client,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<bool, Error> {
+        if let Some(loc) = crate::media::download_location_from_media(self.media()) {
+            client.download_media_to_file(loc, path).await?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Send a reaction to this message.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # async fn f(client: layer_client::Client, msg: layer_client::update::IncomingMessage)
+    /// #   -> Result<(), layer_client::InvocationError> {
+    /// use layer_client::reactions::InputReactions;
+    /// msg.react(&client, InputReactions::emoticon("👍")).await?;
+    /// # Ok(()) }
+    /// ```
+    pub async fn react(
+        &self,
+        client: &Client,
+        reactions: impl Into<crate::reactions::InputReactions>,
+    ) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot react: unknown peer".into()))?;
+        client.send_reaction(peer, self.id(), reactions).await
+    }
+
+    /// Fetch the message this is a reply to. Returns `None` if this message is not a reply.
+    pub async fn get_reply(&self, client: &Client) -> Result<Option<IncomingMessage>, Error> {
+        client.get_reply_to_message(self).await
     }
 }
 

@@ -807,6 +807,23 @@ impl crate::update::IncomingMessage {
     }
 }
 
+/// Extract a download [`InputFileLocation`] from a raw `MessageMedia` reference.
+///
+/// Used by [`IncomingMessage::download_media`] which only holds a reference to
+/// the optional media. Returns `None` when the media has no downloadable file.
+pub fn download_location_from_media(
+    media: Option<&tl::enums::MessageMedia>,
+) -> Option<tl::enums::InputFileLocation> {
+    let m = media?;
+    if let Some(doc) = Document::from_media(m) {
+        return doc.to_input_location();
+    }
+    if let Some(photo) = Photo::from_media(m) {
+        return photo.to_input_location();
+    }
+    None
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn make_input_file(
