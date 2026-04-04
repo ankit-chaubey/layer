@@ -663,6 +663,7 @@ const ID_UPDATE_SHORT_CHAT_MSG: u32 = 0x4d6deea5;
 const ID_UPDATE_SHORT: u32 = 0x78d4dec1;
 const ID_UPDATES: u32 = 0x74ae4240;
 const ID_UPDATES_COMBINED: u32 = 0x725b04c3;
+const ID_UPDATE_SHORT_SENT_MSG: u32 = 0x9015e101;
 
 // ─── Parser ──────────────────────────────────────────────────────────────────
 
@@ -750,6 +751,28 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
                 }
                 _ => vec![],
             }
+        }
+
+        // updateShortSentMessage — server response to messages.sendMessage.
+        // Carries the assigned message id, pts, date, and optional media/entities.
+        // Grammers handles this as an "own update" tied to the SendMessage request.
+        // We don't have the request body here, so we silently absorb it to prevent
+        // the EOF deserialize error; callers rely on updateNewMessage for the echo.
+        ID_UPDATE_SHORT_SENT_MSG => {
+            let mut cur = Cursor::from_slice(&bytes[4..]);
+            match tl::types::UpdateShortSentMessage::deserialize(&mut cur) {
+                Ok(_) => {
+                    tracing::debug!(
+                        "[layer] updateShortSentMessage received (absorbed — pts tracking via updateNewMessage)"
+                    );
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "[layer] updateShortSentMessage parse error: {e}"
+                    );
+                }
+            }
+            vec![]
         }
 
         _ => vec![],

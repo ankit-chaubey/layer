@@ -124,6 +124,7 @@ const ID_UPDATE_SHORT: u32 = 0x78d4dec1;
 const ID_UPDATES_COMBINED: u32 = 0x725b04c3;
 const ID_UPDATE_SHORT_MSG: u32 = 0x313bc7f8;
 const ID_UPDATE_SHORT_CHAT_MSG: u32 = 0x4d6deea5;
+const ID_UPDATE_SHORT_SENT_MSG: u32 = 0x9015e101;
 const ID_UPDATES_TOO_LONG: u32 = 0xe317af7e;
 
 // ─── Keepalive / reconnect tuning ─────────────────────────────────────────────
@@ -1768,7 +1769,12 @@ impl Client {
                             Ok(vec![])
                         }
                         Ok(EnvelopeResult::None) => Ok(vec![]),
-                        Err(e) => Err(e),
+                        Err(e) => {
+                            tracing::debug!(
+                                "[layer] rpc_result deserialize failure for msg_id={req_msg_id}: {e}"
+                            );
+                            Err(e)
+                        }
                     };
                     let _ = tx.send(to_send);
                 }
@@ -2100,6 +2106,7 @@ impl Client {
             | ID_UPDATES_COMBINED
             | ID_UPDATE_SHORT_MSG
             | ID_UPDATE_SHORT_CHAT_MSG
+            | ID_UPDATE_SHORT_SENT_MSG
             | ID_UPDATES_TOO_LONG => {
                 // G-04: ack update frames too
                 self.inner.writer.lock().await.pending_ack.push(msg_id);
@@ -2107,6 +2114,30 @@ impl Client {
                 self.dispatch_updates(&body).await;
             }
             _ => {}
+        }
+    }
+
+    // ── Fix B1: sort updates by pts-count key before dispatching ─────────────
+    // ── Fix B5: make seq check synchronous and gating ─────────────────────────
+
+    /// Extract the pts-sort key for a single update: `pts - pts_count`.
+    ///
+    /// Fix B1: grammers sorts every update batch by this key before processing.
+    /// Without the sort, a container arriving as [pts=5, pts=3, pts=4] produces
+    /// a false gap on the first item (expected 3, got 5) and spuriously fires
+    /// getDifference even though the filling updates are present in the same batch.
+    fn update_sort_key(upd: &tl::enums::Update) -> i32 {
+        use tl::enums::Update::*;
+        match upd {
+            NewMessage(u) => u.pts - u.pts_count,
+            EditMessage(u) => u.pts - u.pts_count,
+            DeleteMessages(u) => u.pts - u.pts_count,
+            ReadHistoryInbox(u) => u.pts - u.pts_count,
+            ReadHistoryOutbox(u) => u.pts - u.pts_count,
+            NewChannelMessage(u) => u.pts - u.pts_count,
+            EditChannelMessage(u) => u.pts - u.pts_count,
+            DeleteChannelMessages(u) => u.pts - u.pts_count,
+            _ => 0,
         }
     }
 
@@ -2155,52 +2186,87 @@ impl Client {
             return;
         }
 
-        // Check outer seq for Updates / UpdatesCombined containers.
-        {
-            use layer_tl_types::{Cursor, Deserializable};
-            let mut cur = Cursor::from_slice(body);
-            let seq_info: Option<(i32, i32)> = match cid {
-                0x74ae4240 => {
-                    // updates#74ae4240
-                    match tl::enums::Updates::deserialize(&mut cur) {
-                        Ok(tl::enums::Updates::Updates(u)) => Some((u.seq, u.seq)),
-                        _ => None,
-                    }
+        // Fix B5: Seq check must be synchronous and act as a gate for the whole
+        // container.  The old approach spawned a task concurrently with dispatching
+        // the individual updates, meaning seq could be advanced over an unclean batch.
+        // Grammers only advances seq after the full update loop completes with no
+        // unresolved gaps.  We mirror this: check seq first, drop the container if
+        // it's a gap or duplicate, and advance seq AFTER dispatching all updates.
+        use layer_tl_types::{Cursor, Deserializable};
+        use crate::pts::PtsCheckResult;
+
+        // Extract (seq, seq_start) for containers that carry seq.
+        let mut cur = Cursor::from_slice(body);
+        let seq_info: Option<(i32, i32)> = match cid {
+            0x74ae4240 => {
+                // updates#74ae4240 — seq_start == seq
+                match tl::enums::Updates::deserialize(&mut cur) {
+                    Ok(tl::enums::Updates::Updates(u)) => Some((u.seq, u.seq)),
+                    _ => None,
                 }
-                0x725b04c3 => {
-                    // updatesCombined#725b04c3
-                    match tl::enums::Updates::deserialize(&mut cur) {
-                        Ok(tl::enums::Updates::Combined(u)) => Some((u.seq, u.seq_start)),
-                        _ => None,
-                    }
+            }
+            0x725b04c3 => {
+                // updatesCombined#725b04c3
+                match tl::enums::Updates::deserialize(&mut cur) {
+                    Ok(tl::enums::Updates::Combined(u)) => Some((u.seq, u.seq_start)),
+                    _ => None,
                 }
-                _ => None,
-            };
-            if let Some((seq, seq_start)) = seq_info
-                && seq != 0
-            {
-                let c = self.clone();
-                let utx = self.inner.update_tx.clone();
-                tokio::spawn(async move {
-                    match c.check_and_fill_seq_gap(seq, seq_start).await {
-                        Ok(extra) => {
-                            for u in extra {
-                                if utx.try_send(u).is_err() {
-                                    tracing::warn!("[layer] update channel full — dropping update");
-                                    break;
+            }
+            _ => None,
+        };
+
+        // Fix B5: synchronous seq gate — check before processing any updates.
+        if let Some((seq, seq_start)) = seq_info {
+            if seq != 0 {
+                let result = self
+                    .inner
+                    .pts_state
+                    .lock()
+                    .await
+                    .check_seq(seq, seq_start);
+                match result {
+                    PtsCheckResult::Ok => {
+                        // Good — will advance seq after the batch below.
+                    }
+                    PtsCheckResult::Duplicate => {
+                        // Already handled this container — drop it silently.
+                        tracing::debug!(
+                            "[layer] seq duplicate (seq={seq}, seq_start={seq_start}) — dropping container"
+                        );
+                        return;
+                    }
+                    PtsCheckResult::Gap { expected, got } => {
+                        // Real seq gap — fire getDifference and drop the container.
+                        // getDifference will deliver the missed updates.
+                        tracing::warn!(
+                            "[layer] seq gap: expected {expected}, got {got} — getDifference"
+                        );
+                        let c = self.clone();
+                        let utx = self.inner.update_tx.clone();
+                        tokio::spawn(async move {
+                            match c.get_difference().await {
+                                Ok(updates) => {
+                                    for u in updates {
+                                        if utx.try_send(u).is_err() {
+                                            tracing::warn!(
+                                                "[layer] update channel full — dropping seq gap update"
+                                            );
+                                            break;
+                                        }
+                                    }
                                 }
+                                Err(e) => tracing::warn!("[layer] seq gap fill: {e}"),
                             }
-                        }
-                        Err(e) => tracing::warn!("[layer] seq gap fill: {e}"),
+                        });
+                        return; // drop this container; diff will supply updates
                     }
-                });
+                }
             }
         }
 
         // Flatten the container into bare tl::enums::Update items.
-        use layer_tl_types::{Cursor, Deserializable};
         let mut cur = Cursor::from_slice(body);
-        let raw: Vec<tl::enums::Update> = match cid {
+        let mut raw: Vec<tl::enums::Update> = match cid {
             0x78d4dec1 => {
                 // updateShort
                 match tl::types::UpdateShort::deserialize(&mut cur) {
@@ -2225,8 +2291,25 @@ impl Client {
             _ => vec![],
         };
 
+        // Fix B1: sort by (pts - pts_count) before dispatching — mirrors grammers'
+        // updates.sort_by_key(update_sort_key).  Without this, an out-of-order batch
+        // like [pts=5, pts=3, pts=4] falsely detects a gap on the first update and
+        // fires getDifference even though the filling updates are in the same container.
+        raw.sort_by_key(Self::update_sort_key);
+
         for upd in raw {
             self.dispatch_single_update(upd).await;
+        }
+
+        // Fix B5: advance seq AFTER the full batch has been dispatched — mirrors
+        // grammers' post-loop seq advance that only fires when !have_unresolved_gaps.
+        // (In our spawn-per-update model we can't track unresolved gaps inline, but
+        // advancing here at minimum prevents premature seq advancement before the
+        // container's pts checks have even been spawned.)
+        if let Some((seq, _)) = seq_info {
+            if seq != 0 {
+                self.inner.pts_state.lock().await.advance_seq(seq);
+            }
         }
     }
 
@@ -3701,7 +3784,7 @@ impl Client {
                 w.sent_bodies.insert(req_msg_id, body); // G-02
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
-                tracing::trace!(
+                tracing::debug!(
                     "[layer] G-07 container: bundled {} acks + request",
                     acks.len()
                 );
@@ -3776,7 +3859,7 @@ impl Client {
                 w.sent_bodies.insert(req_msg_id, body); // G-02
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
-                tracing::trace!(
+                tracing::debug!(
                     "[layer] G-07 write container: bundled {} acks + write",
                     acks.len()
                 );
@@ -5067,6 +5150,7 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
         }
         ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED
         | ID_UPDATE_SHORT_MSG | ID_UPDATE_SHORT_CHAT_MSG
+        | ID_UPDATE_SHORT_SENT_MSG
         | ID_UPDATES_TOO_LONG => {
             Ok(EnvelopeResult::Updates(update::parse_updates(&body)))
         }
