@@ -75,6 +75,7 @@ pub use session_backend::{
 };
 pub use socks5::Socks5Config;
 pub use types::{Channel, Chat, Group, User};
+pub use types::ChannelKind;
 pub use typing_guard::TypingGuard;
 pub use update::Update;
 pub use update::{ChatActionUpdate, UserStatusUpdate};
@@ -877,8 +878,36 @@ impl Client {
 
         // If init_connection fails (e.g. stale auth key rejected by Telegram),
         // do a fresh DH handshake and retry once.
+        //
+        // KEY FIX: A 30 s timeout on init_connection means Telegram silently
+        // dropped our first RPC — the most common signal for an invalidated auth
+        // key.  We MUST clear the saved key here so that:
+        //   (a) the retry uses a real fresh DH, not the dead key again, and
+        //   (b) if we crash / exit before the retry succeeds, the next startup
+        //       does not loop forever on the same dead key.
         if let Err(e) = client.init_connection().await {
-            tracing::warn!("[layer] init_connection failed ({e}), retrying with fresh connect …");
+            tracing::warn!("[layer] init_connection failed ({e}), clearing saved key and retrying with fresh connect …");
+
+            // Clear the home-DC auth key so a subsequent startup does not reuse it.
+            {
+                let home_dc_id = *client.inner.home_dc_id.lock().await;
+                let mut opts = client.inner.dc_options.lock().await;
+                if let Some(entry) = opts.get_mut(&home_dc_id) {
+                    if entry.auth_key.is_some() {
+                        tracing::warn!("[layer] Clearing stale auth key for DC{home_dc_id}");
+                        entry.auth_key = None;
+                        entry.first_salt = 0;
+                        entry.time_offset = 0;
+                    }
+                }
+            }
+            // Flush to disk with the cleared key so the next cold-start does
+            // not sit through another 30 s timeout on the same dead key.
+            client.save_session().await.ok();
+
+            // Clean up any stale pending entries left by the timed-out RPC
+            // (Bug #2: tx stays in map after rx times out and is dropped).
+            client.inner.pending.lock().await.clear();
 
             let socks5_r = client.inner.socks5.clone();
             let transport_r = client.inner.transport.clone();
@@ -894,7 +923,9 @@ impl Client {
                 *opts_guard = new_opts;
             }
 
-            // Replace writer and hand new read half to reader task
+            // Replace writer and hand new read half to reader task.
+            // Yield once so the reader task processes the new connection
+            // before init_connection sends the next RPC.
             let (new_writer, new_read, new_fk) = new_conn.into_writer();
             let new_ak = new_writer.enc.auth_key_bytes();
             let new_sid = new_writer.enc.session_id();
@@ -903,8 +934,18 @@ impl Client {
                 .inner
                 .reconnect_tx
                 .send((new_read, new_fk, new_ak, new_sid));
+            // Give the reader task a scheduling opportunity to switch to the
+            // new read-half before init_connection sends its RPC.
+            tokio::task::yield_now().await;
 
             client.init_connection().await?;
+
+            // Session is now on a fresh unauthenticated DC2 connection.
+            // Callers must call is_authorized() and re-authenticate if needed.
+            tracing::warn!(
+                "[layer] Session was invalidated and has been reset. \
+                 Call is_authorized() and re-authenticate if needed."
+            );
         }
 
         // ── Restore peer access-hash cache from session ─────────────────
@@ -1747,13 +1788,27 @@ impl Client {
                             // always a transient network issue and must NOT clear the
                             // session (doing so creates a brand-new session in Telegram's
                             // active devices list and orphans the old one).
+                            //
+                            // LAYER FIX: After 3 consecutive timeouts on the same key
+                            // we treat it as stale.  On a healthy network init_connection
+                            // never takes more than a few seconds; 3 × 30 s = 90 s of
+                            // silence is a definitive "server is ignoring this key" signal.
+                            let is_timeout = matches!(&e,
+                                InvocationError::Deserialize(s) if s.contains("timed out"));
                             let key_is_stale = match &e {
                                 // Telegram's abridged-transport error code for invalid key
                                 InvocationError::Rpc(r) if r.code == -404 => true,
                                 // Early EOF immediately after connecting = server rejected key
                                 InvocationError::Io(io) if io.kind() == std::io::ErrorKind::UnexpectedEof
                                     || io.kind() == std::io::ErrorKind::ConnectionReset => true,
-                                // 30 s timeout → transient; keep the key and retry
+                                // After 3 consecutive timeouts give up on the saved key.
+                                _ if is_timeout && init_fail_count >= 2 => {
+                                    tracing::warn!(
+                                        "[layer] init_connection timed out {}/{} — treating as stale key",
+                                        init_fail_count + 1, 3
+                                    );
+                                    true
+                                }
                                 _ => false,
                             };
 
@@ -3088,6 +3143,62 @@ impl Client {
         self.pin_message(peer, message_id, true, true, false).await
     }
 
+    /// Fetch the message that `message` is replying to.
+    ///
+    /// Returns `None` if the message is not a reply, or if the original
+    /// message could not be found (deleted / inaccessible).
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # async fn f(client: layer_client::Client, msg: layer_client::update::IncomingMessage)
+    /// #   -> Result<(), layer_client::InvocationError> {
+    /// if let Some(replied) = client.get_reply_to_message(&msg).await? {
+    ///     println!("Replied to: {:?}", replied.text());
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub async fn get_reply_to_message(
+        &self,
+        message: &update::IncomingMessage,
+    ) -> Result<Option<update::IncomingMessage>, InvocationError> {
+        let reply_id = match message.reply_to_message_id() {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+        let peer = match message.peer_id() {
+            Some(p) => p.clone(),
+            None => return Ok(None),
+        };
+        let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
+        let id = vec![tl::enums::InputMessage::Id(tl::types::InputMessageId { id: reply_id })];
+
+        let result = match &input_peer {
+            tl::enums::InputPeer::Channel(c) => {
+                let req = tl::functions::channels::GetMessages {
+                    channel: tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
+                        channel_id: c.channel_id,
+                        access_hash: c.access_hash,
+                    }),
+                    id,
+                };
+                self.rpc_call_raw(&req).await?
+            }
+            _ => {
+                let req = tl::functions::messages::GetMessages { id };
+                self.rpc_call_raw(&req).await?
+            }
+        };
+
+        let mut cur = Cursor::from_slice(&result);
+        let msgs = match tl::enums::messages::Messages::deserialize(&mut cur)? {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(m) => m.messages,
+            tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
+            tl::enums::messages::Messages::NotModified(_) => vec![],
+        };
+        Ok(msgs.into_iter().next().map(update::IncomingMessage::from_raw))
+    }
+
     /// Unpin all messages in a chat.
     pub async fn unpin_all_messages(
         &self,
@@ -3873,6 +3984,9 @@ impl Client {
     ///     the matching rpc_result frame arrives.
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
+        // Track the msg_id so we can clean it from the pending map if we time out.
+        // Bug #2 fix: without this, a timed-out tx leaks in the pending map forever.
+        let mut registered_msg_id: i64 = 0;
         {
             let raw_body = req.to_bytes();
             // G-06: compress large outgoing bodies
@@ -3888,6 +4002,7 @@ impl Client {
             if acks.is_empty() {
                 // ── Simple path: standalone request ──────────────────────────
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
+                registered_msg_id = msg_id;
                 w.sent_bodies.insert(msg_id, body); // G-02
                 self.inner.pending.lock().await.insert(msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
@@ -3898,6 +4013,7 @@ impl Client {
                 // Allocate inner msg_id+seqno for each item
                 let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false); // non-content
                 let (req_msg_id, req_seqno) = w.enc.alloc_msg_seqno(true); // content
+                registered_msg_id = req_msg_id;
 
                 // Build container payload
                 let container_payload = build_container_body(&[
@@ -3922,9 +4038,17 @@ impl Client {
             Ok(Err(_)) => Err(InvocationError::Deserialize(
                 "RPC channel closed (reader died?)".into(),
             )),
-            Err(_) => Err(InvocationError::Deserialize(
-                "RPC timed out after 30 s".into(),
-            )),
+            Err(_) => {
+                // Clean up the stale tx from the pending map so it doesn't
+                // leak memory or confuse future response routing.
+                if registered_msg_id != 0 {
+                    self.inner.pending.lock().await.remove(&registered_msg_id);
+                    self.inner.writer.lock().await.sent_bodies.remove(&registered_msg_id);
+                }
+                Err(InvocationError::Deserialize(
+                    "RPC timed out after 30 s".into(),
+                ))
+            }
         }
     }
 
@@ -4237,6 +4361,7 @@ impl Client {
         req: &S,
     ) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
+        let mut registered_msg_id: i64 = 0;
         {
             let raw_body = req.to_bytes();
             let body = maybe_gz_pack(&raw_body); // G-06
@@ -4245,6 +4370,7 @@ impl Client {
             let acks: Vec<i64> = w.pending_ack.drain(..).collect(); // G-04+G-07
             if acks.is_empty() {
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
+                registered_msg_id = msg_id;
                 w.sent_bodies.insert(msg_id, body); // G-02
                 self.inner.pending.lock().await.insert(msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
@@ -4252,6 +4378,7 @@ impl Client {
                 let ack_body = build_msgs_ack_body(&acks);
                 let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false);
                 let (req_msg_id, req_seqno) = w.enc.alloc_msg_seqno(true);
+                registered_msg_id = req_msg_id;
                 let container_payload = build_container_body(&[
                     (ack_msg_id, ack_seqno, ack_body.as_slice()),
                     (req_msg_id, req_seqno, body.as_slice()),
@@ -4265,9 +4392,15 @@ impl Client {
         match tokio::time::timeout(Duration::from_secs(30), rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err(InvocationError::Deserialize("rpc channel closed".into())),
-            Err(_) => Err(InvocationError::Deserialize(
-                "rpc timed out after 30 s".into(),
-            )),
+            Err(_) => {
+                if registered_msg_id != 0 {
+                    self.inner.pending.lock().await.remove(&registered_msg_id);
+                    self.inner.writer.lock().await.sent_bodies.remove(&registered_msg_id);
+                }
+                Err(InvocationError::Deserialize(
+                    "rpc timed out after 30 s".into(),
+                ))
+            }
         }
     }
 
