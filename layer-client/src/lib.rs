@@ -1017,7 +1017,7 @@ impl Client {
                             missed.len()
                         );
                         for u in missed {
-                            if utx.try_send(u).is_err() {
+                            if utx.try_send(attach_client_to_update(u, &c)).is_err() {
                                 tracing::warn!(
                                     "[layer] update channel full — dropping catch-up update"
                                 );
@@ -1363,6 +1363,39 @@ impl Client {
     }
 
     // ── Get self ───────────────────────────────────────────────────────────
+
+    // ── Get users ──────────────────────────────────────────────────────────
+
+    /// Fetch user info by ID. Returns `None` for each ID that is not found.
+    ///
+    /// Used internally by [`update::IncomingMessage::sender_user`].
+    pub async fn get_users_by_id(
+        &self,
+        ids: &[i64],
+    ) -> Result<Vec<Option<crate::types::User>>, InvocationError> {
+        let cache = self.inner.peer_cache.read().await;
+        let input_ids: Vec<tl::enums::InputUser> = ids
+            .iter()
+            .map(|&id| {
+                if id == 0 {
+                    tl::enums::InputUser::UserSelf
+                } else {
+                    let hash = cache.users.get(&id).copied().unwrap_or(0);
+                    tl::enums::InputUser::InputUser(tl::types::InputUser {
+                        user_id: id,
+                        access_hash: hash,
+                    })
+                }
+            })
+            .collect();
+        drop(cache);
+        let req = tl::functions::users::GetUsers { id: input_ids };
+        let body = self.rpc_call_raw(&req).await?;
+        let mut cur = Cursor::from_slice(&body);
+        let users = Vec::<tl::enums::User>::deserialize(&mut cur)?;
+        self.cache_users_slice(&users).await;
+        Ok(users.into_iter().map(crate::types::User::from_raw).collect())
+    }
 
     /// Fetch information about the logged-in user.
     pub async fn get_me(&self) -> Result<tl::types::User, InvocationError> {
@@ -1893,6 +1926,7 @@ impl Client {
                         Ok(EnvelopeResult::Payload(p)) => Ok(p),
                         Ok(EnvelopeResult::Updates(us)) => {
                             for u in us {
+                                let u = attach_client_to_update(u, self);
                                 if self.inner.update_tx.try_send(u).is_err() {
                                     tracing::warn!("[layer] update channel full — dropping update");
                                 }
@@ -2353,7 +2387,7 @@ impl Client {
             // updateShortMessage: flags(4) id(4) user_id(8) ... pts(?) pts_count(?)
             // Easier: use parse_updates which already handles them, then gap-check.
             for u in update::parse_updates(body) {
-                if self.inner.update_tx.try_send(u).is_err() {
+                if self.inner.update_tx.try_send(attach_client_to_update(u, self)).is_err() {
                     tracing::warn!("[layer] update channel full — dropping update");
                 }
             }
@@ -2596,6 +2630,7 @@ impl Client {
                     match c.check_and_fill_gap(pts, pts_count, first).await {
                         Ok(v) => {
                             for u in v {
+                                let u = attach_client_to_update(u, &c);
                                 if utx.try_send(u).is_err() {
                                     tracing::warn!("[layer] update channel full — dropping update");
                                     break;
@@ -2625,6 +2660,7 @@ impl Client {
                         {
                             Ok(v) => {
                                 for u in v {
+                                    let u = attach_client_to_update(u, &c);
                                     if utx.try_send(u).is_err() {
                                         tracing::warn!(
                                             "[layer] update channel full — dropping update"
@@ -2651,7 +2687,11 @@ impl Client {
                 });
                 vec![]
             }
-            Kind::Passthrough => high,
+            Kind::Passthrough => high.into_iter().map(|u| match u {
+                update::Update::NewMessage(msg) => update::Update::NewMessage(msg.with_client(self.clone())),
+                update::Update::MessageEdited(msg) => update::Update::MessageEdited(msg.with_client(self.clone())),
+                other => other,
+            }).collect(),
         };
 
         for u in to_send {
@@ -2735,7 +2775,7 @@ impl Client {
                             // Replay any updates missed during the outage.
                             if let Ok(missed) = c.get_difference().await {
                                 for u in missed {
-                                    if utx.try_send(u).is_err() {
+                                    if utx.try_send(attach_client_to_update(u, &c)).is_err() {
                                         tracing::warn!(
                                             "[layer] update channel full — dropping catch-up update"
                                         );
@@ -2823,7 +2863,7 @@ impl Client {
     // ── Messaging ──────────────────────────────────────────────────────────
 
     /// Send a text message. Use `"me"` for Saved Messages.
-    pub async fn send_message(&self, peer: &str, text: &str) -> Result<(), InvocationError> {
+    pub async fn send_message(&self, peer: &str, text: &str) -> Result<update::IncomingMessage, InvocationError> {
         let p = self.resolve_peer(peer).await?;
         self.send_message_to_peer(p, text).await
     }
@@ -2836,7 +2876,7 @@ impl Client {
         &self,
         peer: impl Into<PeerRef>,
         text: &str,
-    ) -> Result<(), InvocationError> {
+    ) -> Result<update::IncomingMessage, InvocationError> {
         self.send_message_to_peer_ex(peer, &InputMessage::text(text))
             .await
     }
@@ -2844,11 +2884,12 @@ impl Client {
     /// Send a message with full [`InputMessage`] options.
     ///
     /// Accepts anything that converts to [`PeerRef`].
+    /// Returns the sent message as an [`update::IncomingMessage`].
     pub async fn send_message_to_peer_ex(
         &self,
         peer: impl Into<PeerRef>,
         msg: &InputMessage,
-    ) -> Result<(), InvocationError> {
+    ) -> Result<update::IncomingMessage, InvocationError> {
         let peer = peer.into().resolve(self).await?;
         let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
         let schedule = if msg.schedule_once_online {
@@ -2882,7 +2923,8 @@ impl Client {
                 allow_paid_stars: None,
                 suggested_post: None,
             };
-            return self.rpc_call_raw_pub(&req).await.map(|_| ());
+            let body = self.rpc_call_raw_pub(&req).await?;
+            return Ok(self.extract_sent_message(&body, msg, &peer));
         }
 
         let req = tl::functions::messages::SendMessage {
@@ -2908,11 +2950,287 @@ impl Client {
             allow_paid_stars: None,
             suggested_post: None,
         };
-        self.rpc_write(&req).await
+        let body = self.rpc_call_raw(&req).await?;
+        Ok(self.extract_sent_message(&body, msg, &peer))
+    }
+
+    /// Parse the Updates blob returned by SendMessage / SendMedia and extract the
+    /// sent message. Falls back to a synthetic stub if the response is opaque
+    /// (e.g. `updateShortSentMessage` which doesn't include the full message).
+    fn extract_sent_message(
+        &self,
+        body: &[u8],
+        input: &InputMessage,
+        peer: &tl::enums::Peer,
+    ) -> update::IncomingMessage {
+        if body.len() < 4 {
+            return self.synthetic_sent(input, peer, 0, 0);
+        }
+        let cid = u32::from_le_bytes(body[..4].try_into().unwrap());
+
+        // updates#74ae4240 / updatesCombined#725b04c3 — full Updates container
+        if cid == 0x74ae4240 || cid == 0x725b04c3 {
+            let mut cur = Cursor::from_slice(body);
+            if let Ok(tl::enums::Updates::Updates(u)) = tl::enums::Updates::deserialize(&mut cur) {
+                for upd in &u.updates {
+                    if let tl::enums::Update::NewMessage(nm) = upd {
+                        return update::IncomingMessage::from_raw(nm.message.clone())
+                            .with_client(self.clone());
+                    }
+                    if let tl::enums::Update::NewChannelMessage(nm) = upd {
+                        return update::IncomingMessage::from_raw(nm.message.clone())
+                            .with_client(self.clone());
+                    }
+                }
+            }
+            if let Ok(tl::enums::Updates::Combined(u)) =
+                tl::enums::Updates::deserialize(&mut Cursor::from_slice(body))
+            {
+                for upd in &u.updates {
+                    if let tl::enums::Update::NewMessage(nm) = upd {
+                        return update::IncomingMessage::from_raw(nm.message.clone())
+                            .with_client(self.clone());
+                    }
+                    if let tl::enums::Update::NewChannelMessage(nm) = upd {
+                        return update::IncomingMessage::from_raw(nm.message.clone())
+                            .with_client(self.clone());
+                    }
+                }
+            }
+        }
+
+        // updateShortSentMessage#9015e101 — server returns id/pts/date/media/entities
+        // but not the full message body. Reconstruct from what we know.
+        if cid == 0x9015e101 {
+            let mut cur = Cursor::from_slice(&body[4..]);
+            if let Ok(sent) = tl::types::UpdateShortSentMessage::deserialize(&mut cur) {
+                return self.synthetic_sent_from_short(sent, input, peer);
+            }
+        }
+
+        // updateShortMessage#313bc7f8 (DM to another user — we get a short form)
+        if cid == 0x313bc7f8 {
+            let mut cur = Cursor::from_slice(&body[4..]);
+            if let Ok(m) = tl::types::UpdateShortMessage::deserialize(&mut cur) {
+                let msg = tl::types::Message {
+                    out: m.out,
+                    mentioned: m.mentioned,
+                    media_unread: m.media_unread,
+                    silent: m.silent,
+                    post: false,
+                    from_scheduled: false,
+                    legacy: false,
+                    edit_hide: false,
+                    pinned: false,
+                    noforwards: false,
+                    invert_media: false,
+                    offline: false,
+                    video_processing_pending: false,
+                    paid_suggested_post_stars: false,
+                    paid_suggested_post_ton: false,
+                    id: m.id,
+                    from_id: Some(tl::enums::Peer::User(tl::types::PeerUser {
+                        user_id: m.user_id,
+                    })),
+                    peer_id: tl::enums::Peer::User(tl::types::PeerUser { user_id: m.user_id }),
+                    saved_peer_id: None,
+                    fwd_from: m.fwd_from,
+                    via_bot_id: m.via_bot_id,
+                    via_business_bot_id: None,
+                    reply_to: m.reply_to,
+                    date: m.date,
+                    message: m.message,
+                    media: None,
+                    reply_markup: None,
+                    entities: m.entities,
+                    views: None,
+                    forwards: None,
+                    replies: None,
+                    edit_date: None,
+                    post_author: None,
+                    grouped_id: None,
+                    reactions: None,
+                    restriction_reason: None,
+                    ttl_period: None,
+                    quick_reply_shortcut_id: None,
+                    effect: None,
+                    factcheck: None,
+                    report_delivery_until_date: None,
+                    paid_message_stars: None,
+                    suggested_post: None,
+                    from_rank: None,
+                    from_boosts_applied: None,
+                    schedule_repeat_period: None,
+                    summary_from_language: None,
+                };
+                return update::IncomingMessage::from_raw(tl::enums::Message::Message(msg))
+                    .with_client(self.clone());
+            }
+        }
+
+        // Fallback: synthetic stub with no message ID known
+        self.synthetic_sent(input, peer, 0, 0)
+    }
+
+    /// Construct a synthetic `IncomingMessage` from an `UpdateShortSentMessage`.
+    fn synthetic_sent_from_short(
+        &self,
+        sent: tl::types::UpdateShortSentMessage,
+        input: &InputMessage,
+        peer: &tl::enums::Peer,
+    ) -> update::IncomingMessage {
+        let msg = tl::types::Message {
+            out: sent.out,
+            mentioned: false,
+            media_unread: false,
+            silent: input.silent,
+            post: false,
+            from_scheduled: false,
+            legacy: false,
+            edit_hide: false,
+            pinned: false,
+            noforwards: false,
+            invert_media: input.invert_media,
+            offline: false,
+            video_processing_pending: false,
+            paid_suggested_post_stars: false,
+            paid_suggested_post_ton: false,
+            id: sent.id,
+            from_id: None,
+            from_boosts_applied: None,
+            from_rank: None,
+            peer_id: peer.clone(),
+            saved_peer_id: None,
+            fwd_from: None,
+            via_bot_id: None,
+            via_business_bot_id: None,
+            reply_to: input.reply_to.map(|id| {
+                tl::enums::MessageReplyHeader::MessageReplyHeader(
+                    tl::types::MessageReplyHeader {
+                        reply_to_scheduled: false,
+                        forum_topic: false,
+                        quote: false,
+                        reply_to_msg_id: Some(id),
+                        reply_to_peer_id: None,
+                        reply_from: None,
+                        reply_media: None,
+                        reply_to_top_id: None,
+                        quote_text: None,
+                        quote_entities: None,
+                        quote_offset: None,
+                        todo_item_id: None,
+                        poll_option: None,
+                    },
+                )
+            }),
+            date: sent.date,
+            message: input.text.clone(),
+            media: sent.media,
+            reply_markup: input.reply_markup.clone(),
+            entities: sent.entities,
+            views: None,
+            forwards: None,
+            replies: None,
+            edit_date: None,
+            post_author: None,
+            grouped_id: None,
+            reactions: None,
+            restriction_reason: None,
+            ttl_period: sent.ttl_period,
+            quick_reply_shortcut_id: None,
+            effect: None,
+            factcheck: None,
+            report_delivery_until_date: None,
+            paid_message_stars: None,
+            suggested_post: None,
+            schedule_repeat_period: None,
+            summary_from_language: None,
+        };
+        update::IncomingMessage::from_raw(tl::enums::Message::Message(msg))
+            .with_client(self.clone())
+    }
+
+    /// Synthetic stub used when Updates parsing yields no message.
+    fn synthetic_sent(
+        &self,
+        input: &InputMessage,
+        peer: &tl::enums::Peer,
+        id: i32,
+        date: i32,
+    ) -> update::IncomingMessage {
+        let msg = tl::types::Message {
+            out: true,
+            mentioned: false,
+            media_unread: false,
+            silent: input.silent,
+            post: false,
+            from_scheduled: false,
+            legacy: false,
+            edit_hide: false,
+            pinned: false,
+            noforwards: false,
+            invert_media: input.invert_media,
+            offline: false,
+            video_processing_pending: false,
+            paid_suggested_post_stars: false,
+            paid_suggested_post_ton: false,
+            id,
+            from_id: None,
+            from_boosts_applied: None,
+            from_rank: None,
+            peer_id: peer.clone(),
+            saved_peer_id: None,
+            fwd_from: None,
+            via_bot_id: None,
+            via_business_bot_id: None,
+            reply_to: input.reply_to.map(|rid| {
+                tl::enums::MessageReplyHeader::MessageReplyHeader(
+                    tl::types::MessageReplyHeader {
+                        reply_to_scheduled: false,
+                        forum_topic: false,
+                        quote: false,
+                        reply_to_msg_id: Some(rid),
+                        reply_to_peer_id: None,
+                        reply_from: None,
+                        reply_media: None,
+                        reply_to_top_id: None,
+                        quote_text: None,
+                        quote_entities: None,
+                        quote_offset: None,
+                        todo_item_id: None,
+                        poll_option: None,
+                    },
+                )
+            }),
+            date,
+            message: input.text.clone(),
+            media: None,
+            reply_markup: input.reply_markup.clone(),
+            entities: input.entities.clone(),
+            views: None,
+            forwards: None,
+            replies: None,
+            edit_date: None,
+            post_author: None,
+            grouped_id: None,
+            reactions: None,
+            restriction_reason: None,
+            ttl_period: None,
+            quick_reply_shortcut_id: None,
+            effect: None,
+            factcheck: None,
+            report_delivery_until_date: None,
+            paid_message_stars: None,
+            suggested_post: None,
+            schedule_repeat_period: None,
+            summary_from_language: None,
+        };
+        update::IncomingMessage::from_raw(tl::enums::Message::Message(msg))
+            .with_client(self.clone())
     }
 
     /// Send directly to Saved Messages.
-    pub async fn send_to_self(&self, text: &str) -> Result<(), InvocationError> {
+    pub async fn send_to_self(&self, text: &str) -> Result<update::IncomingMessage, InvocationError> {
         let req = tl::functions::messages::SendMessage {
             no_webpage: false,
             silent: false,
@@ -2936,7 +3254,9 @@ impl Client {
             allow_paid_stars: None,
             suggested_post: None,
         };
-        self.rpc_write(&req).await
+        let body = self.rpc_call_raw(&req).await?;
+        let self_peer = tl::enums::Peer::User(tl::types::PeerUser { user_id: 0 });
+        Ok(self.extract_sent_message(&body, &InputMessage::text(text), &self_peer))
     }
 
     /// Edit an existing message.
@@ -3051,7 +3371,7 @@ impl Client {
         };
         Ok(msgs
             .into_iter()
-            .map(update::IncomingMessage::from_raw)
+            .map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone()))
             .collect())
     }
 
@@ -3071,7 +3391,7 @@ impl Client {
         };
         Ok(msgs
             .into_iter()
-            .map(update::IncomingMessage::from_raw)
+            .map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone()))
             .collect())
     }
 
@@ -3110,7 +3430,7 @@ impl Client {
         Ok(msgs
             .into_iter()
             .next()
-            .map(update::IncomingMessage::from_raw))
+            .map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone())))
     }
 
     /// Pin a message in a chat.
@@ -3196,7 +3516,7 @@ impl Client {
             tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
             tl::enums::messages::Messages::NotModified(_) => vec![],
         };
-        Ok(msgs.into_iter().next().map(update::IncomingMessage::from_raw))
+        Ok(msgs.into_iter().next().map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone())))
     }
 
     /// Unpin all messages in a chat.
@@ -3285,7 +3605,7 @@ impl Client {
         };
         Ok(msgs
             .into_iter()
-            .map(update::IncomingMessage::from_raw)
+            .map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone()))
             .collect())
     }
 
@@ -3729,7 +4049,7 @@ impl Client {
         };
         Ok((
             msgs.into_iter()
-                .map(update::IncomingMessage::from_raw)
+                .map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone()))
                 .collect(),
             count,
         ))
@@ -3905,7 +4225,7 @@ impl Client {
         };
         Ok(msgs
             .into_iter()
-            .map(update::IncomingMessage::from_raw)
+            .map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone()))
             .collect())
     }
 
@@ -3986,6 +4306,7 @@ impl Client {
         let (tx, rx) = oneshot::channel();
         // Track the msg_id so we can clean it from the pending map if we time out.
         // Bug #2 fix: without this, a timed-out tx leaks in the pending map forever.
+        #[allow(unused_assignments)]
         let mut registered_msg_id: i64 = 0;
         {
             let raw_body = req.to_bytes();
@@ -4361,6 +4682,7 @@ impl Client {
         req: &S,
     ) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
+        #[allow(unused_assignments)]
         let mut registered_msg_id: i64 = 0;
         {
             let raw_body = req.to_bytes();
@@ -4681,6 +5003,20 @@ impl Client {
                 "unsupported password KDF algo".into(),
             )),
         }
+    }
+}
+
+/// Attach an embedded `Client` to `NewMessage` and `MessageEdited` variants.
+/// Other update variants are returned unchanged.
+pub(crate) fn attach_client_to_update(u: update::Update, client: &Client) -> update::Update {
+    match u {
+        update::Update::NewMessage(msg) => {
+            update::Update::NewMessage(msg.with_client(client.clone()))
+        }
+        update::Update::MessageEdited(msg) => {
+            update::Update::MessageEdited(msg.with_client(client.clone()))
+        }
+        other => other,
     }
 }
 
