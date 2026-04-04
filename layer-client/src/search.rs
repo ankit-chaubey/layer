@@ -123,6 +123,13 @@ impl SearchBuilder {
     }
 
     /// Restrict to messages sent by this peer (resolved against the cache).
+    /// Only return messages sent by the logged-in user.
+    pub fn sent_by_self(mut self) -> Self {
+        self.from_id = Some(tl::enums::InputPeer::PeerSelf);
+        self
+    }
+
+    /// Only return messages sent by a specific peer.
     pub fn from_peer(mut self, peer: tl::enums::InputPeer) -> Self {
         self.from_id = Some(peer);
         self

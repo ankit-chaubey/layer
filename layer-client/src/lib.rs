@@ -74,8 +74,8 @@ pub use session_backend::{
     BinaryFileBackend, InMemoryBackend, SessionBackend, StringSessionBackend,
 };
 pub use socks5::Socks5Config;
-pub use types::{Channel, Chat, Group, User};
 pub use types::ChannelKind;
+pub use types::{Channel, Chat, Group, User};
 pub use typing_guard::TypingGuard;
 pub use update::Update;
 pub use update::{ChatActionUpdate, UserStatusUpdate};
@@ -886,19 +886,21 @@ impl Client {
         //   (b) if we crash / exit before the retry succeeds, the next startup
         //       does not loop forever on the same dead key.
         if let Err(e) = client.init_connection().await {
-            tracing::warn!("[layer] init_connection failed ({e}), clearing saved key and retrying with fresh connect …");
+            tracing::warn!(
+                "[layer] init_connection failed ({e}), clearing saved key and retrying with fresh connect …"
+            );
 
             // Clear the home-DC auth key so a subsequent startup does not reuse it.
             {
                 let home_dc_id = *client.inner.home_dc_id.lock().await;
                 let mut opts = client.inner.dc_options.lock().await;
-                if let Some(entry) = opts.get_mut(&home_dc_id) {
-                    if entry.auth_key.is_some() {
-                        tracing::warn!("[layer] Clearing stale auth key for DC{home_dc_id}");
-                        entry.auth_key = None;
-                        entry.first_salt = 0;
-                        entry.time_offset = 0;
-                    }
+                if let Some(entry) = opts.get_mut(&home_dc_id)
+                    && entry.auth_key.is_some()
+                {
+                    tracing::warn!("[layer] Clearing stale auth key for DC{home_dc_id}");
+                    entry.auth_key = None;
+                    entry.first_salt = 0;
+                    entry.time_offset = 0;
                 }
             }
             // Flush to disk with the cleared key so the next cold-start does
@@ -1394,7 +1396,10 @@ impl Client {
         let mut cur = Cursor::from_slice(&body);
         let users = Vec::<tl::enums::User>::deserialize(&mut cur)?;
         self.cache_users_slice(&users).await;
-        Ok(users.into_iter().map(crate::types::User::from_raw).collect())
+        Ok(users
+            .into_iter()
+            .map(crate::types::User::from_raw)
+            .collect())
     }
 
     /// Fetch information about the logged-in user.
@@ -2136,12 +2141,12 @@ impl Client {
                     35 => "odd msg_seqno expected (bug)",
                     48 => "incorrect server salt",
                     64 => "invalid container (bug)",
-                    _  => "unknown bad_msg code",
+                    _ => "unknown bad_msg code",
                 };
 
                 // grammers: retryable=[16,17,48], non-fatal-non-retryable=[32,33], fatal=rest
                 let retryable = matches!(error_code, 16 | 17 | 48);
-                let fatal     = !retryable && !matches!(error_code, 32 | 33);
+                let fatal = !retryable && !matches!(error_code, 32 | 33);
 
                 if fatal {
                     tracing::error!(
@@ -2387,7 +2392,12 @@ impl Client {
             // updateShortMessage: flags(4) id(4) user_id(8) ... pts(?) pts_count(?)
             // Easier: use parse_updates which already handles them, then gap-check.
             for u in update::parse_updates(body) {
-                if self.inner.update_tx.try_send(attach_client_to_update(u, self)).is_err() {
+                if self
+                    .inner
+                    .update_tx
+                    .try_send(attach_client_to_update(u, self))
+                    .is_err()
+                {
                     tracing::warn!("[layer] update channel full — dropping update");
                 }
             }
@@ -2400,8 +2410,8 @@ impl Client {
         // Grammers only advances seq after the full update loop completes with no
         // unresolved gaps.  We mirror this: check seq first, drop the container if
         // it's a gap or duplicate, and advance seq AFTER dispatching all updates.
-        use layer_tl_types::{Cursor, Deserializable};
         use crate::pts::PtsCheckResult;
+        use layer_tl_types::{Cursor, Deserializable};
 
         // Parse the container ONCE and capture seq_info, users, chats, and the
         // bare update list together.  The old code parsed twice (once for seq_info,
@@ -2410,9 +2420,9 @@ impl Client {
         // the "no access_hash for user X, using 0" warnings.
         struct ParsedContainer {
             seq_info: Option<(i32, i32)>,
-            users:    Vec<tl::enums::User>,
-            chats:    Vec<tl::enums::Chat>,
-            updates:  Vec<tl::enums::Update>,
+            users: Vec<tl::enums::User>,
+            chats: Vec<tl::enums::Chat>,
+            updates: Vec<tl::enums::Update>,
         }
 
         let mut cur = Cursor::from_slice(body);
@@ -2422,11 +2432,16 @@ impl Client {
                 match tl::enums::Updates::deserialize(&mut cur) {
                     Ok(tl::enums::Updates::Updates(u)) => ParsedContainer {
                         seq_info: Some((u.seq, u.seq)),
-                        users:    u.users,
-                        chats:    u.chats,
-                        updates:  u.updates,
+                        users: u.users,
+                        chats: u.chats,
+                        updates: u.updates,
                     },
-                    _ => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![] },
+                    _ => ParsedContainer {
+                        seq_info: None,
+                        users: vec![],
+                        chats: vec![],
+                        updates: vec![],
+                    },
                 }
             }
             0x725b04c3 => {
@@ -2434,73 +2449,89 @@ impl Client {
                 match tl::enums::Updates::deserialize(&mut cur) {
                     Ok(tl::enums::Updates::Combined(u)) => ParsedContainer {
                         seq_info: Some((u.seq, u.seq_start)),
-                        users:    u.users,
-                        chats:    u.chats,
-                        updates:  u.updates,
+                        users: u.users,
+                        chats: u.chats,
+                        updates: u.updates,
                     },
-                    _ => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![] },
+                    _ => ParsedContainer {
+                        seq_info: None,
+                        users: vec![],
+                        chats: vec![],
+                        updates: vec![],
+                    },
                 }
             }
             0x78d4dec1 => {
                 // updateShort — no users/chats/seq
                 match tl::types::UpdateShort::deserialize(&mut Cursor::from_slice(body)) {
-                    Ok(u) => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![u.update] },
-                    Err(_) => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![] },
+                    Ok(u) => ParsedContainer {
+                        seq_info: None,
+                        users: vec![],
+                        chats: vec![],
+                        updates: vec![u.update],
+                    },
+                    Err(_) => ParsedContainer {
+                        seq_info: None,
+                        users: vec![],
+                        chats: vec![],
+                        updates: vec![],
+                    },
                 }
             }
-            _ => ParsedContainer { seq_info: None, users: vec![], chats: vec![], updates: vec![] },
+            _ => ParsedContainer {
+                seq_info: None,
+                users: vec![],
+                chats: vec![],
+                updates: vec![],
+            },
         };
 
         // Feed users/chats into the PeerCache so access_hash lookups work.
         if !parsed.users.is_empty() || !parsed.chats.is_empty() {
-            self.cache_users_and_chats(&parsed.users, &parsed.chats).await;
+            self.cache_users_and_chats(&parsed.users, &parsed.chats)
+                .await;
         }
 
         // Fix B5: synchronous seq gate — check before processing any updates.
-        if let Some((seq, seq_start)) = parsed.seq_info {
-            if seq != 0 {
-                let result = self
-                    .inner
-                    .pts_state
-                    .lock()
-                    .await
-                    .check_seq(seq, seq_start);
-                match result {
-                    PtsCheckResult::Ok => {
-                        // Good — will advance seq after the batch below.
-                    }
-                    PtsCheckResult::Duplicate => {
-                        // Already handled this container — drop it silently.
-                        tracing::debug!(
-                            "[layer] seq duplicate (seq={seq}, seq_start={seq_start}) — dropping container"
-                        );
-                        return;
-                    }
-                    PtsCheckResult::Gap { expected, got } => {
-                        // Real seq gap — fire getDifference and drop the container.
-                        // getDifference will deliver the missed updates.
-                        tracing::warn!(
-                            "[layer] seq gap: expected {expected}, got {got} — getDifference"
-                        );
-                        let c = self.clone();
-                        let utx = self.inner.update_tx.clone();
-                        tokio::spawn(async move {
-                            match c.get_difference().await {
-                                Ok(updates) => {
-                                    for u in updates {
-                                        if utx.try_send(u).is_err() {
-                                            tracing::warn!(
-                                                "[layer] update channel full — dropping seq gap update"
-                                            );
-                                            break;
-                                        }
+        if let Some((seq, seq_start)) = parsed.seq_info
+            && seq != 0
+        {
+            let result = self.inner.pts_state.lock().await.check_seq(seq, seq_start);
+            match result {
+                PtsCheckResult::Ok => {
+                    // Good — will advance seq after the batch below.
+                }
+                PtsCheckResult::Duplicate => {
+                    // Already handled this container — drop it silently.
+                    tracing::debug!(
+                        "[layer] seq duplicate (seq={seq}, seq_start={seq_start}) — dropping container"
+                    );
+                    return;
+                }
+                PtsCheckResult::Gap { expected, got } => {
+                    // Real seq gap — fire getDifference and drop the container.
+                    // getDifference will deliver the missed updates.
+                    tracing::warn!(
+                        "[layer] seq gap: expected {expected}, got {got} — getDifference"
+                    );
+                    let c = self.clone();
+                    let utx = self.inner.update_tx.clone();
+                    tokio::spawn(async move {
+                        match c.get_difference().await {
+                            Ok(updates) => {
+                                for u in updates {
+                                    if utx.try_send(u).is_err() {
+                                        tracing::warn!(
+                                            "[layer] update channel full — dropping seq gap update"
+                                        );
+                                        break;
                                     }
                                 }
-                                Err(e) => tracing::warn!("[layer] seq gap fill: {e}"),
                             }
-                        });
-                        return; // drop this container; diff will supply updates
-                    }
+                            Err(e) => tracing::warn!("[layer] seq gap fill: {e}"),
+                        }
+                    });
+                    return; // drop this container; diff will supply updates
                 }
             }
         }
@@ -2522,10 +2553,10 @@ impl Client {
         // (In our spawn-per-update model we can't track unresolved gaps inline, but
         // advancing here at minimum prevents premature seq advancement before the
         // container's pts checks have even been spawned.)
-        if let Some((seq, _)) = parsed.seq_info {
-            if seq != 0 {
-                self.inner.pts_state.lock().await.advance_seq(seq);
-            }
+        if let Some((seq, _)) = parsed.seq_info
+            && seq != 0
+        {
+            self.inner.pts_state.lock().await.advance_seq(seq);
         }
     }
 
@@ -2687,11 +2718,18 @@ impl Client {
                 });
                 vec![]
             }
-            Kind::Passthrough => high.into_iter().map(|u| match u {
-                update::Update::NewMessage(msg) => update::Update::NewMessage(msg.with_client(self.clone())),
-                update::Update::MessageEdited(msg) => update::Update::MessageEdited(msg.with_client(self.clone())),
-                other => other,
-            }).collect(),
+            Kind::Passthrough => high
+                .into_iter()
+                .map(|u| match u {
+                    update::Update::NewMessage(msg) => {
+                        update::Update::NewMessage(msg.with_client(self.clone()))
+                    }
+                    update::Update::MessageEdited(msg) => {
+                        update::Update::MessageEdited(msg.with_client(self.clone()))
+                    }
+                    other => other,
+                })
+                .collect(),
         };
 
         for u in to_send {
@@ -2813,7 +2851,12 @@ impl Client {
             let opts = self.inner.dc_options.lock().await;
             match opts.get(&home_dc_id) {
                 Some(e) => (e.addr.clone(), e.auth_key, e.first_salt, e.time_offset),
-                None => (crate::dc_migration::fallback_dc_addr(home_dc_id).to_string(), None, 0, 0),
+                None => (
+                    crate::dc_migration::fallback_dc_addr(home_dc_id).to_string(),
+                    None,
+                    0,
+                    0,
+                ),
             }
         };
         let socks5 = self.inner.socks5.clone();
@@ -2863,7 +2906,11 @@ impl Client {
     // ── Messaging ──────────────────────────────────────────────────────────
 
     /// Send a text message. Use `"me"` for Saved Messages.
-    pub async fn send_message(&self, peer: &str, text: &str) -> Result<update::IncomingMessage, InvocationError> {
+    pub async fn send_message(
+        &self,
+        peer: &str,
+        text: &str,
+    ) -> Result<update::IncomingMessage, InvocationError> {
         let p = self.resolve_peer(peer).await?;
         self.send_message_to_peer(p, text).await
     }
@@ -3105,23 +3152,21 @@ impl Client {
             via_bot_id: None,
             via_business_bot_id: None,
             reply_to: input.reply_to.map(|id| {
-                tl::enums::MessageReplyHeader::MessageReplyHeader(
-                    tl::types::MessageReplyHeader {
-                        reply_to_scheduled: false,
-                        forum_topic: false,
-                        quote: false,
-                        reply_to_msg_id: Some(id),
-                        reply_to_peer_id: None,
-                        reply_from: None,
-                        reply_media: None,
-                        reply_to_top_id: None,
-                        quote_text: None,
-                        quote_entities: None,
-                        quote_offset: None,
-                        todo_item_id: None,
-                        poll_option: None,
-                    },
-                )
+                tl::enums::MessageReplyHeader::MessageReplyHeader(tl::types::MessageReplyHeader {
+                    reply_to_scheduled: false,
+                    forum_topic: false,
+                    quote: false,
+                    reply_to_msg_id: Some(id),
+                    reply_to_peer_id: None,
+                    reply_from: None,
+                    reply_media: None,
+                    reply_to_top_id: None,
+                    quote_text: None,
+                    quote_entities: None,
+                    quote_offset: None,
+                    todo_item_id: None,
+                    poll_option: None,
+                })
             }),
             date: sent.date,
             message: input.text.clone(),
@@ -3184,23 +3229,21 @@ impl Client {
             via_bot_id: None,
             via_business_bot_id: None,
             reply_to: input.reply_to.map(|rid| {
-                tl::enums::MessageReplyHeader::MessageReplyHeader(
-                    tl::types::MessageReplyHeader {
-                        reply_to_scheduled: false,
-                        forum_topic: false,
-                        quote: false,
-                        reply_to_msg_id: Some(rid),
-                        reply_to_peer_id: None,
-                        reply_from: None,
-                        reply_media: None,
-                        reply_to_top_id: None,
-                        quote_text: None,
-                        quote_entities: None,
-                        quote_offset: None,
-                        todo_item_id: None,
-                        poll_option: None,
-                    },
-                )
+                tl::enums::MessageReplyHeader::MessageReplyHeader(tl::types::MessageReplyHeader {
+                    reply_to_scheduled: false,
+                    forum_topic: false,
+                    quote: false,
+                    reply_to_msg_id: Some(rid),
+                    reply_to_peer_id: None,
+                    reply_from: None,
+                    reply_media: None,
+                    reply_to_top_id: None,
+                    quote_text: None,
+                    quote_entities: None,
+                    quote_offset: None,
+                    todo_item_id: None,
+                    poll_option: None,
+                })
             }),
             date,
             message: input.text.clone(),
@@ -3230,7 +3273,10 @@ impl Client {
     }
 
     /// Send directly to Saved Messages.
-    pub async fn send_to_self(&self, text: &str) -> Result<update::IncomingMessage, InvocationError> {
+    pub async fn send_to_self(
+        &self,
+        text: &str,
+    ) -> Result<update::IncomingMessage, InvocationError> {
         let req = tl::functions::messages::SendMessage {
             no_webpage: false,
             silent: false,
@@ -3322,6 +3368,81 @@ impl Client {
             suggested_post: None,
         };
         self.rpc_write(&req).await
+    }
+
+    /// Forward messages and return the forwarded copies.
+    ///
+    /// Like [`forward_messages`] but parses the Updates response and returns
+    /// the new messages in the destination chat, matching grammers behaviour.
+    pub async fn forward_messages_returning(
+        &self,
+        destination: impl Into<PeerRef>,
+        message_ids: &[i32],
+        source: impl Into<PeerRef>,
+    ) -> Result<Vec<update::IncomingMessage>, InvocationError> {
+        let dest = destination.into().resolve(self).await?;
+        let src = source.into().resolve(self).await?;
+        let cache = self.inner.peer_cache.read().await;
+        let to_peer = cache.peer_to_input(&dest);
+        let from_peer = cache.peer_to_input(&src);
+        drop(cache);
+
+        let req = tl::functions::messages::ForwardMessages {
+            silent: false,
+            background: false,
+            with_my_score: false,
+            drop_author: false,
+            drop_media_captions: false,
+            noforwards: false,
+            from_peer,
+            id: message_ids.to_vec(),
+            random_id: (0..message_ids.len()).map(|_| random_i64()).collect(),
+            to_peer,
+            top_msg_id: None,
+            reply_to: None,
+            schedule_date: None,
+            schedule_repeat_period: None,
+            send_as: None,
+            quick_reply_shortcut: None,
+            effect: None,
+            video_timestamp: None,
+            allow_paid_stars: None,
+            allow_paid_floodskip: false,
+            suggested_post: None,
+        };
+        let body = self.rpc_call_raw(&req).await?;
+        // Parse the Updates container and collect NewMessage / NewChannelMessage updates.
+        let mut out = Vec::new();
+        if body.len() >= 4 {
+            let cid = u32::from_le_bytes(body[..4].try_into().unwrap());
+            if cid == 0x74ae4240 || cid == 0x725b04c3 {
+                let mut cur = Cursor::from_slice(&body);
+                let updates_opt = tl::enums::Updates::deserialize(&mut cur).ok();
+                let raw_updates = match updates_opt {
+                    Some(tl::enums::Updates::Updates(u)) => u.updates,
+                    Some(tl::enums::Updates::Combined(u)) => u.updates,
+                    _ => vec![],
+                };
+                for upd in raw_updates {
+                    match upd {
+                        tl::enums::Update::NewMessage(u) => {
+                            out.push(
+                                update::IncomingMessage::from_raw(u.message)
+                                    .with_client(self.clone()),
+                            );
+                        }
+                        tl::enums::Update::NewChannelMessage(u) => {
+                            out.push(
+                                update::IncomingMessage::from_raw(u.message)
+                                    .with_client(self.clone()),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Delete messages by ID.
@@ -3490,7 +3611,9 @@ impl Client {
             None => return Ok(None),
         };
         let input_peer = self.inner.peer_cache.read().await.peer_to_input(&peer);
-        let id = vec![tl::enums::InputMessage::Id(tl::types::InputMessageId { id: reply_id })];
+        let id = vec![tl::enums::InputMessage::Id(tl::types::InputMessageId {
+            id: reply_id,
+        })];
 
         let result = match &input_peer {
             tl::enums::InputPeer::Channel(c) => {
@@ -3516,7 +3639,10 @@ impl Client {
             tl::enums::messages::Messages::ChannelMessages(m) => m.messages,
             tl::enums::messages::Messages::NotModified(_) => vec![],
         };
-        Ok(msgs.into_iter().next().map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone())))
+        Ok(msgs
+            .into_iter()
+            .next()
+            .map(|m| update::IncomingMessage::from_raw(m).with_client(self.clone())))
     }
 
     /// Unpin all messages in a chat.
@@ -4364,7 +4490,12 @@ impl Client {
                 // leak memory or confuse future response routing.
                 if registered_msg_id != 0 {
                     self.inner.pending.lock().await.remove(&registered_msg_id);
-                    self.inner.writer.lock().await.sent_bodies.remove(&registered_msg_id);
+                    self.inner
+                        .writer
+                        .lock()
+                        .await
+                        .sent_bodies
+                        .remove(&registered_msg_id);
                 }
                 Err(InvocationError::Deserialize(
                     "RPC timed out after 30 s".into(),
@@ -4717,7 +4848,12 @@ impl Client {
             Err(_) => {
                 if registered_msg_id != 0 {
                     self.inner.pending.lock().await.remove(&registered_msg_id);
-                    self.inner.writer.lock().await.sent_bodies.remove(&registered_msg_id);
+                    self.inner
+                        .writer
+                        .lock()
+                        .await
+                        .sent_bodies
+                        .remove(&registered_msg_id);
                 }
                 Err(InvocationError::Deserialize(
                     "rpc timed out after 30 s".into(),

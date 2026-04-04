@@ -477,11 +477,7 @@ impl Client {
         });
 
         // grammers: bots get BOT_CHANNEL_DIFF_LIMIT (100_000), users get USER_CHANNEL_DIFF_LIMIT (100)
-        let diff_limit = if self
-            .inner
-            .is_bot
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
+        let diff_limit = if self.inner.is_bot.load(std::sync::atomic::Ordering::Relaxed) {
             CHANNEL_DIFF_LIMIT_BOT
         } else {
             CHANNEL_DIFF_LIMIT_USER
@@ -900,12 +896,15 @@ impl Client {
         // If the possible-gap window has expired but no new update has arrived
         // to trigger check_and_fill_gap, fire getDifference from here.
         {
-            let gap_expired = self.inner.possible_gap.lock().await.global_deadline_elapsed();
+            let gap_expired = self
+                .inner
+                .possible_gap
+                .lock()
+                .await
+                .global_deadline_elapsed();
             let already = self.inner.pts_state.lock().await.getting_global_diff;
             if gap_expired && !already {
-                tracing::debug!(
-                    "[layer] B3 global possible-gap deadline expired — getDifference"
-                );
+                tracing::debug!("[layer] B3 global possible-gap deadline expired — getDifference");
                 let buffered = self.inner.possible_gap.lock().await.drain_global();
                 match self.get_difference().await {
                     Ok(mut updates) => {
@@ -983,9 +982,7 @@ impl Client {
                         }
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "[layer] B3 channel {channel_id} gap diff failed: {e}"
-                        );
+                        tracing::warn!("[layer] B3 channel {channel_id} gap diff failed: {e}");
                         c.inner
                             .pts_state
                             .lock()

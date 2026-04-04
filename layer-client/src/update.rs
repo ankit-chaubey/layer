@@ -422,7 +422,11 @@ impl IncomingMessage {
     /// Reply to this message with a plain string.
     ///
     /// Returns the sent message so you can chain further operations on it.
-    pub async fn reply_with(&self, client: &Client, text: impl Into<String>) -> Result<IncomingMessage, Error> {
+    pub async fn reply_with(
+        &self,
+        client: &Client,
+        text: impl Into<String>,
+    ) -> Result<IncomingMessage, Error> {
         let peer = match self.peer_id() {
             Some(p) => p.clone(),
             None => return Err(Error::Deserialize("cannot reply: unknown peer".into())),
@@ -443,7 +447,11 @@ impl IncomingMessage {
     }
 
     /// Reply with a full [`InputMessage`](crate::InputMessage).
-    pub async fn reply_ex_with(&self, client: &Client, msg: crate::InputMessage) -> Result<IncomingMessage, Error> {
+    pub async fn reply_ex_with(
+        &self,
+        client: &Client,
+        msg: crate::InputMessage,
+    ) -> Result<IncomingMessage, Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -462,7 +470,11 @@ impl IncomingMessage {
     }
 
     /// Send to the same chat without quoting.
-    pub async fn respond_with(&self, client: &Client, text: impl Into<String>) -> Result<IncomingMessage, Error> {
+    pub async fn respond_with(
+        &self,
+        client: &Client,
+        text: impl Into<String>,
+    ) -> Result<IncomingMessage, Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -479,7 +491,11 @@ impl IncomingMessage {
     }
 
     /// Full [`InputMessage`] to the same chat without quoting.
-    pub async fn respond_ex_with(&self, client: &Client, msg: crate::InputMessage) -> Result<IncomingMessage, Error> {
+    pub async fn respond_ex_with(
+        &self,
+        client: &Client,
+        msg: crate::InputMessage,
+    ) -> Result<IncomingMessage, Error> {
         let peer = self
             .peer_id()
             .cloned()
@@ -496,12 +512,18 @@ impl IncomingMessage {
     }
 
     /// Edit this message.
-    pub async fn edit_with(&self, client: &Client, new_text: impl Into<String>) -> Result<(), Error> {
+    pub async fn edit_with(
+        &self,
+        client: &Client,
+        new_text: impl Into<String>,
+    ) -> Result<(), Error> {
         let peer = self
             .peer_id()
             .cloned()
             .ok_or_else(|| Error::Deserialize("cannot edit: unknown peer".into()))?;
-        client.edit_message(peer, self.id(), new_text.into().as_str()).await
+        client
+            .edit_message(peer, self.id(), new_text.into().as_str())
+            .await
     }
 
     // ── delete ──────────────────────────────────────────────────────────────
@@ -548,7 +570,9 @@ impl IncomingMessage {
             .peer_id()
             .cloned()
             .ok_or_else(|| Error::Deserialize("cannot pin: unknown peer".into()))?;
-        client.pin_message(peer, self.id(), true, false, false).await
+        client
+            .pin_message(peer, self.id(), true, false, false)
+            .await
     }
 
     // ── unpin ───────────────────────────────────────────────────────────────
@@ -570,25 +594,66 @@ impl IncomingMessage {
 
     // ── forward_to ──────────────────────────────────────────────────────────
 
-    /// Forward to another chat (clientless).
-    pub async fn forward_to(&self, destination: impl Into<crate::PeerRef>) -> Result<(), Error> {
+    /// Forward this message to another chat (clientless).
+    ///
+    /// Returns the forwarded message in the destination chat.
+    pub async fn forward_to(
+        &self,
+        destination: impl Into<crate::PeerRef>,
+    ) -> Result<IncomingMessage, Error> {
         let client = self.require_client("forward_to")?.clone();
         self.forward_to_with(&client, destination).await
     }
 
-    /// Forward to another chat.
+    /// Forward this message to another chat.
+    ///
+    /// Returns the forwarded message in the destination chat.
     pub async fn forward_to_with(
         &self,
         client: &Client,
         destination: impl Into<crate::PeerRef>,
-    ) -> Result<(), Error> {
-        let peer = self
+    ) -> Result<IncomingMessage, Error> {
+        let src = self
             .peer_id()
             .cloned()
             .ok_or_else(|| Error::Deserialize("cannot forward: unknown source peer".into()))?;
         client
-            .forward_messages(destination, &[self.id()], peer)
+            .forward_messages_returning(destination, &[self.id()], src)
             .await
+            .and_then(|v| {
+                v.into_iter()
+                    .next()
+                    .ok_or_else(|| Error::Deserialize("forward returned no message".into()))
+            })
+    }
+
+    // ── refetch ─────────────────────────────────────────────────────────────
+
+    /// Re-fetch this message from Telegram (clientless).
+    ///
+    /// Useful to get updated view/forward counts, reactions, edit state, etc.
+    /// Updates `self` in place; returns an error if the message was deleted.
+    pub async fn refetch(&mut self) -> Result<(), Error> {
+        let client = self.require_client("refetch")?.clone();
+        self.refetch_with(&client).await
+    }
+
+    /// Re-fetch this message from Telegram.
+    pub async fn refetch_with(&mut self, client: &Client) -> Result<(), Error> {
+        let peer = self
+            .peer_id()
+            .cloned()
+            .ok_or_else(|| Error::Deserialize("cannot refetch: unknown peer".into()))?;
+        let mut msgs = client.get_messages_by_id(peer, &[self.id()]).await?;
+        match msgs.pop() {
+            Some(m) => {
+                self.raw = m.raw;
+                Ok(())
+            }
+            None => Err(Error::Deserialize(
+                "refetch: message not found (deleted?)".into(),
+            )),
+        }
     }
 
     // ── download_media ──────────────────────────────────────────────────────
@@ -1108,9 +1173,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
                     );
                 }
                 Err(e) => {
-                    tracing::debug!(
-                        "[layer] updateShortSentMessage parse error: {e}"
-                    );
+                    tracing::debug!("[layer] updateShortSentMessage parse error: {e}");
                 }
             }
             vec![]
