@@ -429,13 +429,12 @@ impl From<String> for InputMessage {
 /// | `Abridged` | `0xef` | Default, smallest overhead |
 /// | `Intermediate` | `0xeeeeeeee` | Better proxy compat |
 /// | `Full` | none | Adds seqno + CRC32 |
-/// | `Obfuscated` | random 64B | Bypasses DPI / MTProxy |
-#[derive(Clone, Debug, Default)]
+/// | `Obfuscated` | random 64B | Bypasses DPI / MTProxy — **default** |
+#[derive(Clone, Debug)]
 pub enum TransportKind {
     /// MTProto [Abridged] transport — length prefix is 1 or 4 bytes.
     ///
     /// [Abridged]: https://core.telegram.org/mtproto/mtproto-transports#abridged
-    #[default]
     Abridged,
     /// MTProto [Intermediate] transport — 4-byte LE length prefix.
     ///
@@ -445,13 +444,25 @@ pub enum TransportKind {
     ///
     /// [Full]: https://core.telegram.org/mtproto/mtproto-transports#full
     Full,
-    /// [Obfuscated2] transport — XOR stream cipher over Abridged framing.
+    /// [Obfuscated2] transport — AES-256-CTR over Abridged framing.
     /// Required for MTProxy and networks with deep-packet inspection.
+    /// **Default** — works on all networks, bypasses DPI, negligible CPU cost.
     ///
-    /// `secret` is the 16-byte proxy secret, or `None` for keyless obfuscation.
+    /// `secret` is the 16-byte MTProxy secret, or `None` for keyless obfuscation.
     ///
     /// [Obfuscated2]: https://core.telegram.org/mtproto/mtproto-transports#obfuscated-2
     Obfuscated { secret: Option<[u8; 16]> },
+}
+
+impl Default for TransportKind {
+    fn default() -> Self {
+        // Obfuscated (keyless) is the best all-round choice:
+        //  - bypasses DPI / ISP blocks that filter plain MTProto
+        //  - negligible CPU overhead (AES-256-CTR via hardware AES-NI)
+        //  - works on all networks without MTProxy configuration
+        //  - drops in as a replacement for Abridged with zero API changes
+        TransportKind::Obfuscated { secret: None }
+    }
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -528,7 +539,7 @@ impl Default for Config {
             retry_policy: Arc::new(AutoSleep::default()),
             socks5: None,
             allow_ipv6: false,
-            transport: TransportKind::Abridged,
+            transport: TransportKind::Obfuscated { secret: None },
             session_backend: Arc::new(crate::session_backend::BinaryFileBackend::new(
                 "layer.session",
             )),
@@ -664,6 +675,10 @@ struct ClientInner {
     session_backend: Arc<dyn crate::session_backend::SessionBackend>,
     dc_pool: Mutex<dc_pool::DcPool>,
     update_tx: mpsc::Sender<update::Update>,
+    /// Whether this client is signed in as a bot (set in `bot_sign_in`).
+    /// Used by `get_channel_difference` to pick the correct diff limit:
+    /// bots get 100_000 (BOT_CHANNEL_DIFF_LIMIT), users get 100 (USER_CHANNEL_DIFF_LIMIT).
+    pub is_bot: std::sync::atomic::AtomicBool,
     /// Guards against calling `stream_updates()` more than once.
     stream_active: std::sync::atomic::AtomicBool,
 }
@@ -831,6 +846,7 @@ impl Client {
             session_backend: config.session_backend,
             dc_pool: Mutex::new(pool),
             update_tx,
+            is_bot: std::sync::atomic::AtomicBool::new(false),
             stream_active: std::sync::atomic::AtomicBool::new(false),
         });
 
@@ -990,7 +1006,7 @@ impl Client {
                             match c2.get_channel_difference(channel_id).await {
                                 Ok(updates) => {
                                     if !updates.is_empty() {
-                                        tracing::info!(
+                                        tracing::debug!(
                                             "[layer] catch_up channel {channel_id}: {} updates",
                                             updates.len()
                                         );
@@ -1024,7 +1040,7 @@ impl Client {
         socks5: Option<&crate::socks5::Socks5Config>,
         transport: &TransportKind,
     ) -> Result<(Connection, i32, HashMap<i32, DcEntry>), InvocationError> {
-        tracing::info!("[layer] Fresh connect to DC2 …");
+        tracing::debug!("[layer] Fresh connect to DC2 …");
         let conn =
             Connection::connect_raw(crate::dc_migration::fallback_dc_addr(2), socks5, transport)
                 .await?;
@@ -1130,7 +1146,7 @@ impl Client {
             .session_backend
             .save(&session)
             .map_err(InvocationError::Io)?;
-        tracing::info!("[layer] Session saved ✓");
+        tracing::debug!("[layer] Session saved ✓");
         Ok(())
     }
 
@@ -1181,6 +1197,9 @@ impl Client {
             }
         };
         tracing::info!("[layer] Bot signed in ✓  ({name})");
+        self.inner
+            .is_bot
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         Ok(name)
     }
 
@@ -1447,7 +1466,7 @@ impl Client {
             // If we reach here, reader_loop returned without a shutdown signal.
             // This should never happen in normal operation — treat it as a fault.
             if shutdown_token.is_cancelled() {
-                tracing::info!("[layer] Reader task: exiting after loop (shutdown).");
+                tracing::debug!("[layer] Reader task: exiting after loop (shutdown).");
                 return;
             }
 
@@ -1472,10 +1491,10 @@ impl Client {
             // Step 2: reconnect with exponential backoff, honouring shutdown.
             let mut delay_ms = RECONNECT_BASE_MS;
             let new_conn = loop {
-                tracing::info!("[layer] Supervisor: reconnecting in {delay_ms} ms …");
+                tracing::debug!("[layer] Supervisor: reconnecting in {delay_ms} ms …");
                 tokio::select! {
                     _ = shutdown_token.cancelled() => {
-                        tracing::info!("[layer] Supervisor: shutdown during reconnect, exiting.");
+                        tracing::debug!("[layer] Supervisor: shutdown during reconnect, exiting.");
                         return;
                     }
                     _ = sleep(Duration::from_millis(delay_ms)) => {}
@@ -1539,7 +1558,7 @@ impl Client {
             });
             restart_init_rx = Some(init_rx);
 
-            tracing::info!(
+            tracing::debug!(
                 "[layer] Supervisor: restarting reader loop (restart #{restart_count}) …"
             );
             // Loop back → reader_loop restarts with the fresh connection.
@@ -1578,7 +1597,36 @@ impl Client {
                         FrameOutcome::Frame(mut raw) => {
                             let msg = match EncryptedSession::decrypt_frame(&ak, sid, &mut raw) {
                                 Ok(m)  => m,
-                                Err(e) => { tracing::warn!("[layer] Decrypt error: {e:?}"); continue; }
+                                Err(e) => {
+                                    // A decrypt failure (e.g. Crypto(InvalidBuffer) from a
+                                    // 4-byte transport error that slipped through) means our
+                                    // auth key is stale or the framing is broken. Treat it as
+                                    // fatal — same path as FrameOutcome::Error — so pending RPCs
+                                    // unblock immediately instead of hanging for 30 s.
+                                    tracing::warn!("[layer] Decrypt error: {e:?} — failing pending waiters and reconnecting");
+                                    drop(init_rx.take());
+                                    {
+                                        let mut pending = self.inner.pending.lock().await;
+                                        let msg = format!("decrypt error: {e}");
+                                        for (_, tx) in pending.drain() {
+                                            let _ = tx.send(Err(InvocationError::Io(
+                                                std::io::Error::new(
+                                                    std::io::ErrorKind::InvalidData,
+                                                    msg.clone(),
+                                                )
+                                            )));
+                                        }
+                                    }
+                                    self.inner.writer.lock().await.sent_bodies.clear();
+                                    match self.do_reconnect_loop(
+                                        RECONNECT_BASE_MS, &mut rh, &mut fk, &mut ak, &mut sid,
+                                        network_hint_rx,
+                                    ).await {
+                                        Some(rx) => { init_rx = Some(rx); }
+                                        None     => return,
+                                    }
+                                    continue;
+                                }
                             };
                             if msg.salt != 0 {
                                 self.inner.writer.lock().await.enc.salt = msg.salt;
@@ -1595,6 +1643,31 @@ impl Client {
                             tracing::warn!("[layer] Reader: connection error: {e}");
                             drop(init_rx.take()); // discard any in-flight init
 
+                            // Detect definitive auth-key rejection.  Telegram signals
+                            // this with a -404 transport error (now surfaced as Rpc(-404)
+                            // by recv_frame_read) or an immediate EOF/RST.  In that case
+                            // we clear the saved key so do_reconnect_loop falls through to
+                            // connect_raw (fresh DH) rather than reconnecting with the same
+                            // expired key and getting -404 forever.
+                            let key_is_stale = match &e {
+                                InvocationError::Rpc(r) if r.code == -404 => true,
+                                InvocationError::Io(io)
+                                    if io.kind() == std::io::ErrorKind::UnexpectedEof
+                                    || io.kind() == std::io::ErrorKind::ConnectionReset => true,
+                                _ => false,
+                            };
+                            if key_is_stale {
+                                let home_dc_id = *self.inner.home_dc_id.lock().await;
+                                let mut opts = self.inner.dc_options.lock().await;
+                                if let Some(entry) = opts.get_mut(&home_dc_id) {
+                                    tracing::warn!(
+                                        "[layer] Stale auth key on DC{home_dc_id} ({e}) \
+                                         — clearing for fresh DH"
+                                    );
+                                    entry.auth_key = None;
+                                }
+                            }
+
                             // Fail all in-flight RPCs immediately so AutoSleep
                             // retries them as soon as we reconnect.
                             {
@@ -1609,8 +1682,11 @@ impl Client {
                             // Fix #9: drain sent_bodies so it doesn't grow unbounded under loss.
                             self.inner.writer.lock().await.sent_bodies.clear();
 
+                            // Skip backoff when the key is stale: no point waiting before
+                            // fresh DH — the server told us directly to renegotiate.
+                            let reconnect_delay = if key_is_stale { 0 } else { RECONNECT_BASE_MS };
                             match self.do_reconnect_loop(
-                                RECONNECT_BASE_MS, &mut rh, &mut fk, &mut ak, &mut sid,
+                                reconnect_delay, &mut rh, &mut fk, &mut ak, &mut sid,
                                 network_hint_rx,
                             ).await {
                                 Some(rx) => { init_rx = Some(rx); }
@@ -1626,7 +1702,7 @@ impl Client {
                 maybe = new_conn_rx.recv() => {
                     if let Some((new_rh, new_fk, new_ak, new_sid)) = maybe {
                         rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
-                        tracing::info!("[layer] Reader: switched to new connection.");
+                        tracing::debug!("[layer] Reader: switched to new connection.");
                     } else {
                         break; // reconnect_tx dropped → client is shutting down
                     }
@@ -1957,30 +2033,73 @@ impl Client {
                 }
                 let bad_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
                 let error_code = u32::from_le_bytes(body[16..20].try_into().unwrap());
-                tracing::warn!(
-                    "[layer] bad_msg_notification: msg_id={bad_msg_id} code={error_code}"
-                );
+
+                // grammers description strings for each code
+                let description = match error_code {
+                    16 => "msg_id too low",
+                    17 => "msg_id too high",
+                    18 => "incorrect two lower order msg_id bits (bug)",
+                    19 => "container msg_id is same as previously received (bug)",
+                    20 => "message too old",
+                    32 => "msg_seqno too low",
+                    33 => "msg_seqno too high",
+                    34 => "even msg_seqno expected (bug)",
+                    35 => "odd msg_seqno expected (bug)",
+                    48 => "incorrect server salt",
+                    64 => "invalid container (bug)",
+                    _  => "unknown bad_msg code",
+                };
+
+                // grammers: retryable=[16,17,48], non-fatal-non-retryable=[32,33], fatal=rest
+                let retryable = matches!(error_code, 16 | 17 | 48);
+                let fatal     = !retryable && !matches!(error_code, 32 | 33);
+
+                if fatal {
+                    tracing::error!(
+                        "[layer] bad_msg_notification (fatal): bad_msg_id={bad_msg_id} \
+                         code={error_code} — {description}"
+                    );
+                } else {
+                    tracing::warn!(
+                        "[layer] bad_msg_notification: bad_msg_id={bad_msg_id} \
+                         code={error_code} — {description}"
+                    );
+                }
 
                 // Phase 1: hold writer only for enc-state mutations + packing.
                 // The lock is dropped BEFORE we touch `pending`, eliminating the
                 // writer→pending lock-order deadlock that existed before this fix.
                 let resend: Option<(Vec<u8>, i64, FrameKind)> = {
                     let mut w = self.inner.writer.lock().await;
-                    // G-12: correct clock skew on codes 16/17
+
+                    // G-12: correct clock skew on codes 16/17.
+                    // MUST use `msg_id` (the server's notification frame msg_id, whose
+                    // upper 32 bits are the server's current Unix time) — NOT `bad_msg_id`
+                    // (our own wrong-clock message id, which is exactly the problem we're fixing).
+                    // grammers: correct_time_offset(message.msg_id)
                     if error_code == 16 || error_code == 17 {
-                        w.enc.correct_time_offset(bad_msg_id);
+                        w.enc.correct_time_offset(msg_id);
                     }
                     // G-03: correct seq_no on codes 32/33
                     if error_code == 32 || error_code == 33 {
                         w.enc.correct_seq_no(error_code);
                     }
-                    // G-02: pack re-send if we have the original body.
-                    if let Some(orig_body) = w.sent_bodies.remove(&bad_msg_id) {
-                        let (wire, new_msg_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
-                        let fk = w.frame_kind.clone();
-                        w.sent_bodies.insert(new_msg_id, orig_body);
-                        Some((wire, new_msg_id, fk))
+
+                    // Only re-pack and re-send for retryable codes (grammers: [16, 17, 48]).
+                    // Non-retryable codes (32/33 = seq_no) and fatal codes (all others) should
+                    // NOT be re-sent — grammers drops these and lets the caller error/retry.
+                    if retryable {
+                        if let Some(orig_body) = w.sent_bodies.remove(&bad_msg_id) {
+                            let (wire, new_msg_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
+                            let fk = w.frame_kind.clone();
+                            w.sent_bodies.insert(new_msg_id, orig_body);
+                            Some((wire, new_msg_id, fk))
+                        } else {
+                            None
+                        }
                     } else {
+                        // Non-retryable: clean up sent_bodies so it doesn't grow unbounded.
+                        w.sent_bodies.remove(&bad_msg_id);
                         None
                     }
                 }; // ← writer lock released here
@@ -2016,10 +2135,10 @@ impl Client {
                         }
                     }
                     None => {
-                        // Not in sent_bodies — surface retriable error to the waiter.
+                        // Not re-sending: surface error to the waiter so caller can retry.
                         if let Some(tx) = self.inner.pending.lock().await.remove(&bad_msg_id) {
                             let _ = tx.send(Err(InvocationError::Deserialize(format!(
-                                "bad_msg_notification code={error_code}"
+                                "bad_msg_notification code={error_code} ({description})"
                             ))));
                         }
                     }
@@ -2513,12 +2632,12 @@ impl Client {
             initial_delay_ms.max(RECONNECT_BASE_MS)
         };
         loop {
-            tracing::info!("[layer] Reconnecting in {delay_ms} ms …");
+            tracing::debug!("[layer] Reconnecting in {delay_ms} ms …");
             tokio::select! {
                 _ = sleep(Duration::from_millis(delay_ms)) => {}
                 hint = network_hint_rx.recv() => {
                     hint?; // shutdown
-                    tracing::info!("[layer] Network hint → skipping backoff, reconnecting now");
+                    tracing::debug!("[layer] Network hint → skipping backoff, reconnecting now");
                 }
             }
 
@@ -2528,7 +2647,7 @@ impl Client {
                     *fk = new_fk;
                     *ak = new_ak;
                     *sid = new_sid;
-                    tracing::info!("[layer] TCP reconnected ✓ — initialising session …");
+                    tracing::debug!("[layer] TCP reconnected ✓ — initialising session …");
 
                     // Spawn init_connection. MUST NOT be awaited inline — the
                     // reader loop must resume so it can route the RPC response.
@@ -2599,14 +2718,14 @@ impl Client {
             let opts = self.inner.dc_options.lock().await;
             match opts.get(&home_dc_id) {
                 Some(e) => (e.addr.clone(), e.auth_key, e.first_salt, e.time_offset),
-                None => ("149.154.167.51:443".to_string(), None, 0, 0),
+                None => (crate::dc_migration::fallback_dc_addr(home_dc_id).to_string(), None, 0, 0),
             }
         };
         let socks5 = self.inner.socks5.clone();
         let transport = self.inner.transport.clone();
 
         let new_conn = if let Some(key) = saved_key {
-            tracing::info!("[layer] Reconnecting to DC{home_dc_id} with saved key …");
+            tracing::debug!("[layer] Reconnecting to DC{home_dc_id} with saved key …");
             match Connection::connect_with_key(
                 &addr,
                 key,
@@ -4278,7 +4397,7 @@ impl Client {
                 let opts = self.inner.dc_options.lock().await;
                 opts.get(&dc_id)
                     .map(|e| e.addr.clone())
-                    .ok_or_else(|| InvocationError::Deserialize(format!("unknown DC{dc_id}")))?
+                    .unwrap_or_else(|| crate::dc_migration::fallback_dc_addr(dc_id).to_string())
             };
 
             let socks5 = self.inner.socks5.clone();
@@ -4369,7 +4488,7 @@ impl Client {
             .await
             .invoke_on_dc(dc_id, &dc_entries, &import_req)
             .await?;
-        tracing::info!("[layer] Auth exported+imported to DC{dc_id} ✓");
+        tracing::debug!("[layer] Auth exported+imported to DC{dc_id} ✓");
         Ok(())
     }
 
@@ -4586,6 +4705,12 @@ pub fn random_i64_pub() -> i64 {
 // ─── Connection ───────────────────────────────────────────────────────────────
 
 /// How framing bytes are sent/received on a connection.
+///
+/// `Obfuscated` carries an `Arc<Mutex<ObfuscatedCipher>>` so the same cipher
+/// state is shared (safely) between the writer task (TX / `encrypt`) and the
+/// reader task (RX / `decrypt`).  The two directions are separate AES-CTR
+/// instances inside `ObfuscatedCipher`, so locking is only needed to prevent
+/// concurrent mutation of the struct, not to serialise TX vs RX.
 #[derive(Clone)]
 enum FrameKind {
     Abridged,
@@ -4594,6 +4719,11 @@ enum FrameKind {
     Full {
         send_seqno: u32,
         recv_seqno: u32,
+    },
+    /// Obfuscated2 transport: AES-256-CTR over Abridged framing.
+    /// The Arc<Mutex<>> is cloned into both the writer and the reader task.
+    Obfuscated {
+        cipher: std::sync::Arc<tokio::sync::Mutex<layer_crypto::ObfuscatedCipher>>,
     },
 }
 
@@ -4701,30 +4831,47 @@ impl Connection {
                 ))
             }
             TransportKind::Obfuscated { secret } => {
-                // For obfuscated we do the full handshake inside open_obfuscated,
-                // then wrap back in a plain TcpStream via into_inner.
-                // Since ObfuscatedStream is a different type we reuse the Abridged
-                // frame logic internally — the encryption layer handles everything.
+                // ── Correct Obfuscated2 handshake (all 3 bugs fixed) ────────
                 //
-                // Implementation note: We convert to Abridged after the handshake
-                // because ObfuscatedStream internally already uses Abridged framing
-                // with XOR applied on top.  The outer Connection just sends raw bytes.
+                // Bug A fix: use AES-256-CTR via layer_crypto::ObfuscatedCipher,
+                //            not the broken SHA-256 XOR ObfCipher.
+                //
+                // Bug B fix: ObfuscatedCipher::new reverses the WHOLE 64-byte
+                //            nonce buffer to derive the RX key, not sub-slices.
+                //
+                // Bug C fix: encrypt ALL 64 bytes so the cipher is at position 64
+                //            after the handshake; the cipher is STORED and applied
+                //            to every byte sent/received afterwards.
+                //
+                // Proxy secret is reserved for future MTProxy support.
+                let _ = secret; // not yet used
+
                 let mut nonce = [0u8; 64];
                 getrandom::getrandom(&mut nonce)
                     .map_err(|_| InvocationError::Deserialize("getrandom".into()))?;
-                // Write obfuscated handshake header
-                let (enc_key, enc_iv, _dec_key, _dec_iv) =
-                    crate::transport_obfuscated::derive_keys(&nonce, secret.as_ref());
-                let mut enc_cipher = crate::transport_obfuscated::ObfCipher::new(enc_key, enc_iv);
-                // Stamp protocol tag into nonce[56..60]
-                let mut handshake = nonce;
-                handshake[56] = 0xef;
-                handshake[57] = 0xef;
-                handshake[58] = 0xef;
-                handshake[59] = 0xef;
-                enc_cipher.apply(&mut handshake[56..]);
-                stream.write_all(&handshake).await?;
-                Ok((stream, FrameKind::Abridged))
+
+                // Stamp Abridged protocol tag at nonce[56..60].
+                nonce[56] = 0xef;
+                nonce[57] = 0xef;
+                nonce[58] = 0xef;
+                nonce[59] = 0xef;
+
+                let mut cipher = layer_crypto::ObfuscatedCipher::new(&nonce);
+
+                // Encrypt the full nonce; borrow only [56..64] from the result.
+                // TX cipher is now at position 64.
+                let mut encrypted = nonce;
+                cipher.encrypt(&mut encrypted);
+                nonce[56..64].copy_from_slice(&encrypted[56..64]);
+
+                // Send: nonce[0..56] plaintext + encrypted[56..64]
+                stream.write_all(&nonce).await?;
+
+                // Wrap cipher in Arc<Mutex<>> so it can be shared between the
+                // ConnectionWriter (encrypt/TX) and the reader task (decrypt/RX).
+                let cipher_arc = std::sync::Arc::new(tokio::sync::Mutex::new(cipher));
+
+                Ok((stream, FrameKind::Obfuscated { cipher: cipher_arc }))
             }
         }
     }
@@ -4734,7 +4881,7 @@ impl Connection {
         socks5: Option<&crate::socks5::Socks5Config>,
         transport: &TransportKind,
     ) -> Result<Self, InvocationError> {
-        tracing::info!("[layer] Connecting to {addr} (DH) …");
+        tracing::debug!("[layer] Connecting to {addr} (DH) …");
 
         // Wrap the entire DH handshake in a timeout so a silent server
         // response (e.g. a mis-framed transport error) never causes an
@@ -4782,7 +4929,7 @@ impl Connection {
 
             let done =
                 auth::finish(s3, ans).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-            tracing::info!("[layer] DH complete ✓");
+            tracing::debug!("[layer] DH complete ✓");
 
             Ok::<Self, InvocationError>(Self {
                 stream,
@@ -4864,6 +5011,28 @@ async fn send_frame(
             let mut frame = Vec::with_capacity(4 + data.len());
             frame.extend_from_slice(&(data.len() as u32).to_le_bytes());
             frame.extend_from_slice(data);
+            stream.write_all(&frame).await?;
+            Ok(())
+        }
+        FrameKind::Obfuscated { cipher } => {
+            // Abridged framing with AES-256-CTR encryption over the whole frame.
+            let words = data.len() / 4;
+            let mut frame = if words < 0x7f {
+                let mut v = Vec::with_capacity(1 + data.len());
+                v.push(words as u8);
+                v
+            } else {
+                let mut v = Vec::with_capacity(4 + data.len());
+                v.extend_from_slice(&[
+                    0x7f,
+                    (words & 0xff) as u8,
+                    ((words >> 8) & 0xff) as u8,
+                    ((words >> 16) & 0xff) as u8,
+                ]);
+                v
+            };
+            frame.extend_from_slice(data);
+            cipher.lock().await.encrypt(&mut frame);
             stream.write_all(&frame).await?;
             Ok(())
         }
@@ -4961,6 +5130,28 @@ async fn send_frame_write(
             stream.write_all(&frame).await?;
             Ok(())
         }
+        FrameKind::Obfuscated { cipher } => {
+            // Abridged framing + AES-256-CTR encryption (Bug C fix: cipher stored).
+            let words = data.len() / 4;
+            let mut frame = if words < 0x7f {
+                let mut v = Vec::with_capacity(1 + data.len());
+                v.push(words as u8);
+                v
+            } else {
+                let mut v = Vec::with_capacity(4 + data.len());
+                v.extend_from_slice(&[
+                    0x7f,
+                    (words & 0xff) as u8,
+                    ((words >> 8) & 0xff) as u8,
+                    ((words >> 16) & 0xff) as u8,
+                ]);
+                v
+            };
+            frame.extend_from_slice(data);
+            cipher.lock().await.encrypt(&mut frame);
+            stream.write_all(&frame).await?;
+            Ok(())
+        }
     }
 }
 
@@ -4983,14 +5174,73 @@ async fn recv_frame_read(
             let len = words * 4;
             let mut buf = vec![0u8; len];
             stream.read_exact(&mut buf).await?;
+            // Transport error: Telegram sends word_count=1 followed by a negative i32 code.
+            // Mirror recv_abridged's detection so post-DH frames fail fast like DH frames.
+            if buf.len() == 4 {
+                let code = i32::from_le_bytes(buf[..4].try_into().unwrap());
+                if code < 0 {
+                    return Err(InvocationError::Rpc(RpcError::from_telegram(
+                        code,
+                        "transport error",
+                    )));
+                }
+            }
             Ok(buf)
         }
         FrameKind::Intermediate | FrameKind::Full { .. } => {
             let mut len_buf = [0u8; 4];
             stream.read_exact(&mut len_buf).await?;
-            let len = u32::from_le_bytes(len_buf) as usize;
+            // Read as i32 so a negative length (raw transport error code) doesn't
+            // cause a ~4 GB allocation via u32 cast. Matches grammers' intermediate.
+            let len_i32 = i32::from_le_bytes(len_buf);
+            if len_i32 < 0 {
+                return Err(InvocationError::Rpc(RpcError::from_telegram(
+                    len_i32,
+                    "transport error",
+                )));
+            }
+            if len_i32 <= 4 {
+                // Telegram encodes a transport error as len=4 followed by the error code.
+                let mut code_buf = [0u8; 4];
+                stream.read_exact(&mut code_buf).await?;
+                let code = i32::from_le_bytes(code_buf);
+                return Err(InvocationError::Rpc(RpcError::from_telegram(
+                    code,
+                    "transport error",
+                )));
+            }
+            let len = len_i32 as usize;
             let mut buf = vec![0u8; len];
             stream.read_exact(&mut buf).await?;
+            Ok(buf)
+        }
+        FrameKind::Obfuscated { cipher } => {
+            // Obfuscated2: Abridged framing with AES-256-CTR decryption.
+            // Bug C fix: cipher is stored and continues from where handshake left off.
+            let mut h = [0u8; 1];
+            stream.read_exact(&mut h).await?;
+            cipher.lock().await.decrypt(&mut h);
+            let words = if h[0] < 0x7f {
+                h[0] as usize
+            } else {
+                let mut b = [0u8; 3];
+                stream.read_exact(&mut b).await?;
+                cipher.lock().await.decrypt(&mut b);
+                b[0] as usize | (b[1] as usize) << 8 | (b[2] as usize) << 16
+            };
+            let mut buf = vec![0u8; words * 4];
+            stream.read_exact(&mut buf).await?;
+            cipher.lock().await.decrypt(&mut buf);
+            // Transport error: same detection as Abridged — negative i32 in 4-byte payload.
+            if buf.len() == 4 {
+                let code = i32::from_le_bytes(buf[..4].try_into().unwrap());
+                if code < 0 {
+                    return Err(InvocationError::Rpc(RpcError::from_telegram(
+                        code,
+                        "transport error",
+                    )));
+                }
+            }
             Ok(buf)
         }
     }
@@ -5076,6 +5326,24 @@ async fn recv_frame_plain<T: Deserializable>(
             }
             let mut buf = vec![0u8; len];
             stream.read_exact(&mut buf).await?;
+            buf
+        }
+        FrameKind::Obfuscated { cipher } => {
+            // Obfuscated2: Abridged framing with AES-256-CTR decryption.
+            let mut h = [0u8; 1];
+            stream.read_exact(&mut h).await?;
+            cipher.lock().await.decrypt(&mut h);
+            let words = if h[0] < 0x7f {
+                h[0] as usize
+            } else {
+                let mut b = [0u8; 3];
+                stream.read_exact(&mut b).await?;
+                cipher.lock().await.decrypt(&mut b);
+                b[0] as usize | (b[1] as usize) << 8 | (b[2] as usize) << 16
+            };
+            let mut buf = vec![0u8; words * 4];
+            stream.read_exact(&mut buf).await?;
+            cipher.lock().await.decrypt(&mut buf);
             buf
         }
     };

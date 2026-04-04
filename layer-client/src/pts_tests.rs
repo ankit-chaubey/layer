@@ -18,6 +18,7 @@ mod tests {
             channel_pts: HashMap::new(),
             last_update_at: None,
             getting_diff_for: HashSet::new(),
+            getting_global_diff: false,
         }
     }
 
