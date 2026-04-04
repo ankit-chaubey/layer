@@ -28,7 +28,7 @@ impl DcConnection {
         socks5: Option<&crate::socks5::Socks5Config>,
         transport: &TransportKind,
     ) -> Result<Self, InvocationError> {
-        tracing::info!("[dc_pool] Connecting to {addr} …");
+        tracing::debug!("[dc_pool] Connecting to {addr} …");
         let mut stream = Self::open_tcp(addr, socks5).await?;
         Self::send_transport_init(&mut stream, transport).await?;
 
@@ -50,7 +50,7 @@ impl DcConnection {
 
         let done =
             auth::finish(s3, ans).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
-        tracing::info!("[dc_pool] DH complete ✓ for {addr}");
+        tracing::debug!("[dc_pool] DH complete ✓ for {addr}");
 
         Ok(Self {
             stream,
@@ -97,7 +97,7 @@ impl DcConnection {
                 stream.write_all(&[0xee, 0xee, 0xee, 0xee]).await?;
             }
             TransportKind::Full => {} // no init byte
-            TransportKind::Obfuscated { secret } => {
+            TransportKind::Obfuscated { secret: _ } => {
                 let mut nonce = [0u8; 64];
                 getrandom::getrandom(&mut nonce)
                     .map_err(|_| InvocationError::Deserialize("getrandom".into()))?;
@@ -105,12 +105,11 @@ impl DcConnection {
                 nonce[57] = 0xef;
                 nonce[58] = 0xef;
                 nonce[59] = 0xef;
-                let (enc_key, enc_iv, _, _) =
-                    crate::transport_obfuscated::derive_keys(&nonce, secret.as_ref());
-                let mut enc = crate::transport_obfuscated::ObfCipher::new(enc_key, enc_iv);
-                let mut handshake = nonce;
-                enc.apply(&mut handshake[56..]);
-                stream.write_all(&handshake).await?;
+                let mut cipher = crate::transport_obfuscated::ObfuscatedCipher::new(&nonce);
+                let mut encrypted = nonce;
+                cipher.encrypt(&mut encrypted);
+                nonce[56..64].copy_from_slice(&encrypted[56..64]);
+                stream.write_all(&nonce).await?;
             }
         }
         Ok(())

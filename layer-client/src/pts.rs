@@ -23,6 +23,12 @@ use crate::{Client, InvocationError, RpcError, update};
 /// grammers uses a similar short window before triggering getDifference.
 const POSSIBLE_GAP_DEADLINE_MS: u64 = 1_000;
 
+// grammers: BOT_CHANNEL_DIFF_LIMIT = 100_000, USER_CHANNEL_DIFF_LIMIT = 100
+/// Bots are allowed a much larger diff window (Telegram server-side limit).
+const CHANNEL_DIFF_LIMIT_BOT: i32 = 100_000;
+/// Regular users get a smaller window.
+const CHANNEL_DIFF_LIMIT_USER: i32 = 100;
+
 /// Buffers updates received during a possible-gap window so we don't fire
 /// getDifference on every slightly out-of-order update.
 #[derive(Default)]
@@ -306,7 +312,7 @@ impl Client {
                 return Ok(all_updates);
             }
 
-            tracing::info!("[layer] getDifference (pts={pts}, qts={qts}, date={date}) …");
+            tracing::debug!("[layer] getDifference (pts={pts}, qts={qts}, date={date}) …");
 
             let req = tl::functions::updates::GetDifference {
                 pts,
@@ -332,7 +338,7 @@ impl Client {
                 }
 
                 tl::enums::updates::Difference::Difference(d) => {
-                    tracing::info!(
+                    tracing::debug!(
                         "[layer] getDifference: {} messages, {} updates (final)",
                         d.new_messages.len(),
                         d.other_updates.len()
@@ -373,7 +379,7 @@ impl Client {
                     // Fix B4: server has more data — apply intermediate_state and
                     // continue looping.  Old code returned here, losing all updates
                     // in subsequent slices.
-                    tracing::info!(
+                    tracing::debug!(
                         "[layer] getDifference slice: {} messages, {} updates — continuing",
                         d.new_messages.len(),
                         d.other_updates.len()
@@ -438,7 +444,7 @@ impl Client {
             .copied()
             .unwrap_or(0);
 
-        let mut access_hash = self
+        let access_hash = self
             .inner
             .peer_cache
             .read()
@@ -448,42 +454,13 @@ impl Client {
             .copied()
             .unwrap_or(0);
 
-        // If access_hash is missing, try to resolve it via channels.GetChannels.
-        // Without a valid access_hash, Telegram always returns CHANNEL_INVALID.
+        // No access hash in cache → we can't call getChannelDifference.
+        // Attempting GetChannels with access_hash=0 also returns CHANNEL_INVALID,
+        // so skip the call entirely and let the caller handle it.
         if access_hash == 0 {
             tracing::debug!(
-                "[layer] channel {channel_id}: access_hash missing, attempting resolve via GetChannels"
-            );
-            let input = tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
-                channel_id,
-                access_hash: 0,
-            });
-            let req = tl::functions::channels::GetChannels { id: vec![input] };
-            if let Ok(body) = self.rpc_call_raw_pub(&req).await {
-                let mut cur = Cursor::from_slice(&body);
-                if let Ok(chats) = tl::enums::messages::Chats::deserialize(&mut cur) {
-                    let chat_list = match chats {
-                        tl::enums::messages::Chats::Chats(c) => c.chats,
-                        tl::enums::messages::Chats::Slice(c) => c.chats,
-                    };
-                    self.cache_chats_slice_pub(&chat_list).await;
-                    access_hash = self
-                        .inner
-                        .peer_cache
-                        .read()
-                        .await
-                        .channels
-                        .get(&channel_id)
-                        .copied()
-                        .unwrap_or(0);
-                }
-            }
-        }
-
-        // Still no access_hash — nothing we can do, bail out early.
-        if access_hash == 0 {
-            tracing::warn!(
-                "[layer] channel {channel_id}: access_hash unknown, cannot call getChannelDifference"
+                "[layer] channel {channel_id}: access_hash not cached, \
+                 cannot call getChannelDifference — caller will remove from tracking"
             );
             return Err(InvocationError::Rpc(RpcError {
                 code: 400,
@@ -492,19 +469,30 @@ impl Client {
             }));
         }
 
-        tracing::info!("[layer] getChannelDifference channel_id={channel_id} pts={local_pts}");
+        tracing::debug!("[layer] getChannelDifference channel_id={channel_id} pts={local_pts}");
 
         let channel = tl::enums::InputChannel::InputChannel(tl::types::InputChannel {
             channel_id,
             access_hash,
         });
 
+        // grammers: bots get BOT_CHANNEL_DIFF_LIMIT (100_000), users get USER_CHANNEL_DIFF_LIMIT (100)
+        let diff_limit = if self
+            .inner
+            .is_bot
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            CHANNEL_DIFF_LIMIT_BOT
+        } else {
+            CHANNEL_DIFF_LIMIT_USER
+        };
+
         let req = tl::functions::updates::GetChannelDifference {
             force: false,
             channel,
             filter: tl::enums::ChannelMessagesFilter::Empty,
             pts: local_pts.max(1),
-            limit: 100,
+            limit: diff_limit,
         };
 
         let body = match self.rpc_call_raw_pub(&req).await {
@@ -531,7 +519,7 @@ impl Client {
                     .advance_channel(channel_id, e.pts);
             }
             tl::enums::updates::ChannelDifference::ChannelDifference(d) => {
-                tracing::info!(
+                tracing::debug!(
                     "[layer] getChannelDifference: {} messages, {} updates",
                     d.new_messages.len(),
                     d.other_updates.len()
@@ -588,7 +576,7 @@ impl Client {
         state.date = s.date;
         state.seq = s.seq;
         state.touch();
-        tracing::info!(
+        tracing::debug!(
             "[layer] pts synced: pts={}, qts={}, seq={}",
             s.pts,
             s.qts,
@@ -820,51 +808,45 @@ impl Client {
                             diff_updates.splice(0..0, buffered);
                             Ok(diff_updates)
                         }
-                        // Permanent access errors: advance pts to `got` so the gap is
-                        // considered closed and we never re-trigger getChannelDifference
-                        // for this channel on every incoming update.
+                        // Permanent access errors: remove the channel from pts tracking
+                        // entirely (mirrors grammers' approach). The next update for this
+                        // channel will have local=0 → PtsCheckResult::Ok, advancing pts
+                        // without any gap fill. This breaks the infinite gap→CHANNEL_INVALID
+                        // loop that happened when advance_channel kept the stale pts alive.
+                        //
+                        // Common causes:
+                        //   - access_hash not in peer cache (update arrived via updateShort
+                        //     which carries no chats list)
+                        //   - bot was kicked / channel deleted
                         Err(InvocationError::Rpc(ref e))
                             if e.name == "CHANNEL_INVALID"
                                 || e.name == "CHANNEL_PRIVATE"
                                 || e.name == "CHANNEL_NOT_MODIFIED" =>
                         {
-                            tracing::warn!(
-                                "[layer] channel {channel_id}: {} — skipping gap, advancing pts to {got}",
+                            tracing::debug!(
+                                "[layer] channel {channel_id}: {} — removing from pts tracking \
+                                 (next update treated as first-seen, no gap fill)",
                                 e.name
                             );
-                            // Fix #4: diff complete (errored out), allow future gaps.
-                            self.inner
-                                .pts_state
-                                .lock()
-                                .await
-                                .getting_diff_for
-                                .remove(&channel_id);
-                            self.inner
-                                .pts_state
-                                .lock()
-                                .await
-                                .advance_channel(channel_id, got);
+                            {
+                                let mut s = self.inner.pts_state.lock().await;
+                                s.getting_diff_for.remove(&channel_id);
+                                s.channel_pts.remove(&channel_id); // ← grammers fix: delete, not advance
+                            }
                             Ok(buffered)
                         }
                         Err(InvocationError::Deserialize(ref msg)) => {
-                            // Unrecognised constructor (e.g. 0x0000000e) — Telegram returned
-                            // something we can't parse for this channel.  Treat the same as
-                            // CHANNEL_INVALID: advance pts to `got` so we don't retry on every
-                            // subsequent update and flood the logs.
-                            tracing::warn!(
-                                "[layer] channel {channel_id}: deserialize error ({msg}) — skipping gap, advancing pts to {got}"
+                            // Unrecognised constructor or parse failure — treat same as
+                            // CHANNEL_INVALID: remove from tracking so we don't loop.
+                            tracing::debug!(
+                                "[layer] channel {channel_id}: deserialize error ({msg}) — \
+                                 removing from pts tracking"
                             );
-                            self.inner
-                                .pts_state
-                                .lock()
-                                .await
-                                .getting_diff_for
-                                .remove(&channel_id);
-                            self.inner
-                                .pts_state
-                                .lock()
-                                .await
-                                .advance_channel(channel_id, got);
+                            {
+                                let mut s = self.inner.pts_state.lock().await;
+                                s.getting_diff_for.remove(&channel_id);
+                                s.channel_pts.remove(&channel_id);
+                            }
                             Ok(buffered)
                         }
                         Err(e) => {
@@ -921,7 +903,7 @@ impl Client {
             let gap_expired = self.inner.possible_gap.lock().await.global_deadline_elapsed();
             let already = self.inner.pts_state.lock().await.getting_global_diff;
             if gap_expired && !already {
-                tracing::info!(
+                tracing::debug!(
                     "[layer] B3 global possible-gap deadline expired — getDifference"
                 );
                 let buffered = self.inner.possible_gap.lock().await.drain_global();
@@ -963,7 +945,7 @@ impl Client {
             if already {
                 continue;
             }
-            tracing::info!(
+            tracing::debug!(
                 "[layer] B3 channel {channel_id} possible-gap deadline expired — getChannelDifference"
             );
             // Mark in-flight before spawning so a racing incoming update can't
