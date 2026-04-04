@@ -317,7 +317,13 @@ impl EncryptedSession {
             return Err(DecryptError::SessionMismatch);
         }
 
-        let body = plaintext[32..32 + body_len.min(plaintext.len() - 32)].to_vec();
+        // Bounds-check BEFORE slicing. The old `.min()` silently truncated the body
+        // when body_len exceeded available plaintext (e.g. framing mismatch), which
+        // caused the TL deserializer downstream to hit "unexpected end of buffer".
+        if 32 + body_len > plaintext.len() {
+            return Err(DecryptError::FrameTooShort);
+        }
+        let body = plaintext[32..32 + body_len].to_vec();
 
         Ok(DecryptedMessage {
             salt,
@@ -360,7 +366,10 @@ impl EncryptedSession {
         if sid != session_id {
             return Err(DecryptError::SessionMismatch);
         }
-        let body = plaintext[32..32 + body_len.min(plaintext.len() - 32)].to_vec();
+        if 32 + body_len > plaintext.len() {
+            return Err(DecryptError::FrameTooShort);
+        }
+        let body = plaintext[32..32 + body_len].to_vec();
         Ok(DecryptedMessage {
             salt,
             session_id: sid,
