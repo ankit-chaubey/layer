@@ -1938,6 +1938,24 @@ impl Client {
                             }
                             Ok(vec![])
                         }
+                        Ok(EnvelopeResult::Pts(pts, pts_count)) => {
+                            // updateShortSentMessage: advance pts without emitting any Update.
+                            let c = self.clone();
+                            tokio::spawn(async move {
+                                match c.check_and_fill_gap(pts, pts_count, None).await {
+                                    Ok(replayed) => {
+                                        // replayed is normally empty (no gap); emit if getDifference ran
+                                        for u in replayed {
+                                            let _ = c.inner.update_tx.try_send(u);
+                                        }
+                                    }
+                                    Err(e) => tracing::warn!(
+                                        "[layer] updateShortSentMessage pts advance: {e}"
+                                    ),
+                                }
+                            });
+                            Ok(vec![])
+                        }
                         Ok(EnvelopeResult::None) => Ok(vec![]),
                         Err(e) => {
                             tracing::debug!(
@@ -2385,20 +2403,112 @@ impl Client {
             return;
         }
 
-        // For updateShortMessage / updateShortChatMessage we use the existing
-        // high-level parser (they have pts but no bare tl::enums::Update wrapper).
-        if cid == 0x313bc7f8 || cid == 0x4d6deea5 {
-            // Parse pts out of the short-message header.
-            // updateShortMessage: flags(4) id(4) user_id(8) ... pts(?) pts_count(?)
-            // Easier: use parse_updates which already handles them, then gap-check.
-            for u in update::parse_updates(body) {
-                if self
-                    .inner
-                    .update_tx
-                    .try_send(attach_client_to_update(u, self))
-                    .is_err()
+        // BUG-FIX: updateShortMessage (0x313bc7f8) and updateShortChatMessage (0x4d6deea5)
+        // carry pts/pts_count but the old code forwarded them directly to update_tx WITHOUT
+        // calling check_and_fill_gap. That left the internal pts counter frozen, so the
+        // next updateNewMessage (e.g. the bot's own reply) triggered a false gap ->
+        // getDifference -> re-delivery of already-processed messages -> duplicate replies.
+        //
+        // Fix: deserialize pts/pts_count from the compact struct, build the high-level
+        // Update, then route through check_and_fill_gap exactly like every other pts update.
+        if cid == 0x313bc7f8 {
+            // updateShortMessage
+            let mut cur = Cursor::from_slice(&body[4..]);
+            let m = match tl::types::UpdateShortMessage::deserialize(&mut cur) {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::debug!("[layer] updateShortMessage deserialize error: {e}");
+                    return;
+                }
+            };
+            let pts = m.pts;
+            let pts_count = m.pts_count;
+            let upd = update::Update::NewMessage(update::make_short_dm(m));
+            let c = self.clone();
+            let utx = self.inner.update_tx.clone();
+            tokio::spawn(async move {
+                match c
+                    .check_and_fill_gap(pts, pts_count, Some(attach_client_to_update(upd, &c)))
+                    .await
                 {
-                    tracing::warn!("[layer] update channel full — dropping update");
+                    Ok(updates) => {
+                        for u in updates {
+                            if utx.try_send(u).is_err() {
+                                tracing::warn!("[layer] update channel full — dropping update");
+                            }
+                        }
+                    }
+                    Err(e) => tracing::warn!("[layer] updateShortMessage gap fill: {e}"),
+                }
+            });
+            return;
+        }
+        if cid == 0x4d6deea5 {
+            // updateShortChatMessage
+            let mut cur = Cursor::from_slice(&body[4..]);
+            let m = match tl::types::UpdateShortChatMessage::deserialize(&mut cur) {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::debug!("[layer] updateShortChatMessage deserialize error: {e}");
+                    return;
+                }
+            };
+            let pts = m.pts;
+            let pts_count = m.pts_count;
+            let upd = update::Update::NewMessage(update::make_short_chat(m));
+            let c = self.clone();
+            let utx = self.inner.update_tx.clone();
+            tokio::spawn(async move {
+                match c
+                    .check_and_fill_gap(pts, pts_count, Some(attach_client_to_update(upd, &c)))
+                    .await
+                {
+                    Ok(updates) => {
+                        for u in updates {
+                            if utx.try_send(u).is_err() {
+                                tracing::warn!("[layer] update channel full — dropping update");
+                            }
+                        }
+                    }
+                    Err(e) => tracing::warn!("[layer] updateShortChatMessage gap fill: {e}"),
+                }
+            });
+            return;
+        }
+
+        // BUG-FIX: updateShortSentMessage push — advance pts without emitting an Update.
+        // Telegram can also PUSH updateShortSentMessage (not just in RPC responses).
+        // Same fix: extract pts and route through check_and_fill_gap.
+        if cid == ID_UPDATE_SHORT_SENT_MSG {
+            let mut cur = Cursor::from_slice(&body[4..]);
+            match tl::types::UpdateShortSentMessage::deserialize(&mut cur) {
+                Ok(m) => {
+                    let pts = m.pts;
+                    let pts_count = m.pts_count;
+                    tracing::debug!(
+                        "[layer] updateShortSentMessage (push): pts={pts} pts_count={pts_count} — advancing pts"
+                    );
+                    let c = self.clone();
+                    let utx = self.inner.update_tx.clone();
+                    tokio::spawn(async move {
+                        match c.check_and_fill_gap(pts, pts_count, None).await {
+                            Ok(replayed) => {
+                                for u in replayed {
+                                    if utx.try_send(u).is_err() {
+                                        tracing::warn!(
+                                            "[layer] update channel full — dropping update"
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => tracing::warn!(
+                                "[layer] updateShortSentMessage push pts advance: {e}"
+                            ),
+                        }
+                    });
+                }
+                Err(e) => {
+                    tracing::debug!("[layer] updateShortSentMessage push deserialize error: {e}")
                 }
             }
             return;
@@ -5977,6 +6087,9 @@ async fn recv_frame_plain<T: Deserializable>(
 enum EnvelopeResult {
     Payload(Vec<u8>),
     Updates(Vec<update::Update>),
+    /// Carries pts/pts_count from updateShortSentMessage so the pts counter
+    /// can be advanced without emitting any Update to callers.
+    Pts(i32, i32),
     None,
 }
 
@@ -6020,6 +6133,10 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
                 match unwrap_envelope(inner)? {
                     EnvelopeResult::Payload(p)  => { payload = Some(p); }
                     EnvelopeResult::Updates(us) => { updates_buf.extend(us); }
+                    // Pts variant from updateShortSentMessage inside a container:
+                    // we can't advance pts here (no async context), so treat as None.
+                    // The RPC-level route_frame Pts handler covers the normal path.
+                    EnvelopeResult::Pts(_, _)   => {}
                     EnvelopeResult::None        => {}
                 }
             }
@@ -6057,9 +6174,30 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
         }
         ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED
         | ID_UPDATE_SHORT_MSG | ID_UPDATE_SHORT_CHAT_MSG
-        | ID_UPDATE_SHORT_SENT_MSG
         | ID_UPDATES_TOO_LONG => {
             Ok(EnvelopeResult::Updates(update::parse_updates(&body)))
+        }
+        // BUG-FIX: updateShortSentMessage is the RPC response to messages.sendMessage.
+        // It carries the ONLY pts record for the bot's own sent message.
+        // Bots do NOT receive a push updateNewMessage for their own messages,
+        // so if we absorb this silently, pts stays stale -> false gap -> getDifference
+        // -> re-delivery of already-processed messages -> duplicate replies.
+        // Fix: extract pts/pts_count and return Pts variant so route_frame advances the counter.
+        ID_UPDATE_SHORT_SENT_MSG => {
+            let mut cur = Cursor::from_slice(&body[4..]);
+            match tl::types::UpdateShortSentMessage::deserialize(&mut cur) {
+                Ok(m) => {
+                    tracing::debug!(
+                        "[layer] updateShortSentMessage (RPC): pts={} pts_count={} — advancing pts",
+                        m.pts, m.pts_count
+                    );
+                    Ok(EnvelopeResult::Pts(m.pts, m.pts_count))
+                }
+                Err(e) => {
+                    tracing::debug!("[layer] updateShortSentMessage deserialize error: {e}");
+                    Ok(EnvelopeResult::None)
+                }
+            }
         }
         _ => Ok(EnvelopeResult::Payload(body)),
     }

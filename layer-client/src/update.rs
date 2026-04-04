@@ -1159,25 +1159,10 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
             }
         }
 
-        // updateShortSentMessage — server response to messages.sendMessage.
-        // Carries the assigned message id, pts, date, and optional media/entities.
-        // Grammers handles this as an "own update" tied to the SendMessage request.
-        // We don't have the request body here, so we silently absorb it to prevent
-        // the EOF deserialize error; callers rely on updateNewMessage for the echo.
-        ID_UPDATE_SHORT_SENT_MSG => {
-            let mut cur = Cursor::from_slice(&bytes[4..]);
-            match tl::types::UpdateShortSentMessage::deserialize(&mut cur) {
-                Ok(_) => {
-                    tracing::debug!(
-                        "[layer] updateShortSentMessage received (absorbed — pts tracking via updateNewMessage)"
-                    );
-                }
-                Err(e) => {
-                    tracing::debug!("[layer] updateShortSentMessage parse error: {e}");
-                }
-            }
-            vec![]
-        }
+        // updateShortSentMessage — pts is now handled by dispatch_updates/route_frame
+        // directly (via EnvelopeResult::Pts or the push branch). parse_updates is only
+        // called for the old code path; we absorb here as a safe fallback.
+        ID_UPDATE_SHORT_SENT_MSG => vec![],
 
         _ => vec![],
     }
@@ -1442,7 +1427,7 @@ fn tl_constructor_id(upd: &tl::enums::Update) -> u32 {
 
 // ─── Short message helpers ────────────────────────────────────────────────────
 
-fn make_short_dm(m: tl::types::UpdateShortMessage) -> IncomingMessage {
+pub(crate) fn make_short_dm(m: tl::types::UpdateShortMessage) -> IncomingMessage {
     let msg = tl::types::Message {
         out: m.out,
         mentioned: m.mentioned,
@@ -1500,7 +1485,7 @@ fn make_short_dm(m: tl::types::UpdateShortMessage) -> IncomingMessage {
     }
 }
 
-fn make_short_chat(m: tl::types::UpdateShortChatMessage) -> IncomingMessage {
+pub(crate) fn make_short_chat(m: tl::types::UpdateShortChatMessage) -> IncomingMessage {
     let msg = tl::types::Message {
         out: m.out,
         mentioned: m.mentioned,

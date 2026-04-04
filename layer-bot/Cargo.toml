@@ -1,6 +1,6 @@
 [package]
 name        = "layer-bot"
-description = "Showcase bot built with layer-client"
+description = "Showcase bot for the layer library — production-grade Telegram bot"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
@@ -18,5 +18,7 @@ layer-client   = { path = "../layer-client",  version = "0.4.5" }
 layer-tl-types = { path = "../layer-tl-types", version = "0.4.5", features = ["tl-api", "tl-mtproto"] }
 tokio          = { version = "1", features = ["full"] }
 env_logger     = "0.11"
-log            = "0.4"
 chrono         = { version = "0.4", features = ["clock"] }
+rand           = "0.8"
+sha2           = "0.10"
+base64         = "0.22"

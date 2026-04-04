@@ -10,7 +10,8 @@ members = [
     "layer",
     "layer-connect",
     "layer-client",   # high-level Client library
-    "layer-app",      # binary: login + send message
+    "layer-app",      # userbot (user account)
+    "layer-bot",      # showcase bot
 ]
 
 [workspace.package]

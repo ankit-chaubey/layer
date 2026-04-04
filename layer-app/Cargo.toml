@@ -1,6 +1,6 @@
 [package]
 name        = "layer-app"
-description = "Telegram client binary: phone login, 2FA, bot login, updates — powered by layer-client"
+description = "Userbot (user account only) built with layer-client"
 version.workspace    = true
 edition.workspace    = true
 license.workspace    = true
@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 layer-client   = { workspace = true }
-layer-tl-types = { workspace = true }
+layer-tl-types = { path = "../layer-tl-types", version = "0.4.5", features = ["tl-api", "tl-mtproto"] }
 tokio          = { version = "1", features = ["full"] }
 env_logger     = "0.11"
+chrono         = { version = "0.4", features = ["clock"] }
