@@ -1929,13 +1929,17 @@ impl Client {
                         .remove(&req_msg_id);
                     let to_send = match result {
                         Ok(EnvelopeResult::Payload(p)) => Ok(p),
-                        Ok(EnvelopeResult::Updates(us)) => {
-                            for u in us {
-                                let u = attach_client_to_update(u, self);
-                                if self.inner.update_tx.try_send(u).is_err() {
-                                    tracing::warn!("[layer] update channel full — dropping update");
+                        Ok(EnvelopeResult::RawUpdates(bodies)) => {
+                            // BUG-FIX: route through dispatch_updates so pts/seq is
+                            // properly tracked. Previously updates were sent directly
+                            // to update_tx, skipping pts tracking -> false gap ->
+                            // getDifference -> duplicate deliveries.
+                            let c = self.clone();
+                            tokio::spawn(async move {
+                                for body in bodies {
+                                    c.dispatch_updates(&body).await;
                                 }
-                            }
+                            });
                             Ok(vec![])
                         }
                         Ok(EnvelopeResult::Pts(pts, pts_count)) => {
@@ -4366,7 +4370,7 @@ impl Client {
 
     /// Send a chat action (typing indicator, uploading photo, etc).
     ///
-    /// For "typing" use `tl::enums::SendMessageAction::Typing`.
+    /// For "typing" use `tl::enums::SendMessageAction::SendMessageTypingAction`.
     /// For forum topic support use [`send_chat_action_ex`](Self::send_chat_action_ex)
     /// or the [`typing_in_topic`](Self::typing_in_topic) helper.
     pub async fn send_chat_action(
@@ -6086,9 +6090,9 @@ async fn recv_frame_plain<T: Deserializable>(
 
 enum EnvelopeResult {
     Payload(Vec<u8>),
-    Updates(Vec<update::Update>),
-    /// Carries pts/pts_count from updateShortSentMessage so the pts counter
-    /// can be advanced without emitting any Update to callers.
+    /// Raw update bytes to be routed through dispatch_updates for proper pts tracking.
+    RawUpdates(Vec<Vec<u8>>),
+    /// pts/pts_count from updateShortSentMessage — advance counter, emit nothing.
     Pts(i32, i32),
     None,
 }
@@ -6121,7 +6125,7 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
             let count = u32::from_le_bytes(body[4..8].try_into().unwrap()) as usize;
             let mut pos = 8usize;
             let mut payload: Option<Vec<u8>> = None;
-            let mut updates_buf: Vec<update::Update> = Vec::new();
+            let mut raw_updates: Vec<Vec<u8>> = Vec::new();
 
             for _ in 0..count {
                 if pos + 16 > body.len() { break; }
@@ -6131,19 +6135,16 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
                 let inner = body[pos..pos + inner_len].to_vec();
                 pos += inner_len;
                 match unwrap_envelope(inner)? {
-                    EnvelopeResult::Payload(p)  => { payload = Some(p); }
-                    EnvelopeResult::Updates(us) => { updates_buf.extend(us); }
-                    // Pts variant from updateShortSentMessage inside a container:
-                    // we can't advance pts here (no async context), so treat as None.
-                    // The RPC-level route_frame Pts handler covers the normal path.
-                    EnvelopeResult::Pts(_, _)   => {}
-                    EnvelopeResult::None        => {}
+                    EnvelopeResult::Payload(p)          => { payload = Some(p); }
+                    EnvelopeResult::RawUpdates(mut raws) => { raw_updates.append(&mut raws); }
+                    EnvelopeResult::Pts(_, _)            => {} // handled via spawned task in route_frame
+                    EnvelopeResult::None                 => {}
                 }
             }
             if let Some(p) = payload {
                 Ok(EnvelopeResult::Payload(p))
-            } else if !updates_buf.is_empty() {
-                Ok(EnvelopeResult::Updates(updates_buf))
+            } else if !raw_updates.is_empty() {
+                Ok(EnvelopeResult::RawUpdates(raw_updates))
             } else {
                 Ok(EnvelopeResult::None)
             }
@@ -6172,10 +6173,15 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
         => {
             Ok(EnvelopeResult::None)
         }
+        // Route all update containers via RawUpdates so route_frame can call
+        // dispatch_updates, which handles pts/seq tracking. Without this, updates
+        // from RPC responses (e.g. updateNewMessage + updateReadHistoryOutbox from
+        // messages.sendMessage) bypass pts entirely -> false gaps -> getDifference
+        // -> duplicate message delivery.
         ID_UPDATES | ID_UPDATE_SHORT | ID_UPDATES_COMBINED
         | ID_UPDATE_SHORT_MSG | ID_UPDATE_SHORT_CHAT_MSG
         | ID_UPDATES_TOO_LONG => {
-            Ok(EnvelopeResult::Updates(update::parse_updates(&body)))
+            Ok(EnvelopeResult::RawUpdates(vec![body]))
         }
         // BUG-FIX: updateShortSentMessage is the RPC response to messages.sendMessage.
         // It carries the ONLY pts record for the bot's own sent message.
