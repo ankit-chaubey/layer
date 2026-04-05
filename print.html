@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-aabd3487.js"></script>
@@ -939,12 +939,11 @@ match client.check_password(token, &amp;pw).await {
 </span><span class="boring">fn main() {
 </span>use layer_client::{Client, Config};
 
-let (client, _shutdown) = Client::connect(Config {
-    session_path: "my.session".into(),
-    api_id:       12345,
-    api_hash:     "abc123".into(),
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+        .api_id(12345)
+        .api_hash("abc123")
+        .session("my.session")
+        .connect().await?.await?;
 <span class="boring">}</span></code></pre>
 <p>After login, save to disk:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -974,7 +973,6 @@ let (client, _shutdown) = Client::builder()
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let (client, _shutdown) = Client::connect(Config {
-    session_path: "session.db".into(),
     ..Default::default()
 }).await?;
 <span class="boring">}</span></code></pre>
@@ -1038,12 +1036,10 @@ let (client, _shutdown) = Client::builder()
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let (client_a, _) = Client::connect(Config {
-    session_path: "account_a.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
 
 let (client_b, _) = Client::connect(Config {
-    session_path: "account_b.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
 <span class="boring">}</span></code></pre>
@@ -1284,6 +1280,38 @@ async fn connect_with_backend(
 
     // ...
     Ok(())
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="additional-backend-methods"><a class="header" href="#additional-backend-methods">Additional backend methods</a></h2>
+<h3 id="stringsessionbackendcurrent"><a class="header" href="#stringsessionbackendcurrent"><code>StringSessionBackend::current()</code></a></h3>
+<p>Reads the current serialised session string at any time:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::StringSessionBackend;
+
+let backend = StringSessionBackend::new("");
+// ... after connecting and authenticating ...
+let s = backend.current(); // base64 session string
+<span class="boring">}</span></code></pre>
+<h3 id="binaryfilebackendpath"><a class="header" href="#binaryfilebackendpath"><code>BinaryFileBackend::path()</code></a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::BinaryFileBackend;
+
+let backend = BinaryFileBackend::new("bot.session");
+println!("Saving to: {}", backend.path().display());
+<span class="boring">}</span></code></pre>
+<h3 id="inmemorybackendsnapshot"><a class="header" href="#inmemorybackendsnapshot"><code>InMemoryBackend::snapshot()</code></a></h3>
+<p>Take a point-in-time snapshot of the in-memory session (useful in tests):</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::InMemoryBackend;
+
+let backend = InMemoryBackend::new();
+// ... after auth ...
+if let Some(session) = backend.snapshot() {
+    // inspect or serialize session data
 }
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1763,143 +1791,224 @@ let msg = InputMessage::text("Keyboard removed.").reply_markup(remove);
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="media--files"><a class="header" href="#media--files">Media &amp; Files</a></h1>
-<h2 id="upload-and-send-a-photo"><a class="header" href="#upload-and-send-a-photo">Upload and send a photo</a></h2>
+<hr>
+<h2 id="upload"><a class="header" href="#upload">Upload</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Upload from disk path
-let uploaded = client.upload_file("photo.jpg").await?;
+</span>// Upload from bytes — sequential
+let uploaded: UploadedFile = client
+    .upload_file("photo.jpg", &amp;bytes)
+    .await?;
 
-// Send as compressed photo
-client.send_file(
-    peer,
-    uploaded.as_photo_media(),
-    Some("My caption here"),
-).await?;
+// Upload from bytes — parallel chunks (faster for large files)
+let uploaded = client
+    .upload_file_concurrent("video.mp4", &amp;bytes)
+    .await?;
+
+// Upload from an async reader (e.g. tokio::fs::File)
+use tokio::fs::File;
+let f = File::open("document.pdf").await?;
+let uploaded = client.upload_stream("document.pdf", f).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="upload-and-send-a-document-any-file"><a class="header" href="#upload-and-send-a-document-any-file">Upload and send a document (any file)</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let uploaded = client.upload_file("report.pdf").await?;
-
-// Send as document (preserves original quality/format)
-client.send_file(
-    peer,
-    uploaded.as_document_media(),
-    Some("Monthly report"),
-).await?;
-<span class="boring">}</span></code></pre>
-<blockquote>
-<p><strong>TIP:</strong> For photos, <code>as_photo_media()</code> lets Telegram compress and display them inline. Use <code>as_document_media()</code> to preserve original file quality and format.</p>
-</blockquote>
-<h2 id="upload-from-a-stream"><a class="header" href="#upload-from-a-stream">Upload from a stream</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use tokio::fs::File;
-
-let file    = File::open("video.mp4").await?;
-let name    = "video.mp4".to_string();
-let size    = file.metadata().await?.len() as i32;
-let mime    = "video/mp4".to_string();
-
-let uploaded = client.upload_stream(file, size, name, mime).await?;
-client.send_file(peer, uploaded.as_document_media(), None).await?;
-<span class="boring">}</span></code></pre>
-<h2 id="send-an-album-multiple-photosvideos"><a class="header" href="#send-an-album-multiple-photosvideos">Send an album (multiple photos/videos)</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let img1 = client.upload_file("photo1.jpg").await?;
-let img2 = client.upload_file("photo2.jpg").await?;
-let img3 = client.upload_file("photo3.jpg").await?;
-
-client.send_album(
-    peer,
-    vec![
-        img1.as_photo_media(),
-        img2.as_photo_media(),
-        img3.as_photo_media(),
-    ],
-    Some("Our trip 📸"),
-).await?;
-<span class="boring">}</span></code></pre>
-<p>Albums are grouped as a single visual unit in the chat.</p>
-<h2 id="uploadedfile--methods"><a class="header" href="#uploadedfile--methods">UploadedFile — methods</a></h2>
+<h3 id="uploadedfile-methods"><a class="header" href="#uploadedfile-methods"><code>UploadedFile</code> methods</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+<tr><th>Method</th><th>Return</th><th>Description</th></tr>
 </thead>
 <tbody>
 <tr><td><code>uploaded.name()</code></td><td><code>&amp;str</code></td><td>Original filename</td></tr>
 <tr><td><code>uploaded.mime_type()</code></td><td><code>&amp;str</code></td><td>Detected MIME type</td></tr>
-<tr><td><code>uploaded.as_photo_media()</code></td><td><code>InputMedia</code></td><td>Send as compressed photo</td></tr>
-<tr><td><code>uploaded.as_document_media()</code></td><td><code>InputMedia</code></td><td>Send as document</td></tr>
+<tr><td><code>uploaded.as_document_media()</code></td><td><code>tl::enums::InputMedia</code></td><td>Ready to send as document</td></tr>
+<tr><td><code>uploaded.as_photo_media()</code></td><td><code>tl::enums::InputMedia</code></td><td>Ready to send as photo</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="download-media-from-a-message"><a class="header" href="#download-media-from-a-message">Download media from a message</a></h2>
+<hr>
+<h2 id="send-file"><a class="header" href="#send-file">Send file</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>if let tl::enums::Message::Message(m) = &amp;raw_msg {
-    if let Some(media) = &amp;m.media {
-        // download_media returns an async iterator of chunks
-        let location = client.download_location(media);
-        if let Some(loc) = location {
-            let mut iter = client.iter_download(loc);
-            let mut file = tokio::fs::File::create("download.bin").await?;
+</span>// Send as document (false) or as photo/media (true)
+client.send_file(peer.clone(), uploaded, false).await?;
 
-            while let Some(chunk) = iter.next().await? {
-                tokio::io::AsyncWriteExt::write_all(&amp;mut file, &amp;chunk).await?;
-            }
-        }
-    }
-}
+// Send as album (multiple files in one message group)
+client.send_album(peer.clone(), vec![uploaded_a, uploaded_b]).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="downloaditer--options"><a class="header" href="#downloaditer--options">DownloadIter — options</a></h2>
+<h3 id="albumitem--per-item-control-in-albums"><a class="header" href="#albumitem--per-item-control-in-albums"><code>AlbumItem</code> — per-item control in albums</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let mut iter = client.iter_download(location)
-    .chunk_size(512 * 1024);  // 512 KB per request (default: 128 KB)
+</span>use layer_client::media::AlbumItem;
+
+let items = vec![
+    AlbumItem::new(uploaded_a.as_photo_media())
+        .caption("First photo 📸"),
+    AlbumItem::new(uploaded_b.as_document_media())
+        .caption("The report 📄")
+        .reply_to(Some(msg_id)),
+];
+client.send_album(peer.clone(), items).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="mime-type-reference"><a class="header" href="#mime-type-reference">MIME type reference</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>File type</th><th>MIME</th><th>Displays as</th></tr>
+<tr><th>Method</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td>JPEG, PNG, WebP</td><td><code>image/jpeg</code>, <code>image/png</code></td><td>Photo (compressed)</td></tr>
-<tr><td>GIF</td><td><code>image/gif</code></td><td>Animated image</td></tr>
-<tr><td>MP4, MOV</td><td><code>video/mp4</code></td><td>Video player</td></tr>
-<tr><td>OGG (Opus codec)</td><td><code>audio/ogg</code></td><td>Voice message</td></tr>
-<tr><td>MP3, FLAC</td><td><code>audio/mpeg</code></td><td>Audio player</td></tr>
-<tr><td>PDF</td><td><code>application/pdf</code></td><td>Document with preview</td></tr>
-<tr><td>ZIP, RAR</td><td><code>application/zip</code></td><td>Generic document</td></tr>
-<tr><td>TGS</td><td><code>application/x-tgsticker</code></td><td>Animated sticker</td></tr>
+<tr><td><code>AlbumItem::new(media)</code></td><td>Wrap an <code>InputMedia</code></td></tr>
+<tr><td><code>.caption(str)</code></td><td>Caption text for this item</td></tr>
+<tr><td><code>.reply_to(Option&lt;i32&gt;)</code></td><td>Reply to message ID</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="get-profile-photos"><a class="header" href="#get-profile-photos">Get profile photos</a></h2>
+<hr>
+<h2 id="download"><a class="header" href="#download">Download</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let photos = client.get_profile_photos(peer, 10).await?;
+</span>// To bytes — sequential
+let bytes: Vec&lt;u8&gt; = client.download_media(&amp;msg_media).await?;
 
-for photo in &amp;photos {
-    if let tl::enums::Photo::Photo(p) = photo {
-        println!("Photo ID {} — {} sizes", p.id, p.sizes.len());
+// To bytes — parallel chunks
+let bytes = client.download_media_concurrent(&amp;msg_media).await?;
 
-        // Find the largest size
-        let best = p.sizes.iter()
-            .filter_map(|s| match s {
-                tl::enums::PhotoSize::PhotoSize(ps) =&gt; Some(ps),
-                _ =&gt; None,
-            })
-            .max_by_key(|ps| ps.size);
+// Stream to file
+client.download_media_to_file(&amp;msg_media, "output.jpg").await?;
 
-        if let Some(size) = best {
-            println!("  Largest: {}x{} ({}B)", size.w, size.h, size.size);
-        }
-    }
+// Via Downloadable trait (Photo, Document, Sticker)
+let bytes = client.download(&amp;photo).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="downloaditer--streaming-chunks"><a class="header" href="#downloaditer--streaming-chunks"><code>DownloadIter</code> — streaming chunks</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let location = msg.raw.download_location().unwrap();
+let mut iter = client.iter_download(location);
+iter = iter.chunk_size(128 * 1024); // 128 KB chunks
+
+while let Some(chunk) = iter.next().await? {
+    file.write_all(&amp;chunk).await?;
 }
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>client.iter_download(location)</code></td><td>Create a lazy chunk iterator</td></tr>
+<tr><td><code>iter.chunk_size(bytes)</code></td><td>Set download chunk size</td></tr>
+<tr><td><code>iter.next()</code></td><td><code>async → Option&lt;Vec&lt;u8&gt;&gt;</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="photo-type"><a class="header" href="#photo-type"><code>Photo</code> type</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::media::Photo;
+
+let photo = Photo::from_media(&amp;msg.raw).unwrap();
+// or
+let photo = msg.photo().unwrap();
+
+photo.id()                // i64
+photo.access_hash()       // i64
+photo.date()              // i32 — Unix timestamp
+photo.has_stickers()      // bool
+photo.largest_thumb_type() // &amp;str — e.g. "y", "x", "s"
+
+let bytes = client.download(&amp;photo).await?;
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Photo::from_raw(tl::types::Photo)</code></td><td>Wrap raw TL photo</td></tr>
+<tr><td><code>Photo::from_media(&amp;MessageMedia)</code></td><td>Extract from message media</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="document-type"><a class="header" href="#document-type"><code>Document</code> type</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::media::Document;
+
+let doc = Document::from_media(&amp;msg.raw).unwrap();
+// or
+let doc = msg.document().unwrap();
+
+doc.id()              // i64
+doc.access_hash()     // i64
+doc.date()            // i32
+doc.mime_type()       // &amp;str
+doc.size()            // i64 — bytes
+doc.file_name()       // Option&lt;&amp;str&gt;
+doc.is_animated()     // bool — animated GIF or sticker
+
+let bytes = client.download(&amp;doc).await?;
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Document::from_raw(tl::types::Document)</code></td><td>Wrap raw TL document</td></tr>
+<tr><td><code>Document::from_media(&amp;MessageMedia)</code></td><td>Extract from message media</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="sticker-type"><a class="header" href="#sticker-type"><code>Sticker</code> type</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::media::Sticker;
+
+let sticker = Sticker::from_media(&amp;msg.raw).unwrap();
+
+sticker.id()          // i64
+sticker.mime_type()   // &amp;str — "image/webp" or "video/webm"
+sticker.emoji()       // Option&lt;&amp;str&gt; — associated emoji
+sticker.is_video()    // bool — animated video sticker
+
+let bytes = client.download(&amp;sticker).await?;
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Sticker::from_document(Document)</code></td><td>Wrap a document as a sticker</td></tr>
+<tr><td><code>Sticker::from_media(&amp;MessageMedia)</code></td><td>Extract sticker from message</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="downloadable-trait"><a class="header" href="#downloadable-trait"><code>Downloadable</code> trait</a></h2>
+<p><code>Photo</code>, <code>Document</code>, and <code>Sticker</code> all implement <code>Downloadable</code>, so you can use <code>client.download(&amp;item)</code> on any of them uniformly.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::media::Downloadable;
+
+async fn save_any&lt;D: Downloadable&gt;(client: &amp;Client, item: &amp;D) -&gt; Vec&lt;u8&gt; {
+    client.download(item).await.unwrap()
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="download-location-from-message"><a class="header" href="#download-location-from-message">Download location from message</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get an InputFileLocation from the raw message
+use layer_client::media::download_location_from_media;
+
+if let Some(loc) = download_location_from_media(&amp;msg.raw) {
+    let bytes = client.download_media(&amp;loc).await?;
+}
+
+// Or via IncomingMessage convenience:
+msg.download_media("output.jpg").await?;
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="message-formatting"><a class="header" href="#message-formatting">Message Formatting</a></h1>
@@ -2161,614 +2270,591 @@ if let enums::messages::MessageReactionsList::MessageReactionsList(list) = resul
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="update-types"><a class="header" href="#update-types">Update Types</a></h1>
-<p>All Telegram events flow through <code>stream_updates()</code> as variants of the <code>Update</code> enum. Every variant is strongly typed — no raw JSON or untagged maps.</p>
+<p><code>stream.next().await</code> yields <code>Option&lt;Update&gt;</code>. <code>Update</code> is <code>#[non_exhaustive]</code> — always include <code>_ =&gt; {}</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::update::Update;
 
-let mut updates = client.stream_updates();
-while let Some(update) = updates.next().await {
+while let Some(update) = stream.next().await {
     match update {
-        Update::NewMessage(msg)       =&gt; { /* new message arrived */ }
-        Update::MessageEdited(msg)    =&gt; { /* message was edited */ }
-        Update::MessageDeleted(del)   =&gt; { /* message(s) were deleted */ }
-        Update::CallbackQuery(cb)     =&gt; { /* inline button pressed */ }
-        Update::InlineQuery(iq)       =&gt; { /* @bot inline query */ }
-        Update::InlineSend(is)        =&gt; { /* inline result chosen */ }
-        Update::ChatAction(action)    =&gt; { /* user typing / uploading */ }
-        Update::UserStatus(status)    =&gt; { /* contact online status */ }
-        Update::Raw(raw)              =&gt; { /* unrecognised update */ }
-        _ =&gt; {}   // required: Update is #[non_exhaustive]
-    }
-}
-<span class="boring">}</span></code></pre>
-<blockquote>
-<p><strong>Note:</strong> As of v0.4.6, <code>Update</code> is <code>#[non_exhaustive]</code>. Your match arms <strong>must</strong> include a <code>_ =&gt; {}</code> fallback or the code will fail to compile when new variants are added.</p>
-</blockquote>
-<hr>
-<h2 id="newmessage"><a class="header" href="#newmessage">NewMessage</a></h2>
-<p>Fires for every new message the account receives in any chat.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::NewMessage(msg) =&gt; {
-    if msg.outgoing() { return; }  // skip messages you sent
+        // ── Messages ─────────────────────────────────────────────────
+        Update::NewMessage(msg)     =&gt; { /* IncomingMessage */ }
+        Update::MessageEdited(msg)  =&gt; { /* IncomingMessage */ }
+        Update::MessageDeleted(del) =&gt; { /* MessageDeletion */ }
 
-    let text    = msg.text().unwrap_or("");
-    let msg_id  = msg.id();
-    let peer    = msg.peer_id();   // the chat it arrived in
-    let sender  = msg.sender_id(); // who sent it
+        // ── Bot interactions ─────────────────────────────────────────
+        Update::CallbackQuery(cb)   =&gt; { /* CallbackQuery */ }
+        Update::InlineQuery(iq)     =&gt; { /* InlineQuery */ }
+        Update::InlineSend(is)      =&gt; { /* InlineSend */ }
 
-    println!("[{msg_id}] {text}");
-}
-<span class="boring">}</span></code></pre>
-<p>See <a href="#incomingmessage">IncomingMessage</a> for the full list of accessors.</p>
-<hr>
-<h2 id="messageedited"><a class="header" href="#messageedited">MessageEdited</a></h2>
-<p>Same structure as <code>NewMessage</code> — carries the new version of the edited message.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::MessageEdited(msg) =&gt; {
-    println!("Edited [{id}]: {text}",
-        id   = msg.id(),
-        text = msg.text().unwrap_or(""),
-    );
-    if let Some(when) = msg.edit_date_utc() {
-        println!("  Edited at: {when}");
+        // ── Presence ─────────────────────────────────────────────────
+        Update::UserTyping(action)  =&gt; { /* ChatActionUpdate */ }
+        Update::UserStatus(status)  =&gt; { /* UserStatusUpdate */ }
+
+        // ── Raw passthrough ──────────────────────────────────────────
+        Update::Raw(raw)            =&gt; { /* RawUpdate */ }
+
+        _ =&gt; {}  // required — Update is #[non_exhaustive]
     }
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="messagedeleted-1"><a class="header" href="#messagedeleted-1">MessageDeleted</a></h2>
-<p>Contains only the message IDs, not the content (which is gone).</p>
+<h2 id="messagedeletion"><a class="header" href="#messagedeletion"><code>MessageDeletion</code></a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::MessageDeleted(del) =&gt; {
-    println!("Deleted IDs: {:?}", del.messages());
+    let ids: Vec&lt;i32&gt; = del.into_messages();
+}
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>del.into_messages()</code></td><td><code>Vec&lt;i32&gt;</code></td><td>IDs of deleted messages</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="callbackquery"><a class="header" href="#callbackquery"><code>CallbackQuery</code></a></h2>
+<p>See the full <a href="#callback-queries">Callback Queries</a> page.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>cb.query_id      // i64
+cb.user_id       // i64
+cb.msg_id        // Option&lt;i32&gt;
+cb.data()        // Option&lt;&amp;str&gt;
+cb.answer()      // → Answer builder
+cb.answer_flat(&amp;client, text)
+cb.answer_alert(&amp;client, text)
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="inlinequery"><a class="header" href="#inlinequery"><code>InlineQuery</code></a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>iq.query_id      // i64
+iq.user_id       // i64
+iq.query()       // &amp;str — the typed query
+iq.offset        // String — pagination offset
+<span class="boring">}</span></code></pre>
+<p>Answer with <code>client.answer_inline_query(...)</code>. See <a href="#inline-mode">Inline Mode</a>.</p>
+<hr>
+<h2 id="inlinesend"><a class="header" href="#inlinesend"><code>InlineSend</code></a></h2>
+<p>Fires when a user picks a result from your bot’s inline mode.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>is.result_id     // String — which result was chosen
+is.user_id       // i64
+is.query         // String — original query
 
-    // For channel deletions, channel_id is set
-    if let Some(ch_id) = del.channel_id() {
-        println!("  In channel: {ch_id}");
-    }
+// Edit the message the inline result was sent as
+is.edit_message(&amp;client, updated_input_msg).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="chatactionupdate-usertyping"><a class="header" href="#chatactionupdate-usertyping"><code>ChatActionUpdate</code> (UserTyping)</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Update::UserTyping(action) =&gt; {
+    action.peer      // tl::enums::Peer — the chat
+    action.user_id   // Option&lt;i64&gt;
+    action.action    // tl::enums::SendMessageAction
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="callbackquery"><a class="header" href="#callbackquery">CallbackQuery</a></h2>
-<p>Fires when a user presses an inline keyboard button.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::CallbackQuery(cb) =&gt; {
-    let data  = cb.data().unwrap_or("");
-    let qid   = cb.query_id;
-
-    match data {
-        "yes" =&gt; {
-            // edit the message, then acknowledge
-            client.edit_message(peer, cb.msg_id, "You said yes!").await?;
-            client.answer_callback_query(qid, None, false).await?;
-        }
-        "no" =&gt; {
-            cb.answer(&amp;client, "Cancelled.").await?;
-        }
-        _ =&gt; {
-            client.answer_callback_query(qid, Some("Unknown"), false).await?;
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<p>See <a href="#callback-queries">Callback Queries</a> for full reference.</p>
-<hr>
-<h2 id="inlinequery"><a class="header" href="#inlinequery">InlineQuery</a></h2>
-<p>Fires when a user types <code>@yourbot &lt;query&gt;</code> in any chat.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::InlineQuery(iq) =&gt; {
-    let q   = iq.query();
-    let qid = iq.query_id;
-
-    let results = build_results(q);
-
-    client.answer_inline_query(
-        qid,
-        results,
-        300,   // cache seconds
-        false, // is_personal
-        None,  // next_offset
-    ).await?;
-}
-<span class="boring">}</span></code></pre>
-<p>See <a href="#inline-mode">Inline Mode</a> for result builders.</p>
-<hr>
-<h2 id="inlinesend"><a class="header" href="#inlinesend">InlineSend</a></h2>
-<p>Fires when the user actually sends a chosen inline result.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::InlineSend(is) =&gt; {
-    let result_id   = is.result_id();
-    let query       = is.query();
-    let inline_msg  = is.message_id(); // Option — present only if inline_feedback is on
-
-    println!("User sent inline result '{result_id}' for query '{query}'");
-}
-<span class="boring">}</span></code></pre>
-<p>To edit the sent inline message:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(inline_msg_id) = is.message_id() {
-    client.edit_inline_message(
-        inline_msg_id,
-        "Updated content!",
-    ).await?;
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="chataction--new-in-v046"><a class="header" href="#chataction--new-in-v046">ChatAction — New in v0.4.6</a></h2>
-<p>Fires when a user starts or stops typing, uploading, recording, etc. in a chat the account is in.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::ChatAction(action) =&gt; {
-    let user   = action.user_id();    // Option&lt;i64&gt;
-    let peer   = action.peer();       // the chat
-    let action = action.action();     // tl::enums::SendMessageAction
-
-    match action {
-        tl::enums::SendMessageAction::SendMessageTypingAction =&gt; {
-            println!("user {:?} is typing in {:?}", user, peer);
-        }
-        tl::enums::SendMessageAction::SendMessageUploadPhotoAction(_) =&gt; {
-            println!("user {:?} is uploading a photo", user);
-        }
-        tl::enums::SendMessageAction::SendMessageRecordAudioAction =&gt; {
-            println!("user {:?} is recording audio", user);
-        }
-        tl::enums::SendMessageAction::SendMessageCancelAction =&gt; {
-            println!("user {:?} stopped", user);
-        }
-        _ =&gt; {}
-    }
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="userstatus--new-in-v046"><a class="header" href="#userstatus--new-in-v046">UserStatus — New in v0.4.6</a></h2>
-<p>Fires when a contact’s online/offline status changes. Only received for contacts or people in mutual chats (depending on their privacy settings).</p>
+<h2 id="userstatusupdate"><a class="header" href="#userstatusupdate"><code>UserStatusUpdate</code></a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::UserStatus(status) =&gt; {
-    let user_id = status.user_id();    // i64
-    let online  = status.status();     // tl::enums::UserStatus
-
-    match online {
-        tl::enums::UserStatus::UserStatusOnline(s) =&gt; {
-            println!("user {user_id} went online (expires {})", s.expires);
-        }
-        tl::enums::UserStatus::UserStatusOffline(s) =&gt; {
-            println!("user {user_id} went offline (was online {})", s.was_online);
-        }
-        tl::enums::UserStatus::UserStatusRecently =&gt; {
-            println!("user {user_id}: seen recently");
-        }
-        tl::enums::UserStatus::UserStatusLastWeek(_) =&gt; {
-            println!("user {user_id}: seen last week");
-        }
-        tl::enums::UserStatus::UserStatusLastMonth(_) =&gt; {
-            println!("user {user_id}: seen last month");
-        }
-        _ =&gt; {}
-    }
+    status.user_id  // i64
+    status.status   // tl::enums::UserStatus
+    // variants: UserStatusOnline, UserStatusOffline, UserStatusRecently, etc.
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="raw"><a class="header" href="#raw">Raw</a></h2>
-<p>Any update that doesn’t map to a named variant is passed through as <code>Update::Raw</code>:</p>
+<h2 id="rawupdate"><a class="header" href="#rawupdate"><code>RawUpdate</code></a></h2>
+<p>Any TL update that doesn’t map to a typed variant:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::Raw(raw) =&gt; {
-    // raw.constructor_id() — the TL constructor ID (u32)
-    // raw.bytes()          — the raw serialised bytes
-    println!("Unhandled update: 0x{:08x}", raw.constructor_id());
+    raw.update   // tl::enums::Update — the raw TL object
 }
 <span class="boring">}</span></code></pre>
-<p>Use this as an escape hatch to handle updates that <code>layer-client</code> doesn’t yet have a typed variant for.</p>
 <hr>
-<h2 id="concurrent-handling"><a class="header" href="#concurrent-handling">Concurrent handling</a></h2>
-<p>Spawn each update in its own Tokio task to prevent one slow handler from blocking others:</p>
+<h2 id="raw-update-stream"><a class="header" href="#raw-update-stream">Raw update stream</a></h2>
+<p>If you need all updates unfiltered:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use std::sync::Arc;
-
-let client = Arc::new(client);
-let mut updates = client.stream_updates();
-
-while let Some(update) = updates.next().await {
-    let client = client.clone();
-    tokio::spawn(async move {
-        if let Err(e) = handle(update, &amp;client).await {
-            eprintln!("Handler error: {e}");
-        }
-    });
-}
-
-async fn handle(
-    update: Update,
-    client: &amp;Client,
-) -&gt; Result&lt;(), Box&lt;dyn std::error::Error + Send + Sync&gt;&gt; {
-    match update {
-        Update::NewMessage(msg) if !msg.outgoing() =&gt; {
-            // …
-        }
-        _ =&gt; {}
-    }
-    Ok(())
+</span>let mut stream = client.stream_updates();
+while let Some(raw) = stream.next_raw().await {
+    println!("{:?}", raw.update);
 }
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="incomingmessage"><a class="header" href="#incomingmessage">IncomingMessage</a></h1>
-<p><code>IncomingMessage</code> wraps <code>tl::enums::Message</code> and provides convenient typed accessors. It’s the type carried by <code>Update::NewMessage</code> and <code>Update::MessageEdited</code>.</p>
-<h2 id="all-accessors"><a class="header" href="#all-accessors">All accessors</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Returns</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>id()</code></td><td><code>i32</code></td><td>Unique message ID within the chat</td></tr>
-<tr><td><code>text()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Plain text content</td></tr>
-<tr><td><code>peer_id()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>The chat this message belongs to</td></tr>
-<tr><td><code>sender_id()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>Who sent it (None for anonymous channels)</td></tr>
-<tr><td><code>outgoing()</code></td><td><code>bool</code></td><td>Sent by the logged-in account</td></tr>
-<tr><td><code>date()</code></td><td><code>i32</code></td><td>Unix timestamp of creation</td></tr>
-<tr><td><code>date_utc()</code></td><td><code>Option&lt;DateTime&lt;Utc&gt;&gt;</code></td><td>Parsed chrono datetime</td></tr>
-<tr><td><code>edit_date()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Unix timestamp of last edit</td></tr>
-<tr><td><code>edit_date_utc()</code></td><td><code>Option&lt;DateTime&lt;Utc&gt;&gt;</code></td><td>Parsed edit datetime</td></tr>
-<tr><td><code>mentioned()</code></td><td><code>bool</code></td><td>The account was @mentioned</td></tr>
-<tr><td><code>silent()</code></td><td><code>bool</code></td><td>Sent without notification</td></tr>
-<tr><td><code>post()</code></td><td><code>bool</code></td><td>Posted by a channel (not a user)</td></tr>
-<tr><td><code>pinned()</code></td><td><code>bool</code></td><td>This is a pin service message</td></tr>
-<tr><td><code>noforwards()</code></td><td><code>bool</code></td><td>Cannot be forwarded or screenshotted</td></tr>
-<tr><td><code>reply_to_message_id()</code></td><td><code>Option&lt;i32&gt;</code></td><td>ID of the replied-to message</td></tr>
-<tr><td><code>forward_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Times this message was forwarded</td></tr>
-<tr><td><code>view_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>View count (channels only)</td></tr>
-<tr><td><code>reply_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Comment count</td></tr>
-<tr><td><code>grouped_id()</code></td><td><code>Option&lt;i64&gt;</code></td><td>Album group ID</td></tr>
-<tr><td><code>media()</code></td><td><code>Option&lt;&amp;MessageMedia&gt;</code></td><td>Attached media</td></tr>
-<tr><td><code>entities()</code></td><td><code>Option&lt;&amp;Vec&lt;MessageEntity&gt;&gt;</code></td><td>Text formatting regions</td></tr>
-<tr><td><code>reply_markup()</code></td><td><code>Option&lt;&amp;ReplyMarkup&gt;</code></td><td>Inline keyboard</td></tr>
-<tr><td><code>forward_header()</code></td><td><code>Option&lt;&amp;MessageFwdHeader&gt;</code></td><td>Forward origin info</td></tr>
-<tr><td><code>raw</code></td><td><code>tl::enums::Message</code></td><td>The underlying raw TL type</td></tr>
-</tbody>
-</table>
-</div>
+<p><code>IncomingMessage</code> is the type of <code>Update::NewMessage</code> and <code>Update::MessageEdited</code>. It wraps a raw <code>tl::enums::Message</code> and provides ergonomic accessors plus a full suite of <strong>convenience action methods</strong> that let you act on a message without passing the <code>Client</code> around explicitly (when the message was received from the update stream it already carries a client reference).</p>
 <hr>
-<h2 id="getting-sender-user-id"><a class="header" href="#getting-sender-user-id">Getting sender user ID</a></h2>
+<h2 id="basic-accessors"><a class="header" href="#basic-accessors">Basic accessors</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>fn user_id(msg: &amp;IncomingMessage) -&gt; Option&lt;i64&gt; {
-    match msg.sender_id()? {
-        tl::enums::Peer::User(u) =&gt; Some(u.user_id),
-        _ =&gt; None,
-    }
+</span>Update::NewMessage(msg) =&gt; {
+    msg.id()                  // i32 — unique message ID in this chat
+    msg.text()                // Option&lt;&amp;str&gt; — text or media caption
+    msg.peer_id()             // Option&lt;&amp;tl::enums::Peer&gt; — chat this is in
+    msg.sender_id()           // Option&lt;&amp;tl::enums::Peer&gt; — who sent it
+    msg.outgoing()            // bool — sent by us?
+    msg.date()                // i32 — Unix timestamp
+    msg.edit_date()           // Option&lt;i32&gt; — last edit timestamp
+    msg.mentioned()           // bool — are we @mentioned?
+    msg.silent()              // bool — no notification
+    msg.pinned()              // bool — currently pinned
+    msg.post()                // bool — channel post (no sender)
+    msg.noforwards()          // bool — forwarding disabled
+    msg.from_scheduled()      // bool — was a scheduled message
+    msg.edit_hide()           // bool — edit not shown in UI
+    msg.media_unread()        // bool — media not yet viewed
+    msg.raw                   // tl::enums::Message — full TL object
 }
 <span class="boring">}</span></code></pre>
-<h2 id="determining-chat-type"><a class="header" href="#determining-chat-type">Determining chat type</a></h2>
+<hr>
+<h2 id="extended-accessors"><a class="header" href="#extended-accessors">Extended accessors</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>match msg.peer_id() {
-    Some(tl::enums::Peer::User(u))    =&gt; {
-        println!("Private DM with user {}", u.user_id);
-    }
-    Some(tl::enums::Peer::Chat(c))    =&gt; {
-        println!("Basic group {}", c.chat_id);
-    }
-    Some(tl::enums::Peer::Channel(c)) =&gt; {
-        println!("Channel or supergroup {}", c.channel_id);
-    }
-    None =&gt; {
-        println!("Unknown peer");
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="accessing-media"><a class="header" href="#accessing-media">Accessing media</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(media) = msg.media() {
-    match media {
-        tl::enums::MessageMedia::Photo(p)     =&gt; println!("📷 Photo"),
-        tl::enums::MessageMedia::Document(d)  =&gt; println!("📎 Document"),
-        tl::enums::MessageMedia::Geo(g)       =&gt; println!("📍 Location"),
-        tl::enums::MessageMedia::Contact(c)   =&gt; println!("👤 Contact"),
-        tl::enums::MessageMedia::Poll(p)      =&gt; println!("📊 Poll"),
-        tl::enums::MessageMedia::WebPage(w)   =&gt; println!("🔗 Web preview"),
-        tl::enums::MessageMedia::Sticker(s)   =&gt; println!("🩷 Sticker"),
-        tl::enums::MessageMedia::Dice(d)      =&gt; println!("🎲 Dice"),
-        tl::enums::MessageMedia::Game(g)      =&gt; println!("🎮 Game"),
-        _ =&gt; println!("Other media"),
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="accessing-entities"><a class="header" href="#accessing-entities">Accessing entities</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(entities) = msg.entities() {
-    for entity in entities {
-        match entity {
-            tl::enums::MessageEntity::Bold(e)   =&gt; {
-                let bold_text = &amp;msg.text().unwrap_or("")[e.offset as usize..][..e.length as usize];
-                println!("Bold: {bold_text}");
-            }
-            tl::enums::MessageEntity::BotCommand(e) =&gt; {
-                let cmd = &amp;msg.text().unwrap_or("")[e.offset as usize..][..e.length as usize];
-                println!("Command: {cmd}");
-            }
-            tl::enums::MessageEntity::Url(e) =&gt; {
-                let url = &amp;msg.text().unwrap_or("")[e.offset as usize..][..e.length as usize];
-                println!("URL: {url}");
-            }
-            _ =&gt; {}
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="forward-info"><a class="header" href="#forward-info">Forward info</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(fwd) = msg.forward_header() {
-    if let tl::enums::MessageFwdHeader::MessageFwdHeader(h) = fwd {
-        println!("Forwarded at: {}", h.date);
-        if let Some(tl::enums::Peer::Channel(c)) = &amp;h.from_id {
-            println!("From channel: {}", c.channel_id);
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="reply-to-previous-message"><a class="header" href="#reply-to-previous-message">Reply to previous message</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Quick reply with text
-msg.reply(&amp;mut client, "Got it!").await?;
+</span>// Counters
+msg.forward_count()          // Option&lt;i32&gt; — number of times forwarded
+msg.view_count()             // Option&lt;i32&gt; — view count (channels)
+msg.reply_count()            // Option&lt;i32&gt; — number of replies in thread
+msg.reaction_count()         // i32 — total reactions
+msg.reply_to_message_id()    // Option&lt;i32&gt; — ID of the message replied to
 
-// Reply with full InputMessage (formatted, keyboard, etc.)
-if let Some(peer) = msg.peer_id() {
-    let (t, e) = parse_markdown("**Acknowledged** ✅");
-    client.send_message_to_peer_ex(peer.clone(), &amp;InputMessage::text(t)
-        .entities(e)
-        .reply_to(Some(msg.id()))
-    ).await?;
-}
+// Typed timestamps
+msg.date_utc()               // Option&lt;DateTime&lt;Utc&gt;&gt;
+msg.edit_date_utc()          // Option&lt;DateTime&lt;Utc&gt;&gt;
+
+// Rich content
+msg.media()                  // Option&lt;&amp;tl::enums::MessageMedia&gt;
+msg.entities()               // Option&lt;&amp;Vec&lt;tl::enums::MessageEntity&gt;&gt;
+msg.action()                 // Option&lt;&amp;tl::enums::MessageAction&gt; — service messages
+msg.reply_markup()           // Option&lt;&amp;tl::enums::ReplyMarkup&gt;
+msg.forward_header()         // Option&lt;&amp;tl::enums::MessageFwdHeader&gt;
+msg.grouped_id()             // Option&lt;i64&gt; — album group ID
+msg.via_bot_id()             // Option&lt;i64&gt; — inline bot that sent this
+msg.post_author()            // Option&lt;&amp;str&gt; — channel post author signature
+msg.restriction_reason()     // Option&lt;&amp;Vec&lt;tl::enums::RestrictionReason&gt;&gt;
+
+// Formatted text helpers (requires html feature for html_text)
+msg.markdown_text()          // Option&lt;String&gt; — entities rendered as Markdown
+msg.html_text()              // Option&lt;String&gt; — entities rendered as HTML
+
+// Typed media extraction
+msg.photo()                  // Option&lt;Photo&gt;
+msg.document()               // Option&lt;Document&gt;
+
+// Sender details
+msg.sender_user_id()         // Option&lt;i64&gt; — sender's user ID
+msg.sender_chat_id()         // Option&lt;i64&gt; — sender's chat ID
+msg.sender_user()            // async → Option&lt;User&gt; (fetches from cache/API)
 <span class="boring">}</span></code></pre>
-<h2 id="accessing-raw-tl-fields"><a class="header" href="#accessing-raw-tl-fields">Accessing raw TL fields</a></h2>
-<p>For fields not exposed by accessors, use <code>.raw</code> directly:</p>
+<hr>
+<h2 id="convenience-action-methods"><a class="header" href="#convenience-action-methods">Convenience action methods</a></h2>
+<p>These methods work without passing a <code>&amp;Client</code> when the message came from <code>stream_updates()</code> (the client reference is embedded). Use the <code>_with(client)</code> variants when you hold the message outside an update handler.</p>
+<h3 id="reply"><a class="header" href="#reply">Reply</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>if let tl::enums::Message::Message(raw) = &amp;msg.raw {
-    // Layer 223 additions
-    println!("from_rank: {:?}",             raw.from_rank);
-    println!("suggested_post: {:?}",        raw.suggested_post);
-    println!("paid_message_stars: {:?}",    raw.paid_message_stars);
-    println!("schedule_repeat_period: {:?}",raw.schedule_repeat_period);
-    println!("summary_from_language: {:?}", raw.summary_from_language);
+</span>// Reply to this message (reply_to set automatically)
+msg.reply("Got it! ✅").await?;
 
-    // Standard fields
-    println!("grouped_id: {:?}",            raw.grouped_id);
-    println!("restriction_reason: {:?}",    raw.restriction_reason);
-    println!("ttl_period: {:?}",            raw.ttl_period);
-    println!("effect: {:?}",                raw.effect);
-    println!("factcheck: {:?}",             raw.factcheck);
+// Reply with full InputMessage control
+msg.reply_ex(
+    InputMessage::text("Here you go")
+        .silent(true)
+        .no_webpage(true)
+).await?;
+
+// Explicit client variants
+msg.reply_with(&amp;client, "Hi").await?;
+msg.reply_ex_with(&amp;client, input_msg).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="respond-no-reply-thread"><a class="header" href="#respond-no-reply-thread">Respond (no reply thread)</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Send to the same chat without quoting
+msg.respond("Hello everyone!").await?;
+msg.respond_ex(InputMessage::text("...").keyboard(kb)).await?;
+
+// Explicit client variants
+msg.respond_with(&amp;client, "Hi").await?;
+msg.respond_ex_with(&amp;client, input_msg).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="edit"><a class="header" href="#edit">Edit</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Edit this message's text
+msg.edit("Updated content").await?;
+msg.edit_with(&amp;client, "Updated content").await?;
+<span class="boring">}</span></code></pre>
+<h3 id="delete"><a class="header" href="#delete">Delete</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>msg.delete().await?;
+msg.delete_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="mark-as-read"><a class="header" href="#mark-as-read">Mark as read</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>msg.mark_as_read().await?;
+msg.mark_as_read_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="pin--unpin"><a class="header" href="#pin--unpin">Pin / Unpin</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>msg.pin().await?;          // pins with notification
+msg.pin_with(&amp;client).await?;
+
+msg.unpin().await?;
+msg.unpin_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="react"><a class="header" href="#react">React</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::reactions::InputReactions;
+
+msg.react("👍").await?;
+msg.react(InputReactions::emoticon("🔥").big()).await?;
+msg.react_with(&amp;client, "❤️").await?;
+<span class="boring">}</span></code></pre>
+<h3 id="forward"><a class="header" href="#forward">Forward</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Forward to another peer
+msg.forward_to("@someuser").await?;
+msg.forward_to_with(&amp;client, peer).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="download-media"><a class="header" href="#download-media">Download media</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Download attached media to a file path, returns true if media existed
+let downloaded = msg.download_media("output.jpg").await?;
+msg.download_media_with(&amp;client, "output.jpg").await?;
+<span class="boring">}</span></code></pre>
+<h3 id="fetch-replied-to-message"><a class="header" href="#fetch-replied-to-message">Fetch replied-to message</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get the message this one replies to
+if let Some(parent) = msg.get_reply().await? {
+    println!("Replying to: {}", parent.text().unwrap_or(""));
+}
+msg.get_reply_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="refetch"><a class="header" href="#refetch">Refetch</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Re-fetch this message from the server (update its state)
+msg.refetch().await?;
+msg.refetch_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="reply-to-message-via-client"><a class="header" href="#reply-to-message-via-client">Reply-to-message (via Client)</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Fetch the replied-to message via client
+let parent = client.get_reply_to_message(peer.clone(), msg.id()).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="full-handler-example"><a class="header" href="#full-handler-example">Full handler example</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::{Client, update::Update};
+
+let mut stream = client.stream_updates();
+while let Some(update) = stream.next().await {
+    match update {
+        Update::NewMessage(msg) if !msg.outgoing() =&gt; {
+            let text = msg.text().unwrap_or("");
+
+            if text == "/start" {
+                msg.reply("Welcome! 👋").await.ok();
+
+            } else if text == "/me" {
+                if let Ok(Some(user)) = msg.sender_user().await {
+                    msg.reply(&amp;format!("You are: {}", user.full_name())).await.ok();
+                }
+
+            } else if text.starts_with("/echo ") {
+                let echo = &amp;text[6..];
+                msg.respond(echo).await.ok();
+
+            } else if let Some(media) = msg.media() {
+                msg.reply("Downloading…").await.ok();
+                msg.download_media("received_file").await.ok();
+                msg.react("✅").await.ok();
+            }
+        }
+        _ =&gt; {}
+    }
 }
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="callback-queries"><a class="header" href="#callback-queries">Callback Queries</a></h1>
-<p>Callback queries are fired when users press inline keyboard buttons on bot messages.</p>
-<h2 id="full-handling-example"><a class="header" href="#full-handling-example">Full handling example</a></h2>
+<p>When a user taps an inline keyboard button, the bot receives <code>Update::CallbackQuery</code>. Always answer it — Telegram shows a loading spinner until you do.</p>
+<hr>
+<h2 id="basic-handling"><a class="header" href="#basic-handling">Basic handling</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::CallbackQuery(cb) =&gt; {
-    let data   = cb.data().unwrap_or("").to_string();
-    let qid    = cb.query_id;
+    let data = cb.data().unwrap_or("");
 
-    // Parse structured data
-    let parts: Vec&lt;&amp;str&gt; = data.splitn(2, ':').collect();
-    match parts.as_slice() {
-        ["vote", choice] =&gt; {
-            record_vote(choice);
-            cb.answer(&amp;client, &amp;format!("Voted: {choice}")).await?;
-        }
-        ["page", n] =&gt; {
-            let page: usize = n.parse().unwrap_or(0);
-            // Edit the original message to show new page
-            client.edit_message(
-                peer_from_cb(&amp;cb),
-                cb.msg_id,
-                &amp;format_page(page),
-            ).await?;
-            client.answer_callback_query(qid, None, false).await?;
-        }
-        ["confirm"] =&gt; {
-            cb.answer_alert(&amp;client, "Are you sure? This is permanent.").await?;
-        }
-        _ =&gt; {
-            client.answer_callback_query(qid, Some("Unknown action"), false).await?;
-        }
+    match data {
+        "vote:yes" =&gt; cb.answer().text("✅ Voted yes!").send(&amp;client).await?,
+        "vote:no"  =&gt; cb.answer().text("❌ Voted no").send(&amp;client).await?,
+        _          =&gt; cb.answer().send(&amp;client).await?,  // empty answer
     }
 }
 <span class="boring">}</span></code></pre>
-<h2 id="callbackquery-fields"><a class="header" href="#callbackquery-fields">CallbackQuery fields</a></h2>
+<hr>
+<h2 id="callbackquery-fields"><a class="header" href="#callbackquery-fields"><code>CallbackQuery</code> fields</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>cb.query_id       // i64 — must be passed to answer_callback_query
+cb.user_id        // i64 — who pressed the button
+cb.msg_id         // Option&lt;i32&gt; — message the button was on
+cb.data()         // Option&lt;&amp;str&gt; — the callback data string
+cb.inline_msg_id  // Option&lt;tl::enums::InputBotInlineMessageID&gt; — for inline messages
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="answer-builder-fluent-api"><a class="header" href="#answer-builder-fluent-api"><code>Answer</code> builder (fluent API)</a></h2>
+<p><code>cb.answer()</code> returns an <code>Answer</code> builder. Chain modifiers then call <code>.send(&amp;client)</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Toast notification (default)
+cb.answer()
+    .text("✅ Done!")
+    .send(&amp;client)
+    .await?;
+
+// Alert popup (modal dialog)
+cb.answer()
+    .alert("⛔ You don't have permission for this action.")
+    .send(&amp;client)
+    .await?;
+
+// Open a URL (Telegram shows a confirmation first)
+cb.answer()
+    .url("https://example.com/auth")
+    .send(&amp;client)
+    .await?;
+
+// Silent answer (no notification, just clears the spinner)
+cb.answer().send(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="answer-methods"><a class="header" href="#answer-methods"><code>Answer</code> methods</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Field / Method</th><th>Type</th><th>Description</th></tr>
+<tr><th>Method</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>cb.query_id</code></td><td><code>i64</code></td><td>Unique query ID — must be answered</td></tr>
-<tr><td><code>cb.msg_id</code></td><td><code>i32</code></td><td>ID of the message that has the button</td></tr>
-<tr><td><code>cb.data()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>The data string set in the button</td></tr>
-<tr><td><code>cb.sender_id()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>Who pressed the button</td></tr>
-<tr><td><code>cb.answer(client, text)</code></td><td><code>async</code></td><td>Toast notification to user</td></tr>
-<tr><td><code>cb.answer_alert(client, text)</code></td><td><code>async</code></td><td>Modal alert popup to user</td></tr>
+<tr><td><code>cb.answer()</code></td><td>Start building an answer</td></tr>
+<tr><td><code>.text(str)</code></td><td>Toast message shown to the user</td></tr>
+<tr><td><code>.alert(str)</code></td><td>Modal popup shown to the user</td></tr>
+<tr><td><code>.url(str)</code></td><td>URL to open (with user confirmation)</td></tr>
+<tr><td><code>.send(&amp;client)</code></td><td>Execute — always call this</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="answer-vs-answer_alert"><a class="header" href="#answer-vs-answer_alert">answer vs answer_alert</a></h2>
+<hr>
+<h2 id="convenience-shortcuts"><a class="header" href="#convenience-shortcuts">Convenience shortcuts</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Toast (brief notification at bottom of screen)
-cb.answer(&amp;client, "✅ Done!").await?;
+</span>// Flat answer with optional text
+cb.answer_flat(&amp;client, Some("✅ Done")).await?;
+cb.answer_flat(&amp;client, None).await?;  // silent
 
-// Alert popup (requires user to dismiss)
-cb.answer_alert(&amp;client, "⚠️ This will delete everything!").await?;
-
-// Silent acknowledge (no visible notification)
-client.answer_callback_query(cb.query_id, None, false).await?;
+// Alert shortcut
+cb.answer_alert(&amp;client, "⛔ Access denied").await?;
 <span class="boring">}</span></code></pre>
-<h2 id="editing-message-after-a-button-press"><a class="header" href="#editing-message-after-a-button-press">Editing message after a button press</a></h2>
-<p>A common pattern is updating the message content when a button is pressed:</p>
+<hr>
+<h2 id="via-client-directly"><a class="header" href="#via-client-directly">Via <code>Client</code> directly</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// answer_callback_query(query_id, text, alert)
+client.answer_callback_query(cb.query_id, Some("✅ Done!"), false).await?;
+client.answer_callback_query(cb.query_id, Some("⛔ No!"), true).await?;  // alert
+client.answer_callback_query(cb.query_id, None, false).await?;  // silent
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="edit-the-message-on-callback"><a class="header" href="#edit-the-message-on-callback">Edit the message on callback</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::CallbackQuery(cb) =&gt; {
-    if cb.data() == Some("next_page") {
-        // Edit the message text
-        client.edit_message(
-            tl::enums::Peer::User(/* resolved peer */),
-            cb.msg_id,
-            "Updated content after button press",
-        ).await?;
+    // Answer first (clears spinner)
+    cb.answer().text("Loading…").send(&amp;client).await?;
 
-        // Always acknowledge
-        client.answer_callback_query(cb.query_id, None, false).await?;
+    // Then edit the original message
+    if let Some(msg_id) = cb.msg_id {
+        client.edit_message(
+            // peer from the callback — resolve from context
+            peer.clone(),
+            msg_id,
+            "Updated content",
+        ).await?;
     }
 }
 <span class="boring">}</span></code></pre>
-<h2 id="button-data-format-tips"><a class="header" href="#button-data-format-tips">Button data format tips</a></h2>
-<p>Keep button data under 64 bytes (Telegram’s limit). For structured data use short prefixes:</p>
+<hr>
+<h2 id="full-example--vote-bot"><a class="header" href="#full-example--vote-bot">Full example — vote bot</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Good — compact, parseable
-"vote:yes"
-"page:3"
-"item:42:delete"
-
-// Bad — too verbose
-"user_wants_to_vote_for_option_yes"
+</span>Update::CallbackQuery(cb) =&gt; {
+    match cb.data().unwrap_or("") {
+        "vote:yes" =&gt; {
+            cb.answer().text("Thanks for voting Yes! 👍").send(&amp;client).await?;
+        }
+        "vote:no" =&gt; {
+            cb.answer().text("Thanks for voting No! 👎").send(&amp;client).await?;
+        }
+        "vote:info" =&gt; {
+            cb.answer()
+                .url("https://example.com/vote-info")
+                .send(&amp;client)
+                .await?;
+        }
+        _ =&gt; {
+            cb.answer().send(&amp;client).await?; // always answer
+        }
+    }
+}
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="inline-mode"><a class="header" href="#inline-mode">Inline Mode</a></h1>
-<p>Inline mode lets users type <code>@yourbot query</code> in any chat — the bot responds with a list of results the user can tap to send.</p>
-<h2 id="enable-inline-mode"><a class="header" href="#enable-inline-mode">Enable inline mode</a></h2>
-<p>In <a href="https://t.me/BotFather">@BotFather</a>:</p>
-<ol>
-<li>Send <code>/mybots</code> → select your bot</li>
-<li><strong>Bot Settings</strong> → <strong>Inline Mode</strong> → <strong>Turn on</strong></li>
-</ol>
-<h2 id="handling-inline-queries"><a class="header" href="#handling-inline-queries">Handling inline queries</a></h2>
+<p>Inline mode lets users type <code>@yourbot query</code> in any chat and receive results. Layer supports both sides: <strong>receiving queries</strong> (bot) and <strong>sending queries</strong> (user account).</p>
+<hr>
+<h2 id="receiving-inline-queries-bot-side"><a class="header" href="#receiving-inline-queries-bot-side">Receiving inline queries (bot side)</a></h2>
+<h3 id="via-update-stream"><a class="header" href="#via-update-stream">Via update stream</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::InlineQuery(iq) =&gt; {
-    let query  = iq.query().to_string();
-    let qid    = iq.query_id;
+    let query    = iq.query();    // &amp;str — what the user typed
+    let query_id = iq.query_id;  // i64 — must be passed to answer_inline_query
 
-    let results = build_results(&amp;query);
+    let results = vec![
+        tl::enums::InputBotInlineResult::InputBotInlineResult(
+            tl::types::InputBotInlineResult {
+                id:    "1".into(),
+                r#type: "article".into(),
+                title: Some("Result title".into()),
+                description: Some(query.to_string()),
+                url: None, thumb: None, content: None,
+                send_message: tl::enums::InputBotInlineMessage::Text(
+                    tl::types::InputBotInlineMessageText {
+                        no_webpage: false, invert_media: false,
+                        message: query.to_string(),
+                        entities: None, reply_markup: None,
+                    },
+                ),
+            },
+        ),
+    ];
 
-    client.answer_inline_query(
-        qid,
-        results,
-        300,   // cache_time in seconds
-        false, // is_personal (true = don't share cache across users)
-        None,  // next_offset (for pagination)
-    ).await?;
+    // cache_time: seconds, is_personal: false, next_offset: None
+    client.answer_inline_query(query_id, results, 30, false, None).await?;
 }
 <span class="boring">}</span></code></pre>
-<h2 id="building-results"><a class="header" href="#building-results">Building results</a></h2>
-<h3 id="article-result-text-message"><a class="header" href="#article-result-text-message">Article result (text message)</a></h3>
+<h3 id="via-inlinequeryiter"><a class="header" href="#via-inlinequeryiter">Via <code>InlineQueryIter</code></a></h3>
+<p>For a more structured approach, use the dedicated iterator:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>fn article(id: &amp;str, title: &amp;str, description: &amp;str, text: &amp;str)
-    -&gt; tl::enums::InputBotInlineResult
-{
-    tl::enums::InputBotInlineResult::InputBotInlineResult(
-        tl::types::InputBotInlineResult {
-            id:          id.into(),
-            r#type:      "article".into(),
-            title:       Some(title.into()),
-            description: Some(description.into()),
-            url:         None,
-            thumb:       None,
-            content:     None,
-            send_message: tl::enums::InputBotInlineMessage::Text(
-                tl::types::InputBotInlineMessageText {
-                    no_webpage:   false,
-                    invert_media: false,
-                    message:      text.into(),
-                    entities:     None,
-                    reply_markup: None,
-                }
-            ),
-        }
-    )
+</span>use layer_client::inline_iter::InlineQueryIter;
+
+let mut iter = client.iter_inline_queries();
+while let Some(iq) = iter.next().await {
+    println!("Query: {}", iq.query());
+    // answer it...
 }
 <span class="boring">}</span></code></pre>
-<h3 id="multiple-results-for-a-query"><a class="header" href="#multiple-results-for-a-query">Multiple results for a query</a></h3>
+<p><code>InlineQueryIter</code> is backed by the update stream — it filters and yields only <code>InlineQuery</code> updates.</p>
+<hr>
+<h2 id="inlinequery-fields"><a class="header" href="#inlinequery-fields"><code>InlineQuery</code> fields</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>fn build_results(q: &amp;str) -&gt; Vec&lt;tl::enums::InputBotInlineResult&gt; {
-    if q.is_empty() {
-        // Default suggestions when query is blank
-        return vec![
-            article("time", "🕐 Current Time",
-                &amp;chrono::Utc::now().format("%H:%M UTC").to_string(),
-                &amp;chrono::Utc::now().to_rfc2822()),
-            article("help", "📖 Help", "See all commands", "/help"),
-        ];
-    }
-
-    vec![
-        article("u", &amp;format!("UPPER: {}", q.to_uppercase()),
-            "Uppercase version", &amp;q.to_uppercase()),
-        article("l", &amp;format!("lower: {}", q.to_lowercase()),
-            "Lowercase version", &amp;q.to_lowercase()),
-        article("r", &amp;format!("Reversed"),
-            "Reversed text", &amp;q.chars().rev().collect::&lt;String&gt;()),
-        article("c", "📊 Character count",
-            &amp;format!("{} chars, {} words", q.len(), q.split_whitespace().count()),
-            &amp;format!("{} characters • {} words • {} lines",
-                q.chars().count(), q.split_whitespace().count(), q.lines().count())),
-    ]
-}
+</span>iq.query()       // &amp;str — the search text
+iq.query_id      // i64
+iq.user_id       // i64 — who sent the query
+iq.offset        // String — pagination offset
 <span class="boring">}</span></code></pre>
-<h2 id="inlinequery-fields"><a class="header" href="#inlinequery-fields">InlineQuery fields</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Field / Method</th><th>Type</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>iq.query()</code></td><td><code>&amp;str</code></td><td>The text the user typed</td></tr>
-<tr><td><code>iq.query_id</code></td><td><code>i64</code></td><td>Unique ID for this query</td></tr>
-<tr><td><code>iq.offset()</code></td><td><code>&amp;str</code></td><td>Pagination offset</td></tr>
-<tr><td><code>iq.peer_type</code></td><td>varies</td><td>Type of chat where query was issued</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="inlinesend--when-a-result-is-chosen"><a class="header" href="#inlinesend--when-a-result-is-chosen">InlineSend — when a result is chosen</a></h2>
+<hr>
+<h2 id="receiving-inline-sends-bot-side"><a class="header" href="#receiving-inline-sends-bot-side">Receiving inline sends (bot side)</a></h2>
+<p>When a user selects a result from your bot’s inline mode, you get <code>Update::InlineSend</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::InlineSend(is) =&gt; {
-    // Fired when the user picks one of your results
-    println!("Result chosen: {}", is.id());
-    // Use this for logging, stats, or post-send actions
+    // is.result_id  — which result was chosen
+    // is.user_id    — who chose it
+    // is.query      — the original query
 }
 <span class="boring">}</span></code></pre>
-<h2 id="pagination"><a class="header" href="#pagination">Pagination</a></h2>
-<p>For large result sets, implement pagination using <code>next_offset</code>:</p>
+<p><code>InlineSend</code> also has <code>edit_message()</code> for editing the sent inline message:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let page: usize = iq.offset().parse().unwrap_or(0);
-let items = get_items_page(page, 10);
-let next  = if items.len() == 10 { Some(format!("{}", page + 1)) } else { None };
+</span>is.edit_message(&amp;client, updated_msg).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="sending-inline-queries-user-account-side"><a class="header" href="#sending-inline-queries-user-account-side">Sending inline queries (user account side)</a></h2>
+<p>A <strong>user account</strong> can invoke another bot’s inline mode with <code>client.inline_query()</code> and iterate the results:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::inline_iter::InlineResultIter;
 
-client.answer_inline_query(
-    iq.query_id,
-    items,
-    60,
-    false,
-    next.as_deref(),
+let mut iter = client
+    .inline_query("@gif", "cute cats")
+    .peer(input_peer_for_target_chat)
+    .await?;
+
+while let Some(result) = iter.next().await? {
+    println!("Result: {:?} — {:?}", result.id(), result.title());
+
+    // Send the first result to a chat
+    result.send(target_peer.clone()).await?;
+    break;
+}
+<span class="boring">}</span></code></pre>
+<h3 id="inlineresult-methods"><a class="header" href="#inlineresult-methods"><code>InlineResult</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>result.id()</code></td><td><code>&amp;str</code></td><td>Result ID string</td></tr>
+<tr><td><code>result.title()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Display title</td></tr>
+<tr><td><code>result.description()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Display description</td></tr>
+<tr><td><code>result.raw</code></td><td><code>tl::enums::BotInlineResult</code></td><td>Raw TL object</td></tr>
+<tr><td><code>result.send(peer)</code></td><td><code>async → ()</code></td><td>Send this result to a chat</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="inlineresultiter-methods"><a class="header" href="#inlineresultiter-methods"><code>InlineResultIter</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>client.inline_query(bot, query)</code></td><td>Create builder, returns <code>InlineResultIter</code></td></tr>
+<tr><td><code>iter.peer(input_peer)</code></td><td>Set the chat context (required by some bots)</td></tr>
+<tr><td><code>iter.next()</code></td><td><code>async → Option&lt;InlineResult&gt;</code> — fetch next result</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="answer_inline_query-parameters"><a class="header" href="#answer_inline_query-parameters"><code>answer_inline_query</code> parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>client.answer_inline_query(
+    query_id,   // i64 — from InlineQuery
+    results,    // Vec&lt;InputBotInlineResult&gt;
+    30,         // cache_time: i32 — seconds to cache results
+    false,      // is_personal: bool — different results per user?
+    None,       // next_offset: Option&lt;String&gt; — for pagination
 ).await?;
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -3109,10 +3195,10 @@ Full-featured send with the <a href="#inputmessage-builder"><code>InputMessage</
 
 <div class="api-card-body">
 Send a reaction to a message. Build reactions using the <code>Reaction</code> helper:
-<pre><code>use layer_client::reactions::Reaction;
-<p>client.send_reaction(peer, msg_id, Reaction::emoticon(“👍”)).await?;
-client.send_reaction(peer, msg_id, Reaction::remove()).await?; // remove all
-client.send_reaction(peer, msg_id, Reaction::emoticon(“🔥”).big()).await?;
+<pre><code>use layer_client::reactions::InputReactions;
+<p>client.send_reaction(peer, msg_id, InputReactions::emoticon(“👍”)).await?;
+client.send_reaction(peer, msg_id, InputReactions::remove()).await?; // remove all
+client.send_reaction(peer, msg_id, InputReactions::emoticon(“🔥”).big()).await?;
 See <a href="#reactions">Reactions</a> for the full guide.</p>
 
 
@@ -4066,6 +4152,69 @@ let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
 // Leave / remove dialog
 client.delete_dialog(peer.clone()).await?;
 <span class="boring">}</span></code></pre>
+<hr>
+<h2 id="participantstatus-enum"><a class="header" href="#participantstatus-enum"><code>ParticipantStatus</code> enum</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::ParticipantStatus;
+
+for p in &amp;members {
+    match p.status {
+        ParticipantStatus::Member     =&gt; println!("Regular member"),
+        ParticipantStatus::Creator    =&gt; println!("Creator"),
+        ParticipantStatus::Admin      =&gt; println!("Admin"),
+        ParticipantStatus::Restricted =&gt; println!("Restricted"),
+        ParticipantStatus::Banned     =&gt; println!("Banned"),
+        ParticipantStatus::Left       =&gt; println!("Left"),
+    }
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="profilephotoiter--extended-methods"><a class="header" href="#profilephotoiter--extended-methods"><code>ProfilePhotoIter</code> — extended methods</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut iter = client.iter_profile_photos(user_id);
+
+// Total photo count (available after first fetch)
+if let Some(total) = iter.total_count() {
+    println!("{total} profile photos");
+}
+
+// Collect all photos at once
+let all_photos = iter.collect().await?;
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>iter.next()</code></td><td><code>async → Option&lt;tl::enums::Photo&gt;</code></td></tr>
+<tr><td><code>iter.collect()</code></td><td><code>async → Vec&lt;tl::enums::Photo&gt;</code> — all photos</td></tr>
+<tr><td><code>iter.total_count()</code></td><td><code>Option&lt;i32&gt;</code> — total count after first fetch</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="low-level-rights-setters"><a class="header" href="#low-level-rights-setters">Low-level rights setters</a></h2>
+<p>For advanced use cases, <code>set_banned_rights</code> and <code>set_admin_rights</code> give direct access to the TL layer:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Set banned rights directly (channel/supergroup only)
+client.set_banned_rights(
+    peer.clone(),
+    user_input_peer,
+    BannedRightsBuilder::new().send_media(true),
+).await?;
+
+// Set admin rights directly
+client.set_admin_rights(
+    peer.clone(),
+    user_input_peer,
+    AdminRightsBuilder::new().delete_messages(true),
+    Some("Moderator".into()),  // optional custom rank
+).await?;
+<span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="admin--ban-rights"><a class="header" href="#admin--ban-rights">Admin &amp; Ban Rights</a></h1>
 <p><code>layer-client</code> provides two fluent builders for granular admin and ban rights — <code>AdminRightsBuilder</code> and <code>BannedRightsBuilder</code> — both in the <code>layer_client::participants</code> module.</p>
@@ -4240,132 +4389,135 @@ if !perms.is_admin() &amp;&amp; !perms.is_banned() {
 }
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="dialogs--message-history"><a class="header" href="#dialogs--message-history">Dialogs &amp; Message History</a></h1>
-<h2 id="list-dialogs-conversations"><a class="header" href="#list-dialogs-conversations">List dialogs (conversations)</a></h2>
+<h1 id="dialogs--history-1"><a class="header" href="#dialogs--history-1">Dialogs &amp; History</a></h1>
+<hr>
+<h2 id="fetch-dialogs"><a class="header" href="#fetch-dialogs">Fetch dialogs</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Fetch the 50 most recent dialogs
+</span>// Fetch up to N dialogs (returns the most recent first)
 let dialogs = client.get_dialogs(50).await?;
 
-for dialog in &amp;dialogs {
-    println!(
-        "[{}] {} unread — top msg {}",
-        dialog.title(),
-        dialog.unread_count(),
-        dialog.top_message(),
-    );
+for d in &amp;dialogs {
+    println!("{} — {} unread — top msg: {}",
+        d.title(), d.unread_count(), d.top_message());
 }
 <span class="boring">}</span></code></pre>
-<h3 id="dialog-fields"><a class="header" href="#dialog-fields">Dialog fields</a></h3>
+<h3 id="dialog-accessors"><a class="header" href="#dialog-accessors"><code>Dialog</code> accessors</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+<tr><th>Method</th><th>Return</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>dialog.title()</code></td><td><code>String</code></td><td>Name of the chat/channel/user</td></tr>
-<tr><td><code>dialog.peer()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>The peer identifier</td></tr>
-<tr><td><code>dialog.unread_count()</code></td><td><code>i32</code></td><td>Number of unread messages</td></tr>
-<tr><td><code>dialog.top_message()</code></td><td><code>i32</code></td><td>ID of the last message</td></tr>
+<tr><td><code>d.title()</code></td><td><code>String</code></td><td>Chat name</td></tr>
+<tr><td><code>d.peer()</code></td><td><code>Option&lt;&amp;tl::enums::Peer&gt;</code></td><td>The peer for this dialog</td></tr>
+<tr><td><code>d.unread_count()</code></td><td><code>i32</code></td><td>Unread message count</td></tr>
+<tr><td><code>d.top_message()</code></td><td><code>i32</code></td><td>ID of the latest message</td></tr>
 </tbody>
 </table>
 </div>
 <hr>
-<h2 id="paginating-dialogs-all"><a class="header" href="#paginating-dialogs-all">Paginating dialogs (all)</a></h2>
-<p>For iterating <strong>all</strong> dialogs beyond the first page:</p>
+<h2 id="dialogiter--lazy-paginated-iterator"><a class="header" href="#dialogiter--lazy-paginated-iterator"><code>DialogIter</code> — lazy paginated iterator</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut iter = client.iter_dialogs();
 
+// Total count (available after first page is fetched)
+if let Some(total) = iter.total() {
+    println!("Total dialogs: {total}");
+}
+
 while let Some(dialog) = iter.next(&amp;client).await? {
-    println!("{} — {} unread", dialog.title(), dialog.unread_count());
+    println!("{}", dialog.title());
 }
 <span class="boring">}</span></code></pre>
-<p>The iterator automatically requests more pages from Telegram as needed.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>client.iter_dialogs()</code></td><td>Create iterator</td></tr>
+<tr><td><code>iter.total()</code></td><td><code>Option&lt;i32&gt;</code> — total count after first fetch</td></tr>
+<tr><td><code>iter.next(&amp;client)</code></td><td><code>async → Option&lt;Dialog&gt;</code></td></tr>
+</tbody>
+</table>
+</div>
 <hr>
-<h2 id="paginating-messages"><a class="header" href="#paginating-messages">Paginating messages</a></h2>
+<h2 id="messageiter--lazy-message-history"><a class="header" href="#messageiter--lazy-message-history"><code>MessageIter</code> — lazy message history</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let peer = client.resolve_peer("@somechannel").await?;
-let mut iter = client.iter_messages(peer);
+</span>let mut iter = client.iter_messages(peer.clone());
 
-let mut count = 0;
+// Total count of messages in this chat
+if let Some(total) = iter.total() {
+    println!("Total messages: {total}");
+}
+
 while let Some(msg) = iter.next(&amp;client).await? {
-    println!("[{}] {}", msg.id(), msg.text().unwrap_or("(media)"));
-    count += 1;
-    if count &gt;= 500 { break; }
+    println!("[{}] {}", msg.id, msg.message);
 }
 <span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>client.iter_messages(peer)</code></td><td>Create iterator (newest first)</td></tr>
+<tr><td><code>iter.total()</code></td><td><code>Option&lt;i32&gt;</code> — total message count after first fetch</td></tr>
+<tr><td><code>iter.next(&amp;client)</code></td><td><code>async → Option&lt;tl::types::Message&gt;</code></td></tr>
+</tbody>
+</table>
+</div>
 <hr>
-<h2 id="get-message-history-basic"><a class="header" href="#get-message-history-basic">Get message history (basic)</a></h2>
+<h2 id="fetch-messages-directly"><a class="header" href="#fetch-messages-directly">Fetch messages directly</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Newest 50 messages
-let messages = client.get_messages(peer, 50, 0).await?;
+</span>// Latest N messages from a peer
+let messages = client.get_messages(peer.clone(), 20).await?;
 
-// Next page: pass the last message's ID as offset
-let last_id = messages.last()
-    .and_then(|m| if let tl::enums::Message::Message(m) = m { Some(m.id) } else { None })
-    .unwrap_or(0);
+// Specific message IDs
+let messages = client.get_messages_by_id(peer.clone(), &amp;[100, 101, 102]).await?;
+// Returns Vec&lt;Option&lt;tl::enums::Message&gt;&gt; — None if not found
 
-let older = client.get_messages(peer, 50, last_id).await?;
+// Pinned message
+let pinned = client.get_pinned_message(peer.clone()).await?;
+
+// The message a given message replies to
+let parent = client.get_reply_to_message(peer.clone(), msg_id).await?;
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="scheduled-messages-1"><a class="header" href="#scheduled-messages-1">Scheduled messages</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Fetch messages scheduled to be sent
-let scheduled = client.get_scheduled_messages(peer).await?;
+</span>// List all scheduled messages
+let scheduled = client.get_scheduled_messages(peer.clone()).await?;
 
-for msg in &amp;scheduled {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("Scheduled: {} at {}", m.message, m.date);
-    }
-}
-
-// Delete a scheduled message
-client.delete_scheduled_messages(peer, vec![msg_id]).await?;
+// Cancel a scheduled message
+client.delete_scheduled_messages(peer.clone(), &amp;[scheduled_id]).await?;
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="search-within-a-chat"><a class="header" href="#search-within-a-chat">Search within a chat</a></h2>
+<h2 id="dialog-management"><a class="header" href="#dialog-management">Dialog management</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let results = client.search_messages(
-    peer,
-    "error log",  // search query
-    20,           // limit
-).await?;
+</span>// Mark all messages as read
+client.mark_as_read(peer.clone()).await?;
 
-for msg in &amp;results {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("[{}] {}", m.id, m.message);
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="global-search"><a class="header" href="#global-search">Global search</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let results = client.search_global("layer rust telegram", 10).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="mark-as-read--unread-management"><a class="header" href="#mark-as-read--unread-management">Mark as read / unread management</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Mark all messages in a chat as read
-client.mark_as_read(peer).await?;
+// Clear @mention badges
+client.clear_mentions(peer.clone()).await?;
 
-// Clear all @mentions in a group
-client.clear_mentions(peer).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="get-pinned-message"><a class="header" href="#get-pinned-message">Get pinned message</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(msg) = client.get_pinned_message(peer).await? {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("Pinned: {}", m.message);
-    }
-}
+// Leave and remove from dialog list
+client.delete_dialog(peer.clone()).await?;
+
+// Join a public group/channel
+client.join_chat("@somegroup").await?;
+
+// Accept a private invite link
+client.accept_invite_link("https://t.me/joinchat/AbCdEfG").await?;
+
+// Parse invite hash from any link format
+let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="search-1"><a class="header" href="#search-1">Search</a></h1>
@@ -4509,7 +4661,7 @@ let from_alice = client
     .fetch(&amp;client)
     .await?;
 <span class="boring">}</span></code></pre>
-<h3 id="pagination-1"><a class="header" href="#pagination-1">Pagination</a></h3>
+<h3 id="pagination"><a class="header" href="#pagination">Pagination</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut offset_id = 0;
@@ -5134,7 +5286,6 @@ let (client, _shutdown) = Client::connect(Config {
 </span>use layer_client::{Client, Config, Socks5Config};
 
 let (client, _shutdown) = Client::connect(Config {
-    session_path: "session.session".into(),
     api_id:       12345,
     api_hash:     "your_hash".into(),
     socks5:       Some(Socks5Config {
@@ -5283,7 +5434,7 @@ let (client, _shutdown) = Client::connect(Config {
     api_hash: "your_api_hash".into(),
 
     // Session (default: BinaryFileBackend("session.session"))
-    session_path: "my.session".into(),
+    
 
     // DC override (default: DC2)
     dc_addr: None,
@@ -5314,11 +5465,11 @@ let (client, _shutdown) = Client::connect(Config {
 </span><span class="boring">fn main() {
 </span>api_hash: "deadbeef01234567...".into(),
 <span class="boring">}</span></code></pre>
-<h3 id="session_path"><a class="header" href="#session_path"><code>session_path</code></a></h3>
+<h3 id="session_backend"><a class="header" href="#session_backend"><code>session_backend</code></a></h3>
 <p>Path to the binary session file. Default: <code>"session.session"</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>session_path: "/data/myapp/auth.session".into(),
+</span>
 <span class="boring">}</span></code></pre>
 <h3 id="dc_addr"><a class="header" href="#dc_addr"><code>dc_addr</code></a></h3>
 <p>Override the initial DC address. Default: <code>None</code> (uses DC2 = <code>149.154.167.51:443</code>). After login, the correct DC is cached in the session.</p>
@@ -5370,7 +5521,7 @@ retry_policy: Arc::new(NoRetries),             // propagate immediately
 </span>Config {
     api_id:        0,
     api_hash:      String::new(),
-    session_path:  "session.session".into(),
+    
     dc_addr:       None,
     transport:     TransportKind::Abridged,
     retry_policy:  Arc::new(AutoSleep::default()),
@@ -5379,39 +5530,85 @@ retry_policy: Arc::new(NoRetries),             // propagate immediately
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="error-types"><a class="header" href="#error-types">Error Types</a></h1>
-<h2 id="invocationerror"><a class="header" href="#invocationerror">InvocationError</a></h2>
-<p>All <code>Client</code> async methods return <code>Result&lt;T, InvocationError&gt;</code>:</p>
+<hr>
+<h2 id="invocationerror"><a class="header" href="#invocationerror"><code>InvocationError</code></a></h2>
+<p>Every <code>Client</code> method returns <code>Result&lt;T, InvocationError&gt;</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub enum InvocationError {
-    Rpc(RpcError),        // Telegram returned an error response
-    Deserialize(String),  // failed to decode the server's binary response
-    Io(std::io::Error),   // network or IO failure
+</span>use layer_client::{InvocationError, RpcError};
+
+match client.send_message("@peer", "Hello").await {
+    Ok(()) =&gt; {}
+
+    // Telegram returned an RPC error
+    Err(InvocationError::Rpc(e)) =&gt; {
+        eprintln!("Telegram error {}: {}", e.code, e.message);
+
+        // Pattern-match the error name
+        if e.is("FLOOD_WAIT") {
+            let secs = e.flood_wait_seconds().unwrap_or(0);
+            eprintln!("Rate limited, wait {secs}s");
+        }
+        if e.is("USER_PRIVACY_RESTRICTED") {
+            eprintln!("Can't message this user");
+        }
+    }
+
+    // Network / I/O failure
+    Err(InvocationError::Io(e)) =&gt; eprintln!("I/O: {e}"),
+
+    Err(e) =&gt; eprintln!("Other: {e}"),
 }
 <span class="boring">}</span></code></pre>
-<h2 id="rpcerror"><a class="header" href="#rpcerror">RpcError</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct RpcError {
-    pub code:    i32,
-    pub message: String,
-}
-<span class="boring">}</span></code></pre>
-<h3 id="error-code-groups"><a class="header" href="#error-code-groups">Error code groups</a></h3>
+<h3 id="invocationerror-variants"><a class="header" href="#invocationerror-variants"><code>InvocationError</code> variants</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Code</th><th>Category</th><th>Meaning</th></tr>
+<tr><th>Variant</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>303</code></td><td>See Other</td><td>DC migration — handled automatically by layer</td></tr>
-<tr><td><code>400</code></td><td>Bad Request</td><td>Wrong parameters, invalid data</td></tr>
-<tr><td><code>401</code></td><td>Unauthorized</td><td>Not logged in, session invalid/expired</td></tr>
-<tr><td><code>403</code></td><td>Forbidden</td><td>Insufficient permissions</td></tr>
-<tr><td><code>404</code></td><td>Not Found</td><td>Resource doesn’t exist</td></tr>
-<tr><td><code>406</code></td><td>Not Acceptable</td><td>Content not acceptable</td></tr>
-<tr><td><code>420</code></td><td>Flood</td><td><code>FLOOD_WAIT_X</code> — rate limited</td></tr>
-<tr><td><code>500</code></td><td>Server Error</td><td>Telegram internal error, retry later</td></tr>
+<tr><td><code>InvocationError::Rpc(RpcError)</code></td><td>Telegram returned a TL error</td></tr>
+<tr><td><code>InvocationError::Io(io::Error)</code></td><td>Network or socket error</td></tr>
+<tr><td><code>InvocationError::Deserialize(e)</code></td><td>Failed to decode server response</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="invocationerror-methods"><a class="header" href="#invocationerror-methods"><code>InvocationError</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.is("PATTERN")</code></td><td><code>bool</code></td><td><code>true</code> if this is an <code>Rpc</code> error whose message contains <code>PATTERN</code></td></tr>
+<tr><td><code>.flood_wait_seconds()</code></td><td><code>Option&lt;u64&gt;</code></td><td>Seconds to wait for <code>FLOOD_WAIT_X</code> errors</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="rpcerror"><a class="header" href="#rpcerror"><code>RpcError</code></a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let e: RpcError = /* ... */;
+
+e.code               // i32 — HTTP-like error code (400, 401, 403, 420, etc.)
+e.message            // String — e.g. "FLOOD_WAIT_30"
+e.is("FLOOD_WAIT")   // bool — prefix/substring match
+e.flood_wait_seconds() // Option&lt;u64&gt; — parses the number from FLOOD_WAIT_N
+<span class="boring">}</span></code></pre>
+<h3 id="common-error-codes"><a class="header" href="#common-error-codes">Common error codes</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Code</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>400</code></td><td>Bad request — wrong parameters</td></tr>
+<tr><td><code>401</code></td><td>Unauthorized — not logged in</td></tr>
+<tr><td><code>403</code></td><td>Forbidden — no permission</td></tr>
+<tr><td><code>404</code></td><td>Not found</td></tr>
+<tr><td><code>420</code></td><td>FLOOD_WAIT — too many requests</td></tr>
+<tr><td><code>500</code></td><td>Internal server error</td></tr>
 </tbody>
 </table>
 </div>
@@ -5419,104 +5616,74 @@ retry_policy: Arc::new(NoRetries),             // propagate immediately
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Message</th><th>Cause</th><th>Fix</th></tr>
+<tr><th>Message</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td><code>PHONE_NUMBER_INVALID</code></td><td>Bad phone format</td><td>Use E.164 format: <code>+12345678900</code></td></tr>
-<tr><td><code>PHONE_CODE_INVALID</code></td><td>Wrong code</td><td>Ask user to try again</td></tr>
-<tr><td><code>PHONE_CODE_EXPIRED</code></td><td>Code timed out</td><td>Call <code>request_login_code</code> again</td></tr>
-<tr><td><code>SESSION_PASSWORD_NEEDED</code></td><td>2FA required</td><td>Use <code>check_password</code></td></tr>
-<tr><td><code>PASSWORD_HASH_INVALID</code></td><td>Wrong 2FA password</td><td>Re-prompt the user</td></tr>
-<tr><td><code>PEER_ID_INVALID</code></td><td>Unknown peer</td><td>Resolve peer first or check the ID</td></tr>
-<tr><td><code>ACCESS_TOKEN_INVALID</code></td><td>Bad bot token</td><td>Check token from @BotFather</td></tr>
-<tr><td><code>CHAT_WRITE_FORBIDDEN</code></td><td>Can’t post here</td><td>Bot not in group or read-only channel</td></tr>
-<tr><td><code>USER_PRIVACY_RESTRICTED</code></td><td>Privacy blocks action</td><td>Can’t message/add this user</td></tr>
-<tr><td><code>FLOOD_WAIT_N</code></td><td>Rate limited</td><td>Wait N seconds (AutoSleep handles this)</td></tr>
-<tr><td><code>FILE_PARTS_INVALID</code></td><td>Upload error</td><td>Retry the upload</td></tr>
-<tr><td><code>MEDIA_EMPTY</code></td><td>No media provided</td><td>Check your InputMedia</td></tr>
-<tr><td><code>MESSAGE_NOT_MODIFIED</code></td><td>Edit with no changes</td><td>Ensure new text differs</td></tr>
-<tr><td><code>BOT_INLINE_DISABLED</code></td><td>Inline mode off</td><td>Enable in @BotFather</td></tr>
-<tr><td><code>QUERY_ID_INVALID</code></td><td>Callback too old</td><td>Answer within 60 seconds</td></tr>
+<tr><td><code>FLOOD_WAIT_N</code></td><td>Wait N seconds before retrying</td></tr>
+<tr><td><code>USER_PRIVACY_RESTRICTED</code></td><td>User’s privacy settings block this</td></tr>
+<tr><td><code>CHAT_WRITE_FORBIDDEN</code></td><td>No permission to write in this chat</td></tr>
+<tr><td><code>MESSAGE_NOT_MODIFIED</code></td><td>Edit content is the same as current</td></tr>
+<tr><td><code>PEER_ID_INVALID</code></td><td>The peer ID is wrong or missing access hash</td></tr>
+<tr><td><code>USER_ID_INVALID</code></td><td>Invalid user ID or no access hash</td></tr>
+<tr><td><code>CHANNEL_INVALID</code></td><td>Invalid channel or missing access hash</td></tr>
+<tr><td><code>SESSION_REVOKED</code></td><td>Session was logged out remotely</td></tr>
+<tr><td><code>AUTH_KEY_UNREGISTERED</code></td><td>Auth key no longer valid</td></tr>
 </tbody>
 </table>
 </div>
 <hr>
-<h2 id="signinerror"><a class="header" href="#signinerror">SignInError</a></h2>
-<p>Returned specifically by <code>client.sign_in()</code>:</p>
+<h2 id="signinerror"><a class="header" href="#signinerror"><code>SignInError</code></a></h2>
+<p>Returned by <code>client.sign_in()</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub enum SignInError {
-    PasswordRequired(PasswordToken), // 2FA is on — pass to check_password()
-    InvalidCode,                     // wrong code submitted
-    Other(InvocationError),          // anything else
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="full-error-handling-example"><a class="header" href="#full-error-handling-example">Full error handling example</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::{InvocationError, RpcError, SignInError};
-use std::time::Duration;
+</span>use layer_client::SignInError;
 
-// Login errors
 match client.sign_in(&amp;token, &amp;code).await {
-    Ok(name)                                       =&gt; println!("✅ {name}"),
-    Err(SignInError::PasswordRequired(pw))         =&gt; handle_2fa(pw).await?,
-    Err(SignInError::InvalidCode)                  =&gt; println!("❌ Wrong code"),
-    Err(SignInError::Other(InvocationError::Rpc(e))) =&gt; println!("RPC {}: {}", e.code, e.message),
-    Err(SignInError::Other(e))                     =&gt; println!("IO/decode error: {e}"),
+    Ok(name) =&gt; println!("Welcome, {name}!"),
+
+    Err(SignInError::PasswordRequired(password_token)) =&gt; {
+        // 2FA is enabled — provide the password
+        println!("2FA hint: {:?}", password_token.hint());
+        client.check_password(*password_token, "my_password").await?;
+    }
+
+    Err(SignInError::InvalidCode) =&gt; eprintln!("Wrong code"),
+
+    Err(SignInError::Other(e)) =&gt; eprintln!("Error: {e}"),
 }
+<span class="boring">}</span></code></pre>
+<h3 id="passwordtoken-methods"><a class="header" href="#passwordtoken-methods"><code>PasswordToken</code> methods</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>password_token.hint()   // Option&lt;&amp;str&gt; — 2FA password hint
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="buildererror"><a class="header" href="#buildererror"><code>BuilderError</code></a></h2>
+<p>Returned by <code>ClientBuilder::connect()</code> or <code>ClientBuilder::build()</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::builder::BuilderError;
 
-// General method errors
-match client.send_message("@user", "hi").await {
+match Client::builder().api_id(0).api_hash("").connect().await {
+    Err(BuilderError::MissingApiId)   =&gt; eprintln!("Set .api_id()"),
+    Err(BuilderError::MissingApiHash) =&gt; eprintln!("Set .api_hash()"),
+    Err(BuilderError::Connect(e))     =&gt; eprintln!("Connection failed: {e}"),
     Ok(_) =&gt; {}
-
-    // Rate limit (only visible if using NoRetries policy)
-    Err(InvocationError::Rpc(RpcError { code: 420, ref message, .. })) =&gt; {
-        let secs: u64 = message
-            .strip_prefix("FLOOD_WAIT_")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(60);
-        println!("Rate limited. Sleeping {secs}s");
-        tokio::time::sleep(Duration::from_secs(secs)).await;
-    }
-
-    // Permission error
-    Err(InvocationError::Rpc(RpcError { code: 403, ref message, .. })) =&gt; {
-        println!("Permission denied: {message}");
-    }
-
-    // Network error
-    Err(InvocationError::Io(e)) =&gt; {
-        println!("Network error: {e}");
-        // Consider reconnecting
-    }
-
-    Err(e) =&gt; eprintln!("Unexpected: {e}"),
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="implementing-from-for-your-error-type"><a class="header" href="#implementing-from-for-your-error-type">Implementing From for your error type</a></h2>
+<h2 id="flood_wait-auto-retry"><a class="header" href="#flood_wait-auto-retry">FLOOD_WAIT auto-retry</a></h2>
+<p><code>FLOOD_WAIT</code> errors are automatically retried by the default <code>AutoSleep</code> policy — you don’t need to handle them unless you want custom behaviour.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>#[derive(Debug)]
-enum MyError {
-    Telegram(layer_client::InvocationError),
-    Io(std::io::Error),
-    Custom(String),
-}
+</span>use layer_client::retry::{AutoSleep, NoRetries};
+use std::sync::Arc;
 
-impl From&lt;layer_client::InvocationError&gt; for MyError {
-    fn from(e: layer_client::InvocationError) -&gt; Self {
-        MyError::Telegram(e)
-    }
-}
+// Default — retries FLOOD_WAIT automatically
+Client::builder().retry_policy(Arc::new(AutoSleep::default()))
 
-// Now you can use ? throughout your handlers
-async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
-    client.send_message("me", "hello").await?;  // auto-converts
-    Ok(())
-}
+// Disable all retries
+Client::builder().retry_policy(Arc::new(NoRetries))
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="crate-architecture"><a class="header" href="#crate-architecture">Crate Architecture</a></h1>

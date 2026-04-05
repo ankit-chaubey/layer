@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -182,156 +182,205 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="incomingmessage"><a class="header" href="#incomingmessage">IncomingMessage</a></h1>
-<p><code>IncomingMessage</code> wraps <code>tl::enums::Message</code> and provides convenient typed accessors. It’s the type carried by <code>Update::NewMessage</code> and <code>Update::MessageEdited</code>.</p>
-<h2 id="all-accessors"><a class="header" href="#all-accessors">All accessors</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Returns</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>id()</code></td><td><code>i32</code></td><td>Unique message ID within the chat</td></tr>
-<tr><td><code>text()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Plain text content</td></tr>
-<tr><td><code>peer_id()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>The chat this message belongs to</td></tr>
-<tr><td><code>sender_id()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>Who sent it (None for anonymous channels)</td></tr>
-<tr><td><code>outgoing()</code></td><td><code>bool</code></td><td>Sent by the logged-in account</td></tr>
-<tr><td><code>date()</code></td><td><code>i32</code></td><td>Unix timestamp of creation</td></tr>
-<tr><td><code>date_utc()</code></td><td><code>Option&lt;DateTime&lt;Utc&gt;&gt;</code></td><td>Parsed chrono datetime</td></tr>
-<tr><td><code>edit_date()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Unix timestamp of last edit</td></tr>
-<tr><td><code>edit_date_utc()</code></td><td><code>Option&lt;DateTime&lt;Utc&gt;&gt;</code></td><td>Parsed edit datetime</td></tr>
-<tr><td><code>mentioned()</code></td><td><code>bool</code></td><td>The account was @mentioned</td></tr>
-<tr><td><code>silent()</code></td><td><code>bool</code></td><td>Sent without notification</td></tr>
-<tr><td><code>post()</code></td><td><code>bool</code></td><td>Posted by a channel (not a user)</td></tr>
-<tr><td><code>pinned()</code></td><td><code>bool</code></td><td>This is a pin service message</td></tr>
-<tr><td><code>noforwards()</code></td><td><code>bool</code></td><td>Cannot be forwarded or screenshotted</td></tr>
-<tr><td><code>reply_to_message_id()</code></td><td><code>Option&lt;i32&gt;</code></td><td>ID of the replied-to message</td></tr>
-<tr><td><code>forward_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Times this message was forwarded</td></tr>
-<tr><td><code>view_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>View count (channels only)</td></tr>
-<tr><td><code>reply_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Comment count</td></tr>
-<tr><td><code>grouped_id()</code></td><td><code>Option&lt;i64&gt;</code></td><td>Album group ID</td></tr>
-<tr><td><code>media()</code></td><td><code>Option&lt;&amp;MessageMedia&gt;</code></td><td>Attached media</td></tr>
-<tr><td><code>entities()</code></td><td><code>Option&lt;&amp;Vec&lt;MessageEntity&gt;&gt;</code></td><td>Text formatting regions</td></tr>
-<tr><td><code>reply_markup()</code></td><td><code>Option&lt;&amp;ReplyMarkup&gt;</code></td><td>Inline keyboard</td></tr>
-<tr><td><code>forward_header()</code></td><td><code>Option&lt;&amp;MessageFwdHeader&gt;</code></td><td>Forward origin info</td></tr>
-<tr><td><code>raw</code></td><td><code>tl::enums::Message</code></td><td>The underlying raw TL type</td></tr>
-</tbody>
-</table>
-</div>
+<p><code>IncomingMessage</code> is the type of <code>Update::NewMessage</code> and <code>Update::MessageEdited</code>. It wraps a raw <code>tl::enums::Message</code> and provides ergonomic accessors plus a full suite of <strong>convenience action methods</strong> that let you act on a message without passing the <code>Client</code> around explicitly (when the message was received from the update stream it already carries a client reference).</p>
 <hr>
-<h2 id="getting-sender-user-id"><a class="header" href="#getting-sender-user-id">Getting sender user ID</a></h2>
+<h2 id="basic-accessors"><a class="header" href="#basic-accessors">Basic accessors</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>fn user_id(msg: &amp;IncomingMessage) -&gt; Option&lt;i64&gt; {
-    match msg.sender_id()? {
-        tl::enums::Peer::User(u) =&gt; Some(u.user_id),
-        _ =&gt; None,
-    }
+</span>Update::NewMessage(msg) =&gt; {
+    msg.id()                  // i32 — unique message ID in this chat
+    msg.text()                // Option&lt;&amp;str&gt; — text or media caption
+    msg.peer_id()             // Option&lt;&amp;tl::enums::Peer&gt; — chat this is in
+    msg.sender_id()           // Option&lt;&amp;tl::enums::Peer&gt; — who sent it
+    msg.outgoing()            // bool — sent by us?
+    msg.date()                // i32 — Unix timestamp
+    msg.edit_date()           // Option&lt;i32&gt; — last edit timestamp
+    msg.mentioned()           // bool — are we @mentioned?
+    msg.silent()              // bool — no notification
+    msg.pinned()              // bool — currently pinned
+    msg.post()                // bool — channel post (no sender)
+    msg.noforwards()          // bool — forwarding disabled
+    msg.from_scheduled()      // bool — was a scheduled message
+    msg.edit_hide()           // bool — edit not shown in UI
+    msg.media_unread()        // bool — media not yet viewed
+    msg.raw                   // tl::enums::Message — full TL object
 }
 <span class="boring">}</span></code></pre>
-<h2 id="determining-chat-type"><a class="header" href="#determining-chat-type">Determining chat type</a></h2>
+<hr>
+<h2 id="extended-accessors"><a class="header" href="#extended-accessors">Extended accessors</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>match msg.peer_id() {
-    Some(tl::enums::Peer::User(u))    =&gt; {
-        println!("Private DM with user {}", u.user_id);
-    }
-    Some(tl::enums::Peer::Chat(c))    =&gt; {
-        println!("Basic group {}", c.chat_id);
-    }
-    Some(tl::enums::Peer::Channel(c)) =&gt; {
-        println!("Channel or supergroup {}", c.channel_id);
-    }
-    None =&gt; {
-        println!("Unknown peer");
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="accessing-media"><a class="header" href="#accessing-media">Accessing media</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(media) = msg.media() {
-    match media {
-        tl::enums::MessageMedia::Photo(p)     =&gt; println!("📷 Photo"),
-        tl::enums::MessageMedia::Document(d)  =&gt; println!("📎 Document"),
-        tl::enums::MessageMedia::Geo(g)       =&gt; println!("📍 Location"),
-        tl::enums::MessageMedia::Contact(c)   =&gt; println!("👤 Contact"),
-        tl::enums::MessageMedia::Poll(p)      =&gt; println!("📊 Poll"),
-        tl::enums::MessageMedia::WebPage(w)   =&gt; println!("🔗 Web preview"),
-        tl::enums::MessageMedia::Sticker(s)   =&gt; println!("🩷 Sticker"),
-        tl::enums::MessageMedia::Dice(d)      =&gt; println!("🎲 Dice"),
-        tl::enums::MessageMedia::Game(g)      =&gt; println!("🎮 Game"),
-        _ =&gt; println!("Other media"),
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="accessing-entities"><a class="header" href="#accessing-entities">Accessing entities</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(entities) = msg.entities() {
-    for entity in entities {
-        match entity {
-            tl::enums::MessageEntity::Bold(e)   =&gt; {
-                let bold_text = &amp;msg.text().unwrap_or("")[e.offset as usize..][..e.length as usize];
-                println!("Bold: {bold_text}");
-            }
-            tl::enums::MessageEntity::BotCommand(e) =&gt; {
-                let cmd = &amp;msg.text().unwrap_or("")[e.offset as usize..][..e.length as usize];
-                println!("Command: {cmd}");
-            }
-            tl::enums::MessageEntity::Url(e) =&gt; {
-                let url = &amp;msg.text().unwrap_or("")[e.offset as usize..][..e.length as usize];
-                println!("URL: {url}");
-            }
-            _ =&gt; {}
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="forward-info"><a class="header" href="#forward-info">Forward info</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(fwd) = msg.forward_header() {
-    if let tl::enums::MessageFwdHeader::MessageFwdHeader(h) = fwd {
-        println!("Forwarded at: {}", h.date);
-        if let Some(tl::enums::Peer::Channel(c)) = &amp;h.from_id {
-            println!("From channel: {}", c.channel_id);
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="reply-to-previous-message"><a class="header" href="#reply-to-previous-message">Reply to previous message</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Quick reply with text
-msg.reply(&amp;mut client, "Got it!").await?;
+</span>// Counters
+msg.forward_count()          // Option&lt;i32&gt; — number of times forwarded
+msg.view_count()             // Option&lt;i32&gt; — view count (channels)
+msg.reply_count()            // Option&lt;i32&gt; — number of replies in thread
+msg.reaction_count()         // i32 — total reactions
+msg.reply_to_message_id()    // Option&lt;i32&gt; — ID of the message replied to
 
-// Reply with full InputMessage (formatted, keyboard, etc.)
-if let Some(peer) = msg.peer_id() {
-    let (t, e) = parse_markdown("**Acknowledged** ✅");
-    client.send_message_to_peer_ex(peer.clone(), &amp;InputMessage::text(t)
-        .entities(e)
-        .reply_to(Some(msg.id()))
-    ).await?;
-}
+// Typed timestamps
+msg.date_utc()               // Option&lt;DateTime&lt;Utc&gt;&gt;
+msg.edit_date_utc()          // Option&lt;DateTime&lt;Utc&gt;&gt;
+
+// Rich content
+msg.media()                  // Option&lt;&amp;tl::enums::MessageMedia&gt;
+msg.entities()               // Option&lt;&amp;Vec&lt;tl::enums::MessageEntity&gt;&gt;
+msg.action()                 // Option&lt;&amp;tl::enums::MessageAction&gt; — service messages
+msg.reply_markup()           // Option&lt;&amp;tl::enums::ReplyMarkup&gt;
+msg.forward_header()         // Option&lt;&amp;tl::enums::MessageFwdHeader&gt;
+msg.grouped_id()             // Option&lt;i64&gt; — album group ID
+msg.via_bot_id()             // Option&lt;i64&gt; — inline bot that sent this
+msg.post_author()            // Option&lt;&amp;str&gt; — channel post author signature
+msg.restriction_reason()     // Option&lt;&amp;Vec&lt;tl::enums::RestrictionReason&gt;&gt;
+
+// Formatted text helpers (requires html feature for html_text)
+msg.markdown_text()          // Option&lt;String&gt; — entities rendered as Markdown
+msg.html_text()              // Option&lt;String&gt; — entities rendered as HTML
+
+// Typed media extraction
+msg.photo()                  // Option&lt;Photo&gt;
+msg.document()               // Option&lt;Document&gt;
+
+// Sender details
+msg.sender_user_id()         // Option&lt;i64&gt; — sender's user ID
+msg.sender_chat_id()         // Option&lt;i64&gt; — sender's chat ID
+msg.sender_user()            // async → Option&lt;User&gt; (fetches from cache/API)
 <span class="boring">}</span></code></pre>
-<h2 id="accessing-raw-tl-fields"><a class="header" href="#accessing-raw-tl-fields">Accessing raw TL fields</a></h2>
-<p>For fields not exposed by accessors, use <code>.raw</code> directly:</p>
+<hr>
+<h2 id="convenience-action-methods"><a class="header" href="#convenience-action-methods">Convenience action methods</a></h2>
+<p>These methods work without passing a <code>&amp;Client</code> when the message came from <code>stream_updates()</code> (the client reference is embedded). Use the <code>_with(client)</code> variants when you hold the message outside an update handler.</p>
+<h3 id="reply"><a class="header" href="#reply">Reply</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>if let tl::enums::Message::Message(raw) = &amp;msg.raw {
-    // Layer 223 additions
-    println!("from_rank: {:?}",             raw.from_rank);
-    println!("suggested_post: {:?}",        raw.suggested_post);
-    println!("paid_message_stars: {:?}",    raw.paid_message_stars);
-    println!("schedule_repeat_period: {:?}",raw.schedule_repeat_period);
-    println!("summary_from_language: {:?}", raw.summary_from_language);
+</span>// Reply to this message (reply_to set automatically)
+msg.reply("Got it! ✅").await?;
 
-    // Standard fields
-    println!("grouped_id: {:?}",            raw.grouped_id);
-    println!("restriction_reason: {:?}",    raw.restriction_reason);
-    println!("ttl_period: {:?}",            raw.ttl_period);
-    println!("effect: {:?}",                raw.effect);
-    println!("factcheck: {:?}",             raw.factcheck);
+// Reply with full InputMessage control
+msg.reply_ex(
+    InputMessage::text("Here you go")
+        .silent(true)
+        .no_webpage(true)
+).await?;
+
+// Explicit client variants
+msg.reply_with(&amp;client, "Hi").await?;
+msg.reply_ex_with(&amp;client, input_msg).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="respond-no-reply-thread"><a class="header" href="#respond-no-reply-thread">Respond (no reply thread)</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Send to the same chat without quoting
+msg.respond("Hello everyone!").await?;
+msg.respond_ex(InputMessage::text("...").keyboard(kb)).await?;
+
+// Explicit client variants
+msg.respond_with(&amp;client, "Hi").await?;
+msg.respond_ex_with(&amp;client, input_msg).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="edit"><a class="header" href="#edit">Edit</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Edit this message's text
+msg.edit("Updated content").await?;
+msg.edit_with(&amp;client, "Updated content").await?;
+<span class="boring">}</span></code></pre>
+<h3 id="delete"><a class="header" href="#delete">Delete</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>msg.delete().await?;
+msg.delete_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="mark-as-read"><a class="header" href="#mark-as-read">Mark as read</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>msg.mark_as_read().await?;
+msg.mark_as_read_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="pin--unpin"><a class="header" href="#pin--unpin">Pin / Unpin</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>msg.pin().await?;          // pins with notification
+msg.pin_with(&amp;client).await?;
+
+msg.unpin().await?;
+msg.unpin_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="react"><a class="header" href="#react">React</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::reactions::InputReactions;
+
+msg.react("👍").await?;
+msg.react(InputReactions::emoticon("🔥").big()).await?;
+msg.react_with(&amp;client, "❤️").await?;
+<span class="boring">}</span></code></pre>
+<h3 id="forward"><a class="header" href="#forward">Forward</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Forward to another peer
+msg.forward_to("@someuser").await?;
+msg.forward_to_with(&amp;client, peer).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="download-media"><a class="header" href="#download-media">Download media</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Download attached media to a file path, returns true if media existed
+let downloaded = msg.download_media("output.jpg").await?;
+msg.download_media_with(&amp;client, "output.jpg").await?;
+<span class="boring">}</span></code></pre>
+<h3 id="fetch-replied-to-message"><a class="header" href="#fetch-replied-to-message">Fetch replied-to message</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get the message this one replies to
+if let Some(parent) = msg.get_reply().await? {
+    println!("Replying to: {}", parent.text().unwrap_or(""));
+}
+msg.get_reply_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="refetch"><a class="header" href="#refetch">Refetch</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Re-fetch this message from the server (update its state)
+msg.refetch().await?;
+msg.refetch_with(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="reply-to-message-via-client"><a class="header" href="#reply-to-message-via-client">Reply-to-message (via Client)</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Fetch the replied-to message via client
+let parent = client.get_reply_to_message(peer.clone(), msg.id()).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="full-handler-example"><a class="header" href="#full-handler-example">Full handler example</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::{Client, update::Update};
+
+let mut stream = client.stream_updates();
+while let Some(update) = stream.next().await {
+    match update {
+        Update::NewMessage(msg) if !msg.outgoing() =&gt; {
+            let text = msg.text().unwrap_or("");
+
+            if text == "/start" {
+                msg.reply("Welcome! 👋").await.ok();
+
+            } else if text == "/me" {
+                if let Ok(Some(user)) = msg.sender_user().await {
+                    msg.reply(&amp;format!("You are: {}", user.full_name())).await.ok();
+                }
+
+            } else if text.starts_with("/echo ") {
+                let echo = &amp;text[6..];
+                msg.respond(echo).await.ok();
+
+            } else if let Some(media) = msg.media() {
+                msg.reply("Downloading…").await.ok();
+                msg.download_media("received_file").await.ok();
+                msg.react("✅").await.ok();
+            }
+        }
+        _ =&gt; {}
+    }
 }
 <span class="boring">}</span></code></pre>
 

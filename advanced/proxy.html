@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -189,7 +189,6 @@
 </span>use layer_client::{Client, Config, Socks5Config};
 
 let (client, _shutdown) = Client::connect(Config {
-    session_path: "session.session".into(),
     api_id:       12345,
     api_hash:     "your_hash".into(),
     socks5:       Some(Socks5Config {

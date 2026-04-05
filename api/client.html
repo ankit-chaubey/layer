@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -518,10 +518,10 @@ Full-featured send with the <a href="./input-message.html"><code>InputMessage</c
 
 <div class="api-card-body">
 Send a reaction to a message. Build reactions using the <code>Reaction</code> helper:
-<pre><code>use layer_client::reactions::Reaction;
-<p>client.send_reaction(peer, msg_id, Reaction::emoticon(“👍”)).await?;
-client.send_reaction(peer, msg_id, Reaction::remove()).await?; // remove all
-client.send_reaction(peer, msg_id, Reaction::emoticon(“🔥”).big()).await?;
+<pre><code>use layer_client::reactions::InputReactions;
+<p>client.send_reaction(peer, msg_id, InputReactions::emoticon(“👍”)).await?;
+client.send_reaction(peer, msg_id, InputReactions::remove()).await?; // remove all
+client.send_reaction(peer, msg_id, InputReactions::emoticon(“🔥”).big()).await?;
 See <a href="../messaging/reactions.html">Reactions</a> for the full guide.</p>
 
 

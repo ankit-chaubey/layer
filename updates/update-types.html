@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -182,243 +182,124 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="update-types"><a class="header" href="#update-types">Update Types</a></h1>
-<p>All Telegram events flow through <code>stream_updates()</code> as variants of the <code>Update</code> enum. Every variant is strongly typed — no raw JSON or untagged maps.</p>
+<p><code>stream.next().await</code> yields <code>Option&lt;Update&gt;</code>. <code>Update</code> is <code>#[non_exhaustive]</code> — always include <code>_ =&gt; {}</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::update::Update;
 
-let mut updates = client.stream_updates();
-while let Some(update) = updates.next().await {
+while let Some(update) = stream.next().await {
     match update {
-        Update::NewMessage(msg)       =&gt; { /* new message arrived */ }
-        Update::MessageEdited(msg)    =&gt; { /* message was edited */ }
-        Update::MessageDeleted(del)   =&gt; { /* message(s) were deleted */ }
-        Update::CallbackQuery(cb)     =&gt; { /* inline button pressed */ }
-        Update::InlineQuery(iq)       =&gt; { /* @bot inline query */ }
-        Update::InlineSend(is)        =&gt; { /* inline result chosen */ }
-        Update::ChatAction(action)    =&gt; { /* user typing / uploading */ }
-        Update::UserStatus(status)    =&gt; { /* contact online status */ }
-        Update::Raw(raw)              =&gt; { /* unrecognised update */ }
-        _ =&gt; {}   // required: Update is #[non_exhaustive]
-    }
-}
-<span class="boring">}</span></code></pre>
-<blockquote>
-<p><strong>Note:</strong> As of v0.4.6, <code>Update</code> is <code>#[non_exhaustive]</code>. Your match arms <strong>must</strong> include a <code>_ =&gt; {}</code> fallback or the code will fail to compile when new variants are added.</p>
-</blockquote>
-<hr>
-<h2 id="newmessage"><a class="header" href="#newmessage">NewMessage</a></h2>
-<p>Fires for every new message the account receives in any chat.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::NewMessage(msg) =&gt; {
-    if msg.outgoing() { return; }  // skip messages you sent
+        // ── Messages ─────────────────────────────────────────────────
+        Update::NewMessage(msg)     =&gt; { /* IncomingMessage */ }
+        Update::MessageEdited(msg)  =&gt; { /* IncomingMessage */ }
+        Update::MessageDeleted(del) =&gt; { /* MessageDeletion */ }
 
-    let text    = msg.text().unwrap_or("");
-    let msg_id  = msg.id();
-    let peer    = msg.peer_id();   // the chat it arrived in
-    let sender  = msg.sender_id(); // who sent it
+        // ── Bot interactions ─────────────────────────────────────────
+        Update::CallbackQuery(cb)   =&gt; { /* CallbackQuery */ }
+        Update::InlineQuery(iq)     =&gt; { /* InlineQuery */ }
+        Update::InlineSend(is)      =&gt; { /* InlineSend */ }
 
-    println!("[{msg_id}] {text}");
-}
-<span class="boring">}</span></code></pre>
-<p>See <a href="./incoming-message.html">IncomingMessage</a> for the full list of accessors.</p>
-<hr>
-<h2 id="messageedited"><a class="header" href="#messageedited">MessageEdited</a></h2>
-<p>Same structure as <code>NewMessage</code> — carries the new version of the edited message.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::MessageEdited(msg) =&gt; {
-    println!("Edited [{id}]: {text}",
-        id   = msg.id(),
-        text = msg.text().unwrap_or(""),
-    );
-    if let Some(when) = msg.edit_date_utc() {
-        println!("  Edited at: {when}");
+        // ── Presence ─────────────────────────────────────────────────
+        Update::UserTyping(action)  =&gt; { /* ChatActionUpdate */ }
+        Update::UserStatus(status)  =&gt; { /* UserStatusUpdate */ }
+
+        // ── Raw passthrough ──────────────────────────────────────────
+        Update::Raw(raw)            =&gt; { /* RawUpdate */ }
+
+        _ =&gt; {}  // required — Update is #[non_exhaustive]
     }
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="messagedeleted"><a class="header" href="#messagedeleted">MessageDeleted</a></h2>
-<p>Contains only the message IDs, not the content (which is gone).</p>
+<h2 id="messagedeletion"><a class="header" href="#messagedeletion"><code>MessageDeletion</code></a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::MessageDeleted(del) =&gt; {
-    println!("Deleted IDs: {:?}", del.messages());
+    let ids: Vec&lt;i32&gt; = del.into_messages();
+}
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>del.into_messages()</code></td><td><code>Vec&lt;i32&gt;</code></td><td>IDs of deleted messages</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="callbackquery"><a class="header" href="#callbackquery"><code>CallbackQuery</code></a></h2>
+<p>See the full <a href="./callbacks.html">Callback Queries</a> page.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>cb.query_id      // i64
+cb.user_id       // i64
+cb.msg_id        // Option&lt;i32&gt;
+cb.data()        // Option&lt;&amp;str&gt;
+cb.answer()      // → Answer builder
+cb.answer_flat(&amp;client, text)
+cb.answer_alert(&amp;client, text)
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="inlinequery"><a class="header" href="#inlinequery"><code>InlineQuery</code></a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>iq.query_id      // i64
+iq.user_id       // i64
+iq.query()       // &amp;str — the typed query
+iq.offset        // String — pagination offset
+<span class="boring">}</span></code></pre>
+<p>Answer with <code>client.answer_inline_query(...)</code>. See <a href="./inline-mode.html">Inline Mode</a>.</p>
+<hr>
+<h2 id="inlinesend"><a class="header" href="#inlinesend"><code>InlineSend</code></a></h2>
+<p>Fires when a user picks a result from your bot’s inline mode.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>is.result_id     // String — which result was chosen
+is.user_id       // i64
+is.query         // String — original query
 
-    // For channel deletions, channel_id is set
-    if let Some(ch_id) = del.channel_id() {
-        println!("  In channel: {ch_id}");
-    }
+// Edit the message the inline result was sent as
+is.edit_message(&amp;client, updated_input_msg).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="chatactionupdate-usertyping"><a class="header" href="#chatactionupdate-usertyping"><code>ChatActionUpdate</code> (UserTyping)</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Update::UserTyping(action) =&gt; {
+    action.peer      // tl::enums::Peer — the chat
+    action.user_id   // Option&lt;i64&gt;
+    action.action    // tl::enums::SendMessageAction
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="callbackquery"><a class="header" href="#callbackquery">CallbackQuery</a></h2>
-<p>Fires when a user presses an inline keyboard button.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::CallbackQuery(cb) =&gt; {
-    let data  = cb.data().unwrap_or("");
-    let qid   = cb.query_id;
-
-    match data {
-        "yes" =&gt; {
-            // edit the message, then acknowledge
-            client.edit_message(peer, cb.msg_id, "You said yes!").await?;
-            client.answer_callback_query(qid, None, false).await?;
-        }
-        "no" =&gt; {
-            cb.answer(&amp;client, "Cancelled.").await?;
-        }
-        _ =&gt; {
-            client.answer_callback_query(qid, Some("Unknown"), false).await?;
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<p>See <a href="./callbacks.html">Callback Queries</a> for full reference.</p>
-<hr>
-<h2 id="inlinequery"><a class="header" href="#inlinequery">InlineQuery</a></h2>
-<p>Fires when a user types <code>@yourbot &lt;query&gt;</code> in any chat.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::InlineQuery(iq) =&gt; {
-    let q   = iq.query();
-    let qid = iq.query_id;
-
-    let results = build_results(q);
-
-    client.answer_inline_query(
-        qid,
-        results,
-        300,   // cache seconds
-        false, // is_personal
-        None,  // next_offset
-    ).await?;
-}
-<span class="boring">}</span></code></pre>
-<p>See <a href="./inline-mode.html">Inline Mode</a> for result builders.</p>
-<hr>
-<h2 id="inlinesend"><a class="header" href="#inlinesend">InlineSend</a></h2>
-<p>Fires when the user actually sends a chosen inline result.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::InlineSend(is) =&gt; {
-    let result_id   = is.result_id();
-    let query       = is.query();
-    let inline_msg  = is.message_id(); // Option — present only if inline_feedback is on
-
-    println!("User sent inline result '{result_id}' for query '{query}'");
-}
-<span class="boring">}</span></code></pre>
-<p>To edit the sent inline message:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(inline_msg_id) = is.message_id() {
-    client.edit_inline_message(
-        inline_msg_id,
-        "Updated content!",
-    ).await?;
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="chataction--new-in-v046"><a class="header" href="#chataction--new-in-v046">ChatAction — New in v0.4.6</a></h2>
-<p>Fires when a user starts or stops typing, uploading, recording, etc. in a chat the account is in.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Update::ChatAction(action) =&gt; {
-    let user   = action.user_id();    // Option&lt;i64&gt;
-    let peer   = action.peer();       // the chat
-    let action = action.action();     // tl::enums::SendMessageAction
-
-    match action {
-        tl::enums::SendMessageAction::SendMessageTypingAction =&gt; {
-            println!("user {:?} is typing in {:?}", user, peer);
-        }
-        tl::enums::SendMessageAction::SendMessageUploadPhotoAction(_) =&gt; {
-            println!("user {:?} is uploading a photo", user);
-        }
-        tl::enums::SendMessageAction::SendMessageRecordAudioAction =&gt; {
-            println!("user {:?} is recording audio", user);
-        }
-        tl::enums::SendMessageAction::SendMessageCancelAction =&gt; {
-            println!("user {:?} stopped", user);
-        }
-        _ =&gt; {}
-    }
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="userstatus--new-in-v046"><a class="header" href="#userstatus--new-in-v046">UserStatus — New in v0.4.6</a></h2>
-<p>Fires when a contact’s online/offline status changes. Only received for contacts or people in mutual chats (depending on their privacy settings).</p>
+<h2 id="userstatusupdate"><a class="header" href="#userstatusupdate"><code>UserStatusUpdate</code></a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::UserStatus(status) =&gt; {
-    let user_id = status.user_id();    // i64
-    let online  = status.status();     // tl::enums::UserStatus
-
-    match online {
-        tl::enums::UserStatus::UserStatusOnline(s) =&gt; {
-            println!("user {user_id} went online (expires {})", s.expires);
-        }
-        tl::enums::UserStatus::UserStatusOffline(s) =&gt; {
-            println!("user {user_id} went offline (was online {})", s.was_online);
-        }
-        tl::enums::UserStatus::UserStatusRecently =&gt; {
-            println!("user {user_id}: seen recently");
-        }
-        tl::enums::UserStatus::UserStatusLastWeek(_) =&gt; {
-            println!("user {user_id}: seen last week");
-        }
-        tl::enums::UserStatus::UserStatusLastMonth(_) =&gt; {
-            println!("user {user_id}: seen last month");
-        }
-        _ =&gt; {}
-    }
+    status.user_id  // i64
+    status.status   // tl::enums::UserStatus
+    // variants: UserStatusOnline, UserStatusOffline, UserStatusRecently, etc.
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="raw"><a class="header" href="#raw">Raw</a></h2>
-<p>Any update that doesn’t map to a named variant is passed through as <code>Update::Raw</code>:</p>
+<h2 id="rawupdate"><a class="header" href="#rawupdate"><code>RawUpdate</code></a></h2>
+<p>Any TL update that doesn’t map to a typed variant:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::Raw(raw) =&gt; {
-    // raw.constructor_id() — the TL constructor ID (u32)
-    // raw.bytes()          — the raw serialised bytes
-    println!("Unhandled update: 0x{:08x}", raw.constructor_id());
+    raw.update   // tl::enums::Update — the raw TL object
 }
 <span class="boring">}</span></code></pre>
-<p>Use this as an escape hatch to handle updates that <code>layer-client</code> doesn’t yet have a typed variant for.</p>
 <hr>
-<h2 id="concurrent-handling"><a class="header" href="#concurrent-handling">Concurrent handling</a></h2>
-<p>Spawn each update in its own Tokio task to prevent one slow handler from blocking others:</p>
+<h2 id="raw-update-stream"><a class="header" href="#raw-update-stream">Raw update stream</a></h2>
+<p>If you need all updates unfiltered:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use std::sync::Arc;
-
-let client = Arc::new(client);
-let mut updates = client.stream_updates();
-
-while let Some(update) = updates.next().await {
-    let client = client.clone();
-    tokio::spawn(async move {
-        if let Err(e) = handle(update, &amp;client).await {
-            eprintln!("Handler error: {e}");
-        }
-    });
-}
-
-async fn handle(
-    update: Update,
-    client: &amp;Client,
-) -&gt; Result&lt;(), Box&lt;dyn std::error::Error + Send + Sync&gt;&gt; {
-    match update {
-        Update::NewMessage(msg) if !msg.outgoing() =&gt; {
-            // …
-        }
-        _ =&gt; {}
-    }
-    Ok(())
+</span>let mut stream = client.stream_updates();
+while let Some(raw) = stream.next_raw().await {
+    println!("{:?}", raw.update);
 }
 <span class="boring">}</span></code></pre>
 

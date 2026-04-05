@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -182,143 +182,224 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="media--files"><a class="header" href="#media--files">Media &amp; Files</a></h1>
-<h2 id="upload-and-send-a-photo"><a class="header" href="#upload-and-send-a-photo">Upload and send a photo</a></h2>
+<hr>
+<h2 id="upload"><a class="header" href="#upload">Upload</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Upload from disk path
-let uploaded = client.upload_file("photo.jpg").await?;
+</span>// Upload from bytes — sequential
+let uploaded: UploadedFile = client
+    .upload_file("photo.jpg", &amp;bytes)
+    .await?;
 
-// Send as compressed photo
-client.send_file(
-    peer,
-    uploaded.as_photo_media(),
-    Some("My caption here"),
-).await?;
+// Upload from bytes — parallel chunks (faster for large files)
+let uploaded = client
+    .upload_file_concurrent("video.mp4", &amp;bytes)
+    .await?;
+
+// Upload from an async reader (e.g. tokio::fs::File)
+use tokio::fs::File;
+let f = File::open("document.pdf").await?;
+let uploaded = client.upload_stream("document.pdf", f).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="upload-and-send-a-document-any-file"><a class="header" href="#upload-and-send-a-document-any-file">Upload and send a document (any file)</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let uploaded = client.upload_file("report.pdf").await?;
-
-// Send as document (preserves original quality/format)
-client.send_file(
-    peer,
-    uploaded.as_document_media(),
-    Some("Monthly report"),
-).await?;
-<span class="boring">}</span></code></pre>
-<blockquote>
-<p><strong>TIP:</strong> For photos, <code>as_photo_media()</code> lets Telegram compress and display them inline. Use <code>as_document_media()</code> to preserve original file quality and format.</p>
-</blockquote>
-<h2 id="upload-from-a-stream"><a class="header" href="#upload-from-a-stream">Upload from a stream</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use tokio::fs::File;
-
-let file    = File::open("video.mp4").await?;
-let name    = "video.mp4".to_string();
-let size    = file.metadata().await?.len() as i32;
-let mime    = "video/mp4".to_string();
-
-let uploaded = client.upload_stream(file, size, name, mime).await?;
-client.send_file(peer, uploaded.as_document_media(), None).await?;
-<span class="boring">}</span></code></pre>
-<h2 id="send-an-album-multiple-photosvideos"><a class="header" href="#send-an-album-multiple-photosvideos">Send an album (multiple photos/videos)</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let img1 = client.upload_file("photo1.jpg").await?;
-let img2 = client.upload_file("photo2.jpg").await?;
-let img3 = client.upload_file("photo3.jpg").await?;
-
-client.send_album(
-    peer,
-    vec![
-        img1.as_photo_media(),
-        img2.as_photo_media(),
-        img3.as_photo_media(),
-    ],
-    Some("Our trip 📸"),
-).await?;
-<span class="boring">}</span></code></pre>
-<p>Albums are grouped as a single visual unit in the chat.</p>
-<h2 id="uploadedfile--methods"><a class="header" href="#uploadedfile--methods">UploadedFile — methods</a></h2>
+<h3 id="uploadedfile-methods"><a class="header" href="#uploadedfile-methods"><code>UploadedFile</code> methods</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+<tr><th>Method</th><th>Return</th><th>Description</th></tr>
 </thead>
 <tbody>
 <tr><td><code>uploaded.name()</code></td><td><code>&amp;str</code></td><td>Original filename</td></tr>
 <tr><td><code>uploaded.mime_type()</code></td><td><code>&amp;str</code></td><td>Detected MIME type</td></tr>
-<tr><td><code>uploaded.as_photo_media()</code></td><td><code>InputMedia</code></td><td>Send as compressed photo</td></tr>
-<tr><td><code>uploaded.as_document_media()</code></td><td><code>InputMedia</code></td><td>Send as document</td></tr>
+<tr><td><code>uploaded.as_document_media()</code></td><td><code>tl::enums::InputMedia</code></td><td>Ready to send as document</td></tr>
+<tr><td><code>uploaded.as_photo_media()</code></td><td><code>tl::enums::InputMedia</code></td><td>Ready to send as photo</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="download-media-from-a-message"><a class="header" href="#download-media-from-a-message">Download media from a message</a></h2>
+<hr>
+<h2 id="send-file"><a class="header" href="#send-file">Send file</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>if let tl::enums::Message::Message(m) = &amp;raw_msg {
-    if let Some(media) = &amp;m.media {
-        // download_media returns an async iterator of chunks
-        let location = client.download_location(media);
-        if let Some(loc) = location {
-            let mut iter = client.iter_download(loc);
-            let mut file = tokio::fs::File::create("download.bin").await?;
+</span>// Send as document (false) or as photo/media (true)
+client.send_file(peer.clone(), uploaded, false).await?;
 
-            while let Some(chunk) = iter.next().await? {
-                tokio::io::AsyncWriteExt::write_all(&amp;mut file, &amp;chunk).await?;
-            }
-        }
-    }
-}
+// Send as album (multiple files in one message group)
+client.send_album(peer.clone(), vec![uploaded_a, uploaded_b]).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="downloaditer--options"><a class="header" href="#downloaditer--options">DownloadIter — options</a></h2>
+<h3 id="albumitem--per-item-control-in-albums"><a class="header" href="#albumitem--per-item-control-in-albums"><code>AlbumItem</code> — per-item control in albums</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let mut iter = client.iter_download(location)
-    .chunk_size(512 * 1024);  // 512 KB per request (default: 128 KB)
+</span>use layer_client::media::AlbumItem;
+
+let items = vec![
+    AlbumItem::new(uploaded_a.as_photo_media())
+        .caption("First photo 📸"),
+    AlbumItem::new(uploaded_b.as_document_media())
+        .caption("The report 📄")
+        .reply_to(Some(msg_id)),
+];
+client.send_album(peer.clone(), items).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="mime-type-reference"><a class="header" href="#mime-type-reference">MIME type reference</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>File type</th><th>MIME</th><th>Displays as</th></tr>
+<tr><th>Method</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td>JPEG, PNG, WebP</td><td><code>image/jpeg</code>, <code>image/png</code></td><td>Photo (compressed)</td></tr>
-<tr><td>GIF</td><td><code>image/gif</code></td><td>Animated image</td></tr>
-<tr><td>MP4, MOV</td><td><code>video/mp4</code></td><td>Video player</td></tr>
-<tr><td>OGG (Opus codec)</td><td><code>audio/ogg</code></td><td>Voice message</td></tr>
-<tr><td>MP3, FLAC</td><td><code>audio/mpeg</code></td><td>Audio player</td></tr>
-<tr><td>PDF</td><td><code>application/pdf</code></td><td>Document with preview</td></tr>
-<tr><td>ZIP, RAR</td><td><code>application/zip</code></td><td>Generic document</td></tr>
-<tr><td>TGS</td><td><code>application/x-tgsticker</code></td><td>Animated sticker</td></tr>
+<tr><td><code>AlbumItem::new(media)</code></td><td>Wrap an <code>InputMedia</code></td></tr>
+<tr><td><code>.caption(str)</code></td><td>Caption text for this item</td></tr>
+<tr><td><code>.reply_to(Option&lt;i32&gt;)</code></td><td>Reply to message ID</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="get-profile-photos"><a class="header" href="#get-profile-photos">Get profile photos</a></h2>
+<hr>
+<h2 id="download"><a class="header" href="#download">Download</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let photos = client.get_profile_photos(peer, 10).await?;
+</span>// To bytes — sequential
+let bytes: Vec&lt;u8&gt; = client.download_media(&amp;msg_media).await?;
 
-for photo in &amp;photos {
-    if let tl::enums::Photo::Photo(p) = photo {
-        println!("Photo ID {} — {} sizes", p.id, p.sizes.len());
+// To bytes — parallel chunks
+let bytes = client.download_media_concurrent(&amp;msg_media).await?;
 
-        // Find the largest size
-        let best = p.sizes.iter()
-            .filter_map(|s| match s {
-                tl::enums::PhotoSize::PhotoSize(ps) =&gt; Some(ps),
-                _ =&gt; None,
-            })
-            .max_by_key(|ps| ps.size);
+// Stream to file
+client.download_media_to_file(&amp;msg_media, "output.jpg").await?;
 
-        if let Some(size) = best {
-            println!("  Largest: {}x{} ({}B)", size.w, size.h, size.size);
-        }
-    }
+// Via Downloadable trait (Photo, Document, Sticker)
+let bytes = client.download(&amp;photo).await?;
+<span class="boring">}</span></code></pre>
+<h3 id="downloaditer--streaming-chunks"><a class="header" href="#downloaditer--streaming-chunks"><code>DownloadIter</code> — streaming chunks</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let location = msg.raw.download_location().unwrap();
+let mut iter = client.iter_download(location);
+iter = iter.chunk_size(128 * 1024); // 128 KB chunks
+
+while let Some(chunk) = iter.next().await? {
+    file.write_all(&amp;chunk).await?;
 }
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>client.iter_download(location)</code></td><td>Create a lazy chunk iterator</td></tr>
+<tr><td><code>iter.chunk_size(bytes)</code></td><td>Set download chunk size</td></tr>
+<tr><td><code>iter.next()</code></td><td><code>async → Option&lt;Vec&lt;u8&gt;&gt;</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="photo-type"><a class="header" href="#photo-type"><code>Photo</code> type</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::media::Photo;
+
+let photo = Photo::from_media(&amp;msg.raw).unwrap();
+// or
+let photo = msg.photo().unwrap();
+
+photo.id()                // i64
+photo.access_hash()       // i64
+photo.date()              // i32 — Unix timestamp
+photo.has_stickers()      // bool
+photo.largest_thumb_type() // &amp;str — e.g. "y", "x", "s"
+
+let bytes = client.download(&amp;photo).await?;
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Photo::from_raw(tl::types::Photo)</code></td><td>Wrap raw TL photo</td></tr>
+<tr><td><code>Photo::from_media(&amp;MessageMedia)</code></td><td>Extract from message media</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="document-type"><a class="header" href="#document-type"><code>Document</code> type</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::media::Document;
+
+let doc = Document::from_media(&amp;msg.raw).unwrap();
+// or
+let doc = msg.document().unwrap();
+
+doc.id()              // i64
+doc.access_hash()     // i64
+doc.date()            // i32
+doc.mime_type()       // &amp;str
+doc.size()            // i64 — bytes
+doc.file_name()       // Option&lt;&amp;str&gt;
+doc.is_animated()     // bool — animated GIF or sticker
+
+let bytes = client.download(&amp;doc).await?;
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Document::from_raw(tl::types::Document)</code></td><td>Wrap raw TL document</td></tr>
+<tr><td><code>Document::from_media(&amp;MessageMedia)</code></td><td>Extract from message media</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="sticker-type"><a class="header" href="#sticker-type"><code>Sticker</code> type</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::media::Sticker;
+
+let sticker = Sticker::from_media(&amp;msg.raw).unwrap();
+
+sticker.id()          // i64
+sticker.mime_type()   // &amp;str — "image/webp" or "video/webm"
+sticker.emoji()       // Option&lt;&amp;str&gt; — associated emoji
+sticker.is_video()    // bool — animated video sticker
+
+let bytes = client.download(&amp;sticker).await?;
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Sticker::from_document(Document)</code></td><td>Wrap a document as a sticker</td></tr>
+<tr><td><code>Sticker::from_media(&amp;MessageMedia)</code></td><td>Extract sticker from message</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="downloadable-trait"><a class="header" href="#downloadable-trait"><code>Downloadable</code> trait</a></h2>
+<p><code>Photo</code>, <code>Document</code>, and <code>Sticker</code> all implement <code>Downloadable</code>, so you can use <code>client.download(&amp;item)</code> on any of them uniformly.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::media::Downloadable;
+
+async fn save_any&lt;D: Downloadable&gt;(client: &amp;Client, item: &amp;D) -&gt; Vec&lt;u8&gt; {
+    client.download(item).await.unwrap()
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="download-location-from-message"><a class="header" href="#download-location-from-message">Download location from message</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get an InputFileLocation from the raw message
+use layer_client::media::download_location_from_media;
+
+if let Some(loc) = download_location_from_media(&amp;msg.raw) {
+    let bytes = client.download_media(&amp;loc).await?;
+}
+
+// Or via IncomingMessage convenience:
+msg.download_media("output.jpg").await?;
 <span class="boring">}</span></code></pre>
 
                     </main>

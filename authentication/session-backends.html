@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -417,6 +417,38 @@ async fn connect_with_backend(
 
     // ...
     Ok(())
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="additional-backend-methods"><a class="header" href="#additional-backend-methods">Additional backend methods</a></h2>
+<h3 id="stringsessionbackendcurrent"><a class="header" href="#stringsessionbackendcurrent"><code>StringSessionBackend::current()</code></a></h3>
+<p>Reads the current serialised session string at any time:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::StringSessionBackend;
+
+let backend = StringSessionBackend::new("");
+// ... after connecting and authenticating ...
+let s = backend.current(); // base64 session string
+<span class="boring">}</span></code></pre>
+<h3 id="binaryfilebackendpath"><a class="header" href="#binaryfilebackendpath"><code>BinaryFileBackend::path()</code></a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::BinaryFileBackend;
+
+let backend = BinaryFileBackend::new("bot.session");
+println!("Saving to: {}", backend.path().display());
+<span class="boring">}</span></code></pre>
+<h3 id="inmemorybackendsnapshot"><a class="header" href="#inmemorybackendsnapshot"><code>InMemoryBackend::snapshot()</code></a></h3>
+<p>Take a point-in-time snapshot of the in-memory session (useful in tests):</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::InMemoryBackend;
+
+let backend = InMemoryBackend::new();
+// ... after auth ...
+if let Some(session) = backend.snapshot() {
+    // inspect or serialize session data
 }
 <span class="boring">}</span></code></pre>
 

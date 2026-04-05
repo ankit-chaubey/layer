@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-aabd3487.js"></script>
@@ -195,7 +195,7 @@ let (client, _shutdown) = Client::connect(Config {
     api_hash: "your_api_hash".into(),
 
     // Session (default: BinaryFileBackend("session.session"))
-    session_path: "my.session".into(),
+    
 
     // DC override (default: DC2)
     dc_addr: None,
@@ -226,11 +226,11 @@ let (client, _shutdown) = Client::connect(Config {
 </span><span class="boring">fn main() {
 </span>api_hash: "deadbeef01234567...".into(),
 <span class="boring">}</span></code></pre>
-<h3 id="session_path"><a class="header" href="#session_path"><code>session_path</code></a></h3>
+<h3 id="session_backend"><a class="header" href="#session_backend"><code>session_backend</code></a></h3>
 <p>Path to the binary session file. Default: <code>"session.session"</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>session_path: "/data/myapp/auth.session".into(),
+</span>
 <span class="boring">}</span></code></pre>
 <h3 id="dc_addr"><a class="header" href="#dc_addr"><code>dc_addr</code></a></h3>
 <p>Override the initial DC address. Default: <code>None</code> (uses DC2 = <code>149.154.167.51:443</code>). After login, the correct DC is cached in the session.</p>
@@ -282,7 +282,7 @@ retry_policy: Arc::new(NoRetries),             // propagate immediately
 </span>Config {
     api_id:        0,
     api_hash:      String::new(),
-    session_path:  "session.session".into(),
+    
     dc_addr:       None,
     transport:     TransportKind::Abridged,
     retry_policy:  Arc::new(AutoSleep::default()),

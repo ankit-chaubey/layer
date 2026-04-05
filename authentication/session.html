@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -188,12 +188,11 @@
 </span><span class="boring">fn main() {
 </span>use layer_client::{Client, Config};
 
-let (client, _shutdown) = Client::connect(Config {
-    session_path: "my.session".into(),
-    api_id:       12345,
-    api_hash:     "abc123".into(),
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+        .api_id(12345)
+        .api_hash("abc123")
+        .session("my.session")
+        .connect().await?.await?;
 <span class="boring">}</span></code></pre>
 <p>After login, save to disk:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -223,7 +222,6 @@ let (client, _shutdown) = Client::builder()
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let (client, _shutdown) = Client::connect(Config {
-    session_path: "session.db".into(),
     ..Default::default()
 }).await?;
 <span class="boring">}</span></code></pre>
@@ -287,12 +285,10 @@ let (client, _shutdown) = Client::builder()
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let (client_a, _) = Client::connect(Config {
-    session_path: "account_a.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
 
 let (client_b, _) = Client::connect(Config {
-    session_path: "account_b.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
 <span class="boring">}</span></code></pre>

@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -181,132 +181,135 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="dialogs--message-history"><a class="header" href="#dialogs--message-history">Dialogs &amp; Message History</a></h1>
-<h2 id="list-dialogs-conversations"><a class="header" href="#list-dialogs-conversations">List dialogs (conversations)</a></h2>
+                        <h1 id="dialogs--history"><a class="header" href="#dialogs--history">Dialogs &amp; History</a></h1>
+<hr>
+<h2 id="fetch-dialogs"><a class="header" href="#fetch-dialogs">Fetch dialogs</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Fetch the 50 most recent dialogs
+</span>// Fetch up to N dialogs (returns the most recent first)
 let dialogs = client.get_dialogs(50).await?;
 
-for dialog in &amp;dialogs {
-    println!(
-        "[{}] {} unread — top msg {}",
-        dialog.title(),
-        dialog.unread_count(),
-        dialog.top_message(),
-    );
+for d in &amp;dialogs {
+    println!("{} — {} unread — top msg: {}",
+        d.title(), d.unread_count(), d.top_message());
 }
 <span class="boring">}</span></code></pre>
-<h3 id="dialog-fields"><a class="header" href="#dialog-fields">Dialog fields</a></h3>
+<h3 id="dialog-accessors"><a class="header" href="#dialog-accessors"><code>Dialog</code> accessors</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+<tr><th>Method</th><th>Return</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>dialog.title()</code></td><td><code>String</code></td><td>Name of the chat/channel/user</td></tr>
-<tr><td><code>dialog.peer()</code></td><td><code>Option&lt;&amp;Peer&gt;</code></td><td>The peer identifier</td></tr>
-<tr><td><code>dialog.unread_count()</code></td><td><code>i32</code></td><td>Number of unread messages</td></tr>
-<tr><td><code>dialog.top_message()</code></td><td><code>i32</code></td><td>ID of the last message</td></tr>
+<tr><td><code>d.title()</code></td><td><code>String</code></td><td>Chat name</td></tr>
+<tr><td><code>d.peer()</code></td><td><code>Option&lt;&amp;tl::enums::Peer&gt;</code></td><td>The peer for this dialog</td></tr>
+<tr><td><code>d.unread_count()</code></td><td><code>i32</code></td><td>Unread message count</td></tr>
+<tr><td><code>d.top_message()</code></td><td><code>i32</code></td><td>ID of the latest message</td></tr>
 </tbody>
 </table>
 </div>
 <hr>
-<h2 id="paginating-dialogs-all"><a class="header" href="#paginating-dialogs-all">Paginating dialogs (all)</a></h2>
-<p>For iterating <strong>all</strong> dialogs beyond the first page:</p>
+<h2 id="dialogiter--lazy-paginated-iterator"><a class="header" href="#dialogiter--lazy-paginated-iterator"><code>DialogIter</code> — lazy paginated iterator</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut iter = client.iter_dialogs();
 
+// Total count (available after first page is fetched)
+if let Some(total) = iter.total() {
+    println!("Total dialogs: {total}");
+}
+
 while let Some(dialog) = iter.next(&amp;client).await? {
-    println!("{} — {} unread", dialog.title(), dialog.unread_count());
+    println!("{}", dialog.title());
 }
 <span class="boring">}</span></code></pre>
-<p>The iterator automatically requests more pages from Telegram as needed.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>client.iter_dialogs()</code></td><td>Create iterator</td></tr>
+<tr><td><code>iter.total()</code></td><td><code>Option&lt;i32&gt;</code> — total count after first fetch</td></tr>
+<tr><td><code>iter.next(&amp;client)</code></td><td><code>async → Option&lt;Dialog&gt;</code></td></tr>
+</tbody>
+</table>
+</div>
 <hr>
-<h2 id="paginating-messages"><a class="header" href="#paginating-messages">Paginating messages</a></h2>
+<h2 id="messageiter--lazy-message-history"><a class="header" href="#messageiter--lazy-message-history"><code>MessageIter</code> — lazy message history</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let peer = client.resolve_peer("@somechannel").await?;
-let mut iter = client.iter_messages(peer);
+</span>let mut iter = client.iter_messages(peer.clone());
 
-let mut count = 0;
+// Total count of messages in this chat
+if let Some(total) = iter.total() {
+    println!("Total messages: {total}");
+}
+
 while let Some(msg) = iter.next(&amp;client).await? {
-    println!("[{}] {}", msg.id(), msg.text().unwrap_or("(media)"));
-    count += 1;
-    if count &gt;= 500 { break; }
+    println!("[{}] {}", msg.id, msg.message);
 }
 <span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>client.iter_messages(peer)</code></td><td>Create iterator (newest first)</td></tr>
+<tr><td><code>iter.total()</code></td><td><code>Option&lt;i32&gt;</code> — total message count after first fetch</td></tr>
+<tr><td><code>iter.next(&amp;client)</code></td><td><code>async → Option&lt;tl::types::Message&gt;</code></td></tr>
+</tbody>
+</table>
+</div>
 <hr>
-<h2 id="get-message-history-basic"><a class="header" href="#get-message-history-basic">Get message history (basic)</a></h2>
+<h2 id="fetch-messages-directly"><a class="header" href="#fetch-messages-directly">Fetch messages directly</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Newest 50 messages
-let messages = client.get_messages(peer, 50, 0).await?;
+</span>// Latest N messages from a peer
+let messages = client.get_messages(peer.clone(), 20).await?;
 
-// Next page: pass the last message's ID as offset
-let last_id = messages.last()
-    .and_then(|m| if let tl::enums::Message::Message(m) = m { Some(m.id) } else { None })
-    .unwrap_or(0);
+// Specific message IDs
+let messages = client.get_messages_by_id(peer.clone(), &amp;[100, 101, 102]).await?;
+// Returns Vec&lt;Option&lt;tl::enums::Message&gt;&gt; — None if not found
 
-let older = client.get_messages(peer, 50, last_id).await?;
+// Pinned message
+let pinned = client.get_pinned_message(peer.clone()).await?;
+
+// The message a given message replies to
+let parent = client.get_reply_to_message(peer.clone(), msg_id).await?;
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="scheduled-messages"><a class="header" href="#scheduled-messages">Scheduled messages</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Fetch messages scheduled to be sent
-let scheduled = client.get_scheduled_messages(peer).await?;
+</span>// List all scheduled messages
+let scheduled = client.get_scheduled_messages(peer.clone()).await?;
 
-for msg in &amp;scheduled {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("Scheduled: {} at {}", m.message, m.date);
-    }
-}
-
-// Delete a scheduled message
-client.delete_scheduled_messages(peer, vec![msg_id]).await?;
+// Cancel a scheduled message
+client.delete_scheduled_messages(peer.clone(), &amp;[scheduled_id]).await?;
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="search-within-a-chat"><a class="header" href="#search-within-a-chat">Search within a chat</a></h2>
+<h2 id="dialog-management"><a class="header" href="#dialog-management">Dialog management</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let results = client.search_messages(
-    peer,
-    "error log",  // search query
-    20,           // limit
-).await?;
+</span>// Mark all messages as read
+client.mark_as_read(peer.clone()).await?;
 
-for msg in &amp;results {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("[{}] {}", m.id, m.message);
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="global-search"><a class="header" href="#global-search">Global search</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let results = client.search_global("layer rust telegram", 10).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="mark-as-read--unread-management"><a class="header" href="#mark-as-read--unread-management">Mark as read / unread management</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Mark all messages in a chat as read
-client.mark_as_read(peer).await?;
+// Clear @mention badges
+client.clear_mentions(peer.clone()).await?;
 
-// Clear all @mentions in a group
-client.clear_mentions(peer).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="get-pinned-message"><a class="header" href="#get-pinned-message">Get pinned message</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if let Some(msg) = client.get_pinned_message(peer).await? {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("Pinned: {}", m.message);
-    }
-}
+// Leave and remove from dialog list
+client.delete_dialog(peer.clone()).await?;
+
+// Join a public group/channel
+client.join_chat("@somegroup").await?;
+
+// Accept a private invite link
+client.accept_invite_link("https://t.me/joinchat/AbCdEfG").await?;
+
+// Parse invite hash from any link format
+let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
 <span class="boring">}</span></code></pre>
 
                     </main>

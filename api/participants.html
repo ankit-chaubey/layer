@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
+            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -414,6 +414,69 @@ let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
 
 // Leave / remove dialog
 client.delete_dialog(peer.clone()).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="participantstatus-enum"><a class="header" href="#participantstatus-enum"><code>ParticipantStatus</code> enum</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::ParticipantStatus;
+
+for p in &amp;members {
+    match p.status {
+        ParticipantStatus::Member     =&gt; println!("Regular member"),
+        ParticipantStatus::Creator    =&gt; println!("Creator"),
+        ParticipantStatus::Admin      =&gt; println!("Admin"),
+        ParticipantStatus::Restricted =&gt; println!("Restricted"),
+        ParticipantStatus::Banned     =&gt; println!("Banned"),
+        ParticipantStatus::Left       =&gt; println!("Left"),
+    }
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="profilephotoiter--extended-methods"><a class="header" href="#profilephotoiter--extended-methods"><code>ProfilePhotoIter</code> — extended methods</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut iter = client.iter_profile_photos(user_id);
+
+// Total photo count (available after first fetch)
+if let Some(total) = iter.total_count() {
+    println!("{total} profile photos");
+}
+
+// Collect all photos at once
+let all_photos = iter.collect().await?;
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>iter.next()</code></td><td><code>async → Option&lt;tl::enums::Photo&gt;</code></td></tr>
+<tr><td><code>iter.collect()</code></td><td><code>async → Vec&lt;tl::enums::Photo&gt;</code> — all photos</td></tr>
+<tr><td><code>iter.total_count()</code></td><td><code>Option&lt;i32&gt;</code> — total count after first fetch</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="low-level-rights-setters"><a class="header" href="#low-level-rights-setters">Low-level rights setters</a></h2>
+<p>For advanced use cases, <code>set_banned_rights</code> and <code>set_admin_rights</code> give direct access to the TL layer:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Set banned rights directly (channel/supergroup only)
+client.set_banned_rights(
+    peer.clone(),
+    user_input_peer,
+    BannedRightsBuilder::new().send_media(true),
+).await?;
+
+// Set admin rights directly
+client.set_admin_rights(
+    peer.clone(),
+    user_input_peer,
+    AdminRightsBuilder::new().delete_messages(true),
+    Some("Moderator".into()),  // optional custom rank
+).await?;
 <span class="boring">}</span></code></pre>
 
                     </main>
