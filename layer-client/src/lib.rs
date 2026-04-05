@@ -773,12 +773,16 @@ impl Client {
                                     (c, s.home_dc_id, opts, Some(s))
                                 }
                                 Err(e) => {
+                                    // S1 fix: never call fresh_connect on a TCP blip during
+                                    // startup — that would silently destroy the saved session
+                                    // by switching to DC2 with a fresh key.  Return the error
+                                    // so the caller gets a clear failure and can retry or
+                                    // prompt for re-auth without corrupting the session file.
                                     tracing::warn!(
-                                        "[layer] Session connect failed ({e}), fresh connect …"
+                                        "[layer] Session connect failed ({e}) — \
+                                         returning error (delete session file to reset)"
                                     );
-                                    let (c, dc, opts) =
-                                        Self::fresh_connect(socks5.as_ref(), &transport).await?;
-                                    (c, dc, opts, None)
+                                    return Err(e);
                                 }
                             }
                         } else {
@@ -876,78 +880,89 @@ impl Client {
             });
         }
 
-        // If init_connection fails (e.g. stale auth key rejected by Telegram),
-        // do a fresh DH handshake and retry once.
-        //
-        // KEY FIX: A 30 s timeout on init_connection means Telegram silently
-        // dropped our first RPC — the most common signal for an invalidated auth
-        // key.  We MUST clear the saved key here so that:
-        //   (a) the retry uses a real fresh DH, not the dead key again, and
-        //   (b) if we crash / exit before the retry succeeds, the next startup
-        //       does not loop forever on the same dead key.
+        // Only clear the auth key on definitive bad-key signals from Telegram.
+        // Network errors (EOF mid-session, ConnectionReset, Rpc(-404)) mean the
+        // server rejected our key. Any other error (I/O, etc.) is left intact —
+        // no RPC timeout exists anymore, so there is no "timed out = stale key" case.
         if let Err(e) = client.init_connection().await {
-            tracing::warn!(
-                "[layer] init_connection failed ({e}), clearing saved key and retrying with fresh connect …"
-            );
-
-            // Clear the home-DC auth key so a subsequent startup does not reuse it.
-            {
-                let home_dc_id = *client.inner.home_dc_id.lock().await;
-                let mut opts = client.inner.dc_options.lock().await;
-                if let Some(entry) = opts.get_mut(&home_dc_id)
-                    && entry.auth_key.is_some()
+            let key_is_stale = match &e {
+                InvocationError::Rpc(r) if r.code == -404 => true,
+                InvocationError::Io(io)
+                    if io.kind() == std::io::ErrorKind::UnexpectedEof
+                        || io.kind() == std::io::ErrorKind::ConnectionReset =>
                 {
-                    tracing::warn!("[layer] Clearing stale auth key for DC{home_dc_id}");
-                    entry.auth_key = None;
-                    entry.first_salt = 0;
-                    entry.time_offset = 0;
+                    true
                 }
+                _ => false,
+            };
+
+            if key_is_stale {
+                tracing::warn!("[layer] init_connection: definitive bad-key ({e}), fresh DH …");
+                {
+                    let home_dc_id = *client.inner.home_dc_id.lock().await;
+                    let mut opts = client.inner.dc_options.lock().await;
+                    if let Some(entry) = opts.get_mut(&home_dc_id)
+                        && entry.auth_key.is_some()
+                    {
+                        tracing::warn!("[layer] Clearing stale auth key for DC{home_dc_id}");
+                        entry.auth_key = None;
+                        entry.first_salt = 0;
+                        entry.time_offset = 0;
+                    }
+                }
+                client.save_session().await.ok();
+                client.inner.pending.lock().await.clear();
+
+                let socks5_r = client.inner.socks5.clone();
+                let transport_r = client.inner.transport.clone();
+
+                // S1 fix: reconnect to the HOME DC with fresh DH, not DC2.
+                // fresh_connect() was hardcoded to DC2 and wiped all learned DC state,
+                // which is why sessions on DC3/DC4/DC5 were corrupted on every -404.
+                let home_dc_id_r = *client.inner.home_dc_id.lock().await;
+                let addr_r = {
+                    let opts = client.inner.dc_options.lock().await;
+                    opts.get(&home_dc_id_r)
+                        .map(|e| e.addr.clone())
+                        .unwrap_or_else(|| {
+                            crate::dc_migration::fallback_dc_addr(home_dc_id_r).to_string()
+                        })
+                };
+                let new_conn =
+                    Connection::connect_raw(&addr_r, socks5_r.as_ref(), &transport_r).await?;
+
+                // Split first so we can read the new key/salt from the writer.
+                let (new_writer, new_read, new_fk) = new_conn.into_writer();
+                // Update ONLY the home DC entry — all other DC keys are preserved.
+                {
+                    let mut opts_guard = client.inner.dc_options.lock().await;
+                    if let Some(entry) = opts_guard.get_mut(&home_dc_id_r) {
+                        entry.auth_key = Some(new_writer.auth_key_bytes());
+                        entry.first_salt = new_writer.first_salt();
+                        entry.time_offset = new_writer.time_offset();
+                    }
+                }
+                // home_dc_id stays unchanged — we reconnected to the same DC.
+                let new_ak = new_writer.enc.auth_key_bytes();
+                let new_sid = new_writer.enc.session_id();
+                *client.inner.writer.lock().await = new_writer;
+                let _ = client
+                    .inner
+                    .reconnect_tx
+                    .send((new_read, new_fk, new_ak, new_sid));
+                tokio::task::yield_now().await;
+
+                client.init_connection().await?;
+                // Persist the new auth key so next startup loads the correct key.
+                client.save_session().await.ok();
+
+                tracing::warn!(
+                    "[layer] Session invalidated and reset. \
+                     Call is_authorized() and re-authenticate if needed."
+                );
+            } else {
+                return Err(e);
             }
-            // Flush to disk with the cleared key so the next cold-start does
-            // not sit through another 30 s timeout on the same dead key.
-            client.save_session().await.ok();
-
-            // Clean up any stale pending entries left by the timed-out RPC
-            // (Bug #2: tx stays in map after rx times out and is dropped).
-            client.inner.pending.lock().await.clear();
-
-            let socks5_r = client.inner.socks5.clone();
-            let transport_r = client.inner.transport.clone();
-            let (new_conn, new_dc_id, new_opts) =
-                Self::fresh_connect(socks5_r.as_ref(), &transport_r).await?;
-
-            {
-                let mut dc_guard = client.inner.home_dc_id.lock().await;
-                *dc_guard = new_dc_id;
-            }
-            {
-                let mut opts_guard = client.inner.dc_options.lock().await;
-                *opts_guard = new_opts;
-            }
-
-            // Replace writer and hand new read half to reader task.
-            // Yield once so the reader task processes the new connection
-            // before init_connection sends the next RPC.
-            let (new_writer, new_read, new_fk) = new_conn.into_writer();
-            let new_ak = new_writer.enc.auth_key_bytes();
-            let new_sid = new_writer.enc.session_id();
-            *client.inner.writer.lock().await = new_writer;
-            let _ = client
-                .inner
-                .reconnect_tx
-                .send((new_read, new_fk, new_ak, new_sid));
-            // Give the reader task a scheduling opportunity to switch to the
-            // new read-half before init_connection sends its RPC.
-            tokio::task::yield_now().await;
-
-            client.init_connection().await?;
-
-            // Session is now on a fresh unauthenticated DC2 connection.
-            // Callers must call is_authorized() and re-authenticate if needed.
-            tracing::warn!(
-                "[layer] Session was invalidated and has been reset. \
-                 Call is_authorized() and re-authenticate if needed."
-            );
         }
 
         // ── Restore peer access-hash cache from session ─────────────────
@@ -1794,65 +1809,30 @@ impl Client {
                     match init_result {
                         Ok(Ok(())) => {
                             init_fail_count = 0;
-                            // Fully initialised. Persist updated DC/session state.
-                            // Retry up to 3 times — a transient I/O error (e.g. the
-                            // filesystem briefly unavailable on Android) should not
-                            // cause the auth key to diverge from disk permanently.
+                            // S3 fix: do NOT save_session here.
+                            // Grammers never persists the session after a plain TCP
+                            // reconnect — only when a genuinely new auth key is
+                            // generated (fresh DH).  Writing here was the mechanism
+                            // by which bugs S1 and S2 corrupted the on-disk session:
+                            // if fresh DH ran with the wrong DC, the bad key was
+                            // then immediately flushed to disk.  Without the write
+                            // there is nothing to corrupt.
                             tracing::info!("[layer] Reconnected to Telegram ✓ — session live, replaying missed updates …");
-                            for attempt in 1u8..=3 {
-                                match self.save_session().await {
-                                    Ok(()) => break,
-                                    Err(e) if attempt < 3 => {
-                                        tracing::warn!(
-                                            "[layer] save_session failed (attempt {attempt}/3): {e}"
-                                        );
-                                        sleep(Duration::from_millis(500)).await;
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(
-                                            "[layer] save_session permanently failed after 3 attempts: {e}"
-                                        );
-                                    }
-                                }
-                            }
                         }
 
                         Ok(Err(e)) => {
                             // TCP connected but init RPC failed.
-                            //
-                            // Grammers' approach: only treat the key as stale when
-                            // Telegram sends a definitive "bad auth key" signal —
-                            // a -404 transport error code.  A 30 s timeout is almost
-                            // always a transient network issue and must NOT clear the
-                            // session (doing so creates a brand-new session in Telegram's
-                            // active devices list and orphans the old one).
-                            //
-                            // LAYER FIX: After 3 consecutive timeouts on the same key
-                            // we treat it as stale.  On a healthy network init_connection
-                            // never takes more than a few seconds; 3 × 30 s = 90 s of
-                            // silence is a definitive "server is ignoring this key" signal.
-                            let is_timeout = matches!(&e,
-                                InvocationError::Deserialize(s) if s.contains("timed out"));
+                            // Only clear auth key on definitive bad-key signals from Telegram.
                             let key_is_stale = match &e {
-                                // Telegram's abridged-transport error code for invalid key
                                 InvocationError::Rpc(r) if r.code == -404 => true,
-                                // Early EOF immediately after connecting = server rejected key
                                 InvocationError::Io(io) if io.kind() == std::io::ErrorKind::UnexpectedEof
                                     || io.kind() == std::io::ErrorKind::ConnectionReset => true,
-                                // After 3 consecutive timeouts give up on the saved key.
-                                _ if is_timeout && init_fail_count >= 2 => {
-                                    tracing::warn!(
-                                        "[layer] init_connection timed out {}/{} — treating as stale key",
-                                        init_fail_count + 1, 3
-                                    );
-                                    true
-                                }
                                 _ => false,
                             };
 
                             if key_is_stale {
                                 tracing::warn!(
-                                    "[layer] init_connection failed with definitive bad-key signal ({e}) \
+                                    "[layer] init_connection: definitive bad-key ({e}) \
                                      — clearing auth key for fresh DH …"
                                 );
                                 init_fail_count = 0;
@@ -1864,7 +1844,7 @@ impl Client {
                             } else {
                                 init_fail_count += 1;
                                 tracing::warn!(
-                                    "[layer] init_connection failed transiently (attempt {init_fail_count}, {e}) \
+                                    "[layer] init_connection failed (attempt {init_fail_count}, {e}) \
                                      — retrying with same key …"
                                 );
                             }
@@ -2076,7 +2056,7 @@ impl Client {
                                 return;
                             }
                         }
-                        let _ = tokio::time::timeout(std::time::Duration::from_secs(30), rx).await;
+                        let _ = rx.await;
                     });
                 }
             }
@@ -2989,9 +2969,13 @@ impl Client {
             .await
             {
                 Ok(c) => c,
-                Err(e2) => {
-                    tracing::warn!("[layer] connect_with_key failed ({e2}), fresh DH …");
-                    Connection::connect_raw(&addr, socks5.as_ref(), &transport).await?
+                Err(e) => {
+                    // S2 fix: a TCP failure during reconnect does NOT warrant a
+                    // fresh DH handshake (which generates a new auth key and
+                    // orphans the old one still registered on Telegram's servers).
+                    // Return the error — do_reconnect_loop will back off and retry
+                    // with the same saved key once the network recovers.
+                    return Err(e);
                 }
             }
         } else {
@@ -4370,7 +4354,7 @@ impl Client {
 
     /// Send a chat action (typing indicator, uploading photo, etc).
     ///
-    /// For "typing" use `tl::enums::SendMessageAction::SendMessageTypingAction`.
+    /// For "typing" use `tl::enums::SendMessageAction::Typing`.
     /// For forum topic support use [`send_chat_action_ex`](Self::send_chat_action_ex)
     /// or the [`typing_in_topic`](Self::typing_in_topic) helper.
     pub async fn send_chat_action(
@@ -4544,10 +4528,6 @@ impl Client {
     ///     the matching rpc_result frame arrives.
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
-        // Track the msg_id so we can clean it from the pending map if we time out.
-        // Bug #2 fix: without this, a timed-out tx leaks in the pending map forever.
-        #[allow(unused_assignments)]
-        let mut registered_msg_id: i64 = 0;
         {
             let raw_body = req.to_bytes();
             // G-06: compress large outgoing bodies
@@ -4563,7 +4543,6 @@ impl Client {
             if acks.is_empty() {
                 // ── Simple path: standalone request ──────────────────────────
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
-                registered_msg_id = msg_id;
                 w.sent_bodies.insert(msg_id, body); // G-02
                 self.inner.pending.lock().await.insert(msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
@@ -4574,7 +4553,6 @@ impl Client {
                 // Allocate inner msg_id+seqno for each item
                 let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false); // non-content
                 let (req_msg_id, req_seqno) = w.enc.alloc_msg_seqno(true); // content
-                registered_msg_id = req_msg_id;
 
                 // Build container payload
                 let container_payload = build_container_body(&[
@@ -4594,27 +4572,11 @@ impl Client {
                 );
             }
         }
-        match tokio::time::timeout(Duration::from_secs(30), rx).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(InvocationError::Deserialize(
+        match rx.await {
+            Ok(result) => result,
+            Err(_) => Err(InvocationError::Deserialize(
                 "RPC channel closed (reader died?)".into(),
             )),
-            Err(_) => {
-                // Clean up the stale tx from the pending map so it doesn't
-                // leak memory or confuse future response routing.
-                if registered_msg_id != 0 {
-                    self.inner.pending.lock().await.remove(&registered_msg_id);
-                    self.inner
-                        .writer
-                        .lock()
-                        .await
-                        .sent_bodies
-                        .remove(&registered_msg_id);
-                }
-                Err(InvocationError::Deserialize(
-                    "RPC timed out after 30 s".into(),
-                ))
-            }
         }
     }
 
@@ -4682,13 +4644,10 @@ impl Client {
                 );
             }
         }
-        match tokio::time::timeout(Duration::from_secs(30), rx).await {
-            Ok(Ok(result)) => result.map(|_| ()),
-            Ok(Err(_)) => Err(InvocationError::Deserialize(
-                "rpc_write channel closed".into(),
-            )),
+        match rx.await {
+            Ok(result) => result.map(|_| ()),
             Err(_) => Err(InvocationError::Deserialize(
-                "rpc_write timed out after 30 s".into(),
+                "rpc_write channel closed".into(),
             )),
         }
     }
@@ -4927,8 +4886,6 @@ impl Client {
         req: &S,
     ) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
-        #[allow(unused_assignments)]
-        let mut registered_msg_id: i64 = 0;
         {
             let raw_body = req.to_bytes();
             let body = maybe_gz_pack(&raw_body); // G-06
@@ -4937,7 +4894,6 @@ impl Client {
             let acks: Vec<i64> = w.pending_ack.drain(..).collect(); // G-04+G-07
             if acks.is_empty() {
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
-                registered_msg_id = msg_id;
                 w.sent_bodies.insert(msg_id, body); // G-02
                 self.inner.pending.lock().await.insert(msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
@@ -4945,7 +4901,6 @@ impl Client {
                 let ack_body = build_msgs_ack_body(&acks);
                 let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false);
                 let (req_msg_id, req_seqno) = w.enc.alloc_msg_seqno(true);
-                registered_msg_id = req_msg_id;
                 let container_payload = build_container_body(&[
                     (ack_msg_id, ack_seqno, ack_body.as_slice()),
                     (req_msg_id, req_seqno, body.as_slice()),
@@ -4956,23 +4911,9 @@ impl Client {
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
             }
         }
-        match tokio::time::timeout(Duration::from_secs(30), rx).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(InvocationError::Deserialize("rpc channel closed".into())),
-            Err(_) => {
-                if registered_msg_id != 0 {
-                    self.inner.pending.lock().await.remove(&registered_msg_id);
-                    self.inner
-                        .writer
-                        .lock()
-                        .await
-                        .sent_bodies
-                        .remove(&registered_msg_id);
-                }
-                Err(InvocationError::Deserialize(
-                    "rpc timed out after 30 s".into(),
-                ))
-            }
+        match rx.await {
+            Ok(result) => result,
+            Err(_) => Err(InvocationError::Deserialize("rpc channel closed".into())),
         }
     }
 
