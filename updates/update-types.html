@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5f3e9a69.js";
+            window.path_to_searchindex_js = "../searchindex-6c9329de.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-aabd3487.js"></script>
@@ -204,7 +204,7 @@ while let Some(update) = updates.next().await {
 }
 <span class="boring">}</span></code></pre>
 <blockquote>
-<p><strong>Note:</strong> As of v0.4.5, <code>Update</code> is <code>#[non_exhaustive]</code>. Your match arms <strong>must</strong> include a <code>_ =&gt; {}</code> fallback or the code will fail to compile when new variants are added.</p>
+<p><strong>Note:</strong> As of v0.4.6, <code>Update</code> is <code>#[non_exhaustive]</code>. Your match arms <strong>must</strong> include a <code>_ =&gt; {}</code> fallback or the code will fail to compile when new variants are added.</p>
 </blockquote>
 <hr>
 <h2 id="newmessage"><a class="header" href="#newmessage">NewMessage</a></h2>
@@ -322,7 +322,7 @@ while let Some(update) = updates.next().await {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="chataction--new-in-v045"><a class="header" href="#chataction--new-in-v045">ChatAction — New in v0.4.5</a></h2>
+<h2 id="chataction--new-in-v046"><a class="header" href="#chataction--new-in-v046">ChatAction — New in v0.4.6</a></h2>
 <p>Fires when a user starts or stops typing, uploading, recording, etc. in a chat the account is in.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -349,7 +349,7 @@ while let Some(update) = updates.next().await {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="userstatus--new-in-v045"><a class="header" href="#userstatus--new-in-v045">UserStatus — New in v0.4.5</a></h2>
+<h2 id="userstatus--new-in-v046"><a class="header" href="#userstatus--new-in-v046">UserStatus — New in v0.4.6</a></h2>
 <p>Fires when a contact’s online/offline status changes. Only received for contacts or people in mutual chats (depending on their privacy settings).</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {

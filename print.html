@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5f3e9a69.js";
+            window.path_to_searchindex_js = "searchindex-6c9329de.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-aabd3487.js"></script>
@@ -284,7 +284,7 @@
 <hr>
 <h2 id="quick-install"><a class="header" href="#quick-install">Quick install</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.5"
+layer-client = "0.4.6"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p>Then head to <a href="#installation">Installation</a> for credentials setup, or jump straight to:</p>
@@ -293,7 +293,7 @@ tokio        = { version = "1", features = ["full"] }
 <li><a href="#quick-start--bot">Quick Start — Bot</a> — bot token login, commands, callbacks</li>
 </ul>
 <hr>
-<h2 id="whats-new-in-v045"><a class="header" href="#whats-new-in-v045">What’s new in v0.4.5</a></h2>
+<h2 id="whats-new-in-v046"><a class="header" href="#whats-new-in-v046">What’s new in v0.4.6</a></h2>
 <ul>
 <li><strong><code>StringSessionBackend</code></strong> — portable base64 sessions, no file required</li>
 <li><strong><code>LibSqlBackend</code></strong> — libsql/Turso remote database sessions</li>
@@ -313,7 +313,7 @@ tokio        = { version = "1", features = ["full"] }
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <h2 id="add-to-cargotoml"><a class="header" href="#add-to-cargotoml">Add to Cargo.toml</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.5"
+layer-client = "0.4.6"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p><code>layer-client</code> re-exports everything you need for both user clients and bots.</p>
@@ -354,11 +354,11 @@ let api_hash = "deadbeef..."; // ← never do this in a public repo
 <hr>
 <h2 id="optional-features"><a class="header" href="#optional-features">Optional features</a></h2>
 <h3 id="sqlite-session-storage"><a class="header" href="#sqlite-session-storage">SQLite session storage</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.6", features = ["sqlite-session"] }
 </code></pre>
 <p>Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.</p>
-<h3 id="libsql--turso-session-storage--new-in-v045"><a class="header" href="#libsql--turso-session-storage--new-in-v045">LibSQL / Turso session storage — New in v0.4.5</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["libsql-session"] }
+<h3 id="libsql--turso-session-storage--new-in-v046"><a class="header" href="#libsql--turso-session-storage--new-in-v046">LibSQL / Turso session storage — New in v0.4.6</a></h3>
+<pre><code class="language-toml">layer-client = { version = "0.4.6", features = ["libsql-session"] }
 </code></pre>
 <p>Backed by <a href="https://github.com/tursodatabase/libsql">libsql</a> — supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -374,7 +374,7 @@ let backend = LibSqlBackend::open_remote(
     "your-turso-auth-token",
 ).await?;
 <span class="boring">}</span></code></pre>
-<h3 id="string-session-portable-no-extra-deps--new-in-v045"><a class="header" href="#string-session-portable-no-extra-deps--new-in-v045">String session (portable, no extra deps) — New in v0.4.5</a></h3>
+<h3 id="string-session-portable-no-extra-deps--new-in-v046"><a class="header" href="#string-session-portable-no-extra-deps--new-in-v046">String session (portable, no extra deps) — New in v0.4.6</a></h3>
 <p>No feature flag needed. Encode a session as a base64 string and restore it anywhere:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -389,10 +389,10 @@ let (client, _shutdown) = Client::with_string_session(
 <p>See <a href="#session-backends">Session Backends</a> for the full guide.</p>
 <h3 id="html-entity-parsing"><a class="header" href="#html-entity-parsing">HTML entity parsing</a></h3>
 <pre><code class="language-toml"># Built-in hand-rolled HTML parser (no extra deps)
-layer-client = { version = "0.4.5", features = ["html"] }
+layer-client = { version = "0.4.6", features = ["html"] }
 
 # OR: spec-compliant html5ever tokenizer (overrides built-in)
-layer-client = { version = "0.4.5", features = ["html5ever"] }
+layer-client = { version = "0.4.6", features = ["html5ever"] }
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -407,7 +407,7 @@ layer-client = { version = "0.4.5", features = ["html5ever"] }
 </div>
 <h3 id="raw-type-system-features-layer-tl-types"><a class="header" href="#raw-type-system-features-layer-tl-types">Raw type system features (<code>layer-tl-types</code>)</a></h3>
 <p>If you use <code>layer-tl-types</code> directly for raw API access:</p>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.5", features = [
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.6", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)
@@ -969,7 +969,7 @@ let (client, _shutdown) = Client::builder()
 <p>Login is required on every run since nothing persists.</p>
 <hr>
 <h2 id="sqlite-robust-long-running-servers"><a class="header" href="#sqlite-robust-long-running-servers">SQLite (robust, long-running servers)</a></h2>
-<pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.6", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -980,7 +980,7 @@ let (client, _shutdown) = Client::builder()
 <span class="boring">}</span></code></pre>
 <p>SQLite is more resilient against crash-corruption than the binary format. Ideal for production bots.</p>
 <hr>
-<h2 id="string-session--new-in-v045"><a class="header" href="#string-session--new-in-v045">String session — New in v0.4.5</a></h2>
+<h2 id="string-session--new-in-v046"><a class="header" href="#string-session--new-in-v046">String session — New in v0.4.6</a></h2>
 <p>Encode the entire session as a portable base64 string. Store it in an env var, a DB column, or CI secrets:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1148,7 +1148,7 @@ let backend = Arc::new(StringSessionBackend::new(session_string));
 <hr>
 <h2 id="sqlitebackend--local-database"><a class="header" href="#sqlitebackend--local-database"><code>SqliteBackend</code> — local database</a></h2>
 <p>Requires feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.6", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1166,7 +1166,7 @@ let (client, _shutdown) = Client::builder()
 <hr>
 <h2 id="libsqlbackend--libsql--turso"><a class="header" href="#libsqlbackend--libsql--turso"><code>LibSqlBackend</code> — libsql / Turso</a></h2>
 <p>Requires feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["libsql-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.6", features = ["libsql-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2183,7 +2183,7 @@ while let Some(update) = updates.next().await {
 }
 <span class="boring">}</span></code></pre>
 <blockquote>
-<p><strong>Note:</strong> As of v0.4.5, <code>Update</code> is <code>#[non_exhaustive]</code>. Your match arms <strong>must</strong> include a <code>_ =&gt; {}</code> fallback or the code will fail to compile when new variants are added.</p>
+<p><strong>Note:</strong> As of v0.4.6, <code>Update</code> is <code>#[non_exhaustive]</code>. Your match arms <strong>must</strong> include a <code>_ =&gt; {}</code> fallback or the code will fail to compile when new variants are added.</p>
 </blockquote>
 <hr>
 <h2 id="newmessage"><a class="header" href="#newmessage">NewMessage</a></h2>
@@ -2301,7 +2301,7 @@ while let Some(update) = updates.next().await {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="chataction--new-in-v045"><a class="header" href="#chataction--new-in-v045">ChatAction — New in v0.4.5</a></h2>
+<h2 id="chataction--new-in-v046"><a class="header" href="#chataction--new-in-v046">ChatAction — New in v0.4.6</a></h2>
 <p>Fires when a user starts or stops typing, uploading, recording, etc. in a chat the account is in.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2328,7 +2328,7 @@ while let Some(update) = updates.next().await {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="userstatus--new-in-v045"><a class="header" href="#userstatus--new-in-v045">UserStatus — New in v0.4.5</a></h2>
+<h2 id="userstatus--new-in-v046"><a class="header" href="#userstatus--new-in-v046">UserStatus — New in v0.4.6</a></h2>
 <p>Fires when a contact’s online/offline status changes. Only received for contacts or people in mutual chats (depending on their privacy settings).</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2791,7 +2791,7 @@ Opens a TCP connection to Telegram, performs the full 3-step DH key exchange, an
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge">sync</span>
-<span class="api-card-sig">Client::with_string_session(session: &amp;str, api_id: i32, api_hash: &amp;str) → Result&lt;(Client, ShutdownToken), InvocationError&gt; <span class="api-badge-new">New 0.4.5</span></span>
+<span class="api-card-sig">Client::with_string_session(session: &amp;str, api_id: i32, api_hash: &amp;str) → Result&lt;(Client, ShutdownToken), InvocationError&gt; <span class="api-badge-new">New 0.4.6</span></span>
 </div>
 
 <div class="api-card-body">
@@ -2827,7 +2827,7 @@ Writes the current session (auth key + DC info + peer cache) to the backend. Cal
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge api-badge-async">async</span>
-<span class="api-card-sig">client.export_session_string() → Result&lt;String, InvocationError&gt; <span class="api-badge-new">New 0.4.5</span></span>
+<span class="api-card-sig">client.export_session_string() → Result&lt;String, InvocationError&gt; <span class="api-badge-new">New 0.4.6</span></span>
 </div>
 
 <div class="api-card-body">
@@ -2866,7 +2866,7 @@ Immediately closes the TCP connection and stops the reader task without waiting 
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge api-badge-async">async</span>
-<span class="api-card-sig">client.sync_update_state() <span class="api-badge-new">New 0.4.5</span></span>
+<span class="api-card-sig">client.sync_update_state() <span class="api-badge-new">New 0.4.6</span></span>
 </div>
 
 <div class="api-card-body">
@@ -3284,7 +3284,7 @@ Send a one-shot typing / uploading / recording indicator. Expires after ~5 secon
 <span class="api-card-sig">client.iter_participants(peer: Peer) → ParticipantIter</span>
 </div>
 
-<div class="api-card-body">Lazy async iterator that pages through all members, including beyond the 200-member limit. Fixed in v0.4.5 to paginate correctly for large channels.</div>
+<div class="api-card-body">Lazy async iterator that pages through all members, including beyond the 200-member limit. Fixed in v0.4.6 to paginate correctly for large channels.</div>
 
 </div>
 
@@ -3388,7 +3388,7 @@ Send a one-shot typing / uploading / recording indicator. Expires after ~5 secon
 <span class="api-card-sig">client.answer_inline_query(query_id: i64, results: Vec&lt;InputBotInlineResult&gt;, cache_time: i32, is_personal: bool, next_offset: Option&lt;&amp;str&gt;) → Result&lt;(), InvocationError&gt;</span>
 </div>
 
-<div class="api-card-body">Respond to an inline query with a list of results. <code>cache_time</code> in seconds. Empty result list now handled correctly (fixed in v0.4.5).</div>
+<div class="api-card-body">Respond to an inline query with a list of results. <code>cache_time</code> in seconds. Empty result list now handled correctly (fixed in v0.4.6).</div>
 
 </div>
 
@@ -5246,7 +5246,7 @@ _ =&gt; {}
 <span class="boring">}</span></code></pre>
 <h2 id="step-4--bump-version-and-publish"><a class="header" href="#step-4--bump-version-and-publish">Step 4 — Bump version and publish</a></h2>
 <pre><code class="language-bash"># In Cargo.toml workspace section
-version = "0.4.5"
+version = "0.4.6"
 </code></pre>
 <p>Then publish in dependency order (see <a href="#installation">Publishing</a>).</p>
 <h2 id="what-propagates-automatically"><a class="header" href="#what-propagates-automatically">What propagates automatically</a></h2>
@@ -5677,7 +5677,7 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 </thead>
 <tbody>
 <tr><td><code>sqlite-session</code></td><td>❌</td><td>SQLite-backed session storage via <code>rusqlite</code></td></tr>
-<tr><td><code>libsql-session</code></td><td>❌</td><td>libsql / Turso session storage — local or remote (<strong>New in v0.4.5</strong>)</td></tr>
+<tr><td><code>libsql-session</code></td><td>❌</td><td>libsql / Turso session storage — local or remote (<strong>New in v0.4.6</strong>)</td></tr>
 <tr><td><code>html</code></td><td>❌</td><td>Built-in hand-rolled HTML parser (<code>parse_html</code>, <code>generate_html</code>)</td></tr>
 <tr><td><code>html5ever</code></td><td>❌</td><td>Spec-compliant html5ever tokenizer — overrides the built-in <code>html</code> parser</td></tr>
 <tr><td><code>serde</code></td><td>❌</td><td><code>serde::Serialize</code> / <code>Deserialize</code> on <code>Config</code> and public structs</td></tr>
@@ -5698,19 +5698,19 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 <li><code>ClientBuilder</code> — fluent connection builder</li>
 </ul>
 <pre><code class="language-toml"># SQLite session only
-layer-client = { version = "0.4.5", features = ["sqlite-session"] }
+layer-client = { version = "0.4.6", features = ["sqlite-session"] }
 
-# LibSQL / Turso session (new in 0.4.5)
-layer-client = { version = "0.4.5", features = ["libsql-session"] }
+# LibSQL / Turso session (new in 0.4.6)
+layer-client = { version = "0.4.6", features = ["libsql-session"] }
 
 # HTML parsing (minimal, no extra deps)
-layer-client = { version = "0.4.5", features = ["html"] }
+layer-client = { version = "0.4.6", features = ["html"] }
 
 # HTML parsing (spec-compliant, adds html5ever dep)
-layer-client = { version = "0.4.5", features = ["html5ever"] }
+layer-client = { version = "0.4.6", features = ["html5ever"] }
 
 # Multiple features at once
-layer-client = { version = "0.4.5", features = ["sqlite-session", "html"] }
+layer-client = { version = "0.4.6", features = ["sqlite-session", "html"] }
 </code></pre>
 <hr>
 <h2 id="layer-tl-types-1"><a class="header" href="#layer-tl-types-1">layer-tl-types</a></h2>
@@ -5732,14 +5732,14 @@ layer-client = { version = "0.4.5", features = ["sqlite-session", "html"] }
 </table>
 </div>
 <h3 id="example-enable-serde"><a class="header" href="#example-enable-serde">Example: enable serde</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.5", features = ["tl-api", "impl-serde"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.6", features = ["tl-api", "impl-serde"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let json = serde_json::to_string(&amp;some_tl_type)?;
 <span class="boring">}</span></code></pre>
 <h3 id="example-name_for_id-debugging"><a class="header" href="#example-name_for_id-debugging">Example: name_for_id (debugging)</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.5", features = ["tl-api", "name-for-id"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.6", features = ["tl-api", "name-for-id"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -5750,13 +5750,13 @@ if let Some(name) = name_for_id(0x74ae4240) {
 }
 <span class="boring">}</span></code></pre>
 <h3 id="example-minimal-no-debug-no-conversions"><a class="header" href="#example-minimal-no-debug-no-conversions">Example: minimal (no Debug, no conversions)</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.5", default-features = false, features = ["tl-api"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.6", default-features = false, features = ["tl-api"] }
 </code></pre>
 <p>Reduces compile time when you don’t need convenience traits.</p>
 <hr>
 <h2 id="string-session--no-feature-flag-needed"><a class="header" href="#string-session--no-feature-flag-needed">String session — no feature flag needed</a></h2>
 <p><code>StringSessionBackend</code> and <code>export_session_string()</code> are available in the default build — no feature flag required:</p>
-<pre><code class="language-toml">layer-client = "0.4.5"   # already includes StringSessionBackend
+<pre><code class="language-toml">layer-client = "0.4.6"   # already includes StringSessionBackend
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
