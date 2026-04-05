@@ -21,7 +21,7 @@
 ## Table of Contents
 
 - [Installation](#-installation)
-- [What It Does](#-what-it-does)
+- [Feature Flags](#-feature-flags)
 - [Minimal Bot — 15 Lines](#-minimal-bot--15-lines)
 - [Connecting — ClientBuilder](#-connecting--clientbuilder)
 - [Authentication](#-authentication)
@@ -37,7 +37,8 @@
 - [Participants & Chat Management](#-participants--chat-management)
 - [Search](#-search)
 - [Dialogs & Iterators](#-dialogs--iterators)
-- [Peer Resolution](#-peer-resolution)
+- [Peer Types](#-peer-types)
+- [Peer Resolution & PeerRef](#-peer-resolution--peerref)
 - [Session Backends](#-session-backends)
 - [Transport & Networking](#-transport--networking)
 - [Feature Flags](#-feature-flags)
@@ -45,6 +46,7 @@
 - [Error Handling](#-error-handling)
 - [Raw API Escape Hatch](#-raw-api-escape-hatch)
 - [Shutdown](#-shutdown)
+- [Client Methods — Full Reference](#client-methods--full-reference)
 
 ---
 
@@ -53,48 +55,56 @@
 ```toml
 [dependencies]
 layer-client = "0.4.5"
-tokio = { version = "1", features = ["full"] }
+tokio        = { version = "1", features = ["full"] }
 ```
 
----
-
-## ✨ What It Does
-
-`layer-client` wraps the raw MTProto machinery into a clean, ergonomic async API. You don't need to know anything about TL schemas, DH handshakes, or message framing — just connect and go.
-
-- 🔐 **User auth** — phone code + optional 2FA (SRP)
-- 🤖 **Bot auth** — bot token login
-- 💬 **Messaging** — send, edit, delete, forward, pin, schedule
-- 📎 **Media** — upload files with automatic chunking, download with streaming
-- 📡 **Update stream** — typed async events (`NewMessage`, `CallbackQuery`, `InlineQuery`, etc.)
-- ⌨️ **Keyboards** — fluent inline and reply keyboard builders
-- 🔁 **FLOOD_WAIT retries** — automatic with configurable policy
-- 🌐 **DC migration** — handled transparently
-- 💾 **Session persistence** — five backends (file, memory, string, SQLite, libSQL)
-- 🧦 **SOCKS5 proxy** — route all connections through a proxy
-- 🔧 **Raw API access** — `client.invoke(req)` for any TL function
+Get your `api_id` and `api_hash` from **[my.telegram.org](https://my.telegram.org)**.
 
 ---
 
-## 🚀 Minimal Bot — 15 Lines
+## 🚩 Feature Flags
+
+```toml
+# SQLite session persistence
+layer-client = { version = "0.4.5", features = ["sqlite-session"] }
+
+# libsql / Turso session (local or remote)
+layer-client = { version = "0.4.5", features = ["libsql-session"] }
+
+# Hand-rolled HTML parser
+layer-client = { version = "0.4.5", features = ["html"] }
+
+# Spec-compliant html5ever parser (replaces built-in)
+layer-client = { version = "0.4.5", features = ["html5ever"] }
+```
+
+`StringSessionBackend`, `InMemoryBackend`, and `BinaryFileBackend` are always available — no flag needed.
+
+---
+
+## ⚡ Minimal Bot — 15 Lines
 
 ```rust
 use layer_client::{Client, update::Update};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let (client, _sd) = Client::builder()
-        .api_id(12345)
-        .api_hash("abc123")
+    let (client, _shutdown) = Client::builder()
+        .api_id(std::env::var("API_ID")?.parse()?)
+        .api_hash(std::env::var("API_HASH")?)
         .session("bot.session")
-        .connect().await?;
+        .connect()
+        .await?;
 
-    client.bot_sign_in("1234567890:ABCdef...").await?;
+    client.bot_sign_in(&std::env::var("BOT_TOKEN")?).await?;
+    client.save_session().await?;
 
-    let mut updates = client.stream_updates();
-    while let Some(Update::NewMessage(msg)) = updates.next().await {
-        if let Some(text) = msg.text() {
-            msg.reply(&client, &format!("Echo: {text}")).await?;
+    let mut stream = client.stream_updates();
+    while let Some(Update::NewMessage(msg)) = stream.next().await {
+        if !msg.outgoing() {
+            if let Some(peer) = msg.peer_id() {
+                client.send_message_to_peer(peer.clone(), "Echo!").await?;
+            }
         }
     }
     Ok(())
@@ -103,99 +113,98 @@ async fn main() -> anyhow::Result<()> {
 
 ---
 
-## 🔌 Connecting — ClientBuilder
-
-The preferred way to connect is through the fluent `ClientBuilder`:
+## 🔨 Connecting — ClientBuilder
 
 ```rust
 use layer_client::Client;
 
-let (client, shutdown) = Client::builder()
-    .api_id(12345)                      // from https://my.telegram.org
-    .api_hash("abc123")
-    .session("my.session")              // file-backed session
-    .catch_up(true)                     // replay missed updates on reconnect
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .session("my.session")     // BinaryFileBackend
+    .catch_up(true)            // replay missed updates on reconnect
     .connect()
     .await?;
 ```
 
-Other session options:
+### `ClientBuilder` methods
 
-```rust
-// In-memory session (lost on restart)
-.in_memory()
-
-// Portable base64 string session (for cloud deployments)
-.session_string(std::env::var("SESSION").unwrap_or_default())
-```
-
-You can also use the lower-level `Client::connect(Config { ... })` API directly if you prefer explicit struct construction.
+| Method | Description |
+|---|---|
+| `.api_id(i32)` | Telegram API ID (required) |
+| `.api_hash(str)` | Telegram API hash (required) |
+| `.session(path)` | Binary file session at `path` |
+| `.session_string(s)` | Portable base64 string session |
+| `.in_memory()` | Non-persistent in-memory session (tests) |
+| `.session_backend(Arc<dyn SessionBackend>)` | Inject a custom backend |
+| `.catch_up(bool)` | Replay missed updates on connect (default: false) |
+| `.dc_addr(str)` | Override first DC address |
+| `.socks5(Socks5Config)` | Route all connections through a SOCKS5 proxy |
+| `.allow_ipv6(bool)` | Allow IPv6 DC addresses (default: false) |
+| `.transport(TransportKind)` | MTProto transport (default: Abridged) |
+| `.retry_policy(Arc<dyn RetryPolicy>)` | Override flood-wait retry policy |
+| `.build()` | Build `Config` without connecting |
+| `.connect()` | Build and connect — returns `(Client, ShutdownToken)` |
 
 ---
 
-## 🔐 Authentication
+## 🔑 Authentication
 
-### User Login
+### Bot login
+
+```rust
+if !client.is_authorized().await? {
+    client.bot_sign_in("1234567890:ABCdef...").await?;
+    client.save_session().await?;
+}
+```
+
+### User login (phone + code + optional 2FA)
 
 ```rust
 use layer_client::SignInError;
 
 if !client.is_authorized().await? {
-    let token = client.request_login_code("+1234567890").await?;
+    let phone = "+1234567890";
+    let token = client.request_login_code(phone).await?;
 
-    // prompt user for the code they received
-    let code = read_line("Enter code: ");
+    print!("Enter code: ");
+    let code = read_line();
 
     match client.sign_in(&token, &code).await {
-        Ok(name) => println!("✅ Signed in as {name}"),
-        Err(SignInError::PasswordRequired(pw_token)) => {
-            let hint = pw_token.hint().unwrap_or("(no hint)");
-            println!("2FA required — hint: {hint}");
-            let password = read_line("Enter password: ");
-            client.check_password(pw_token, &password).await?;
+        Ok(name) => println!("Welcome, {name}!"),
+        Err(SignInError::PasswordRequired(t)) => {
+            client.check_password(*t, "my_2fa_password").await?;
         }
         Err(e) => return Err(e.into()),
     }
-
     client.save_session().await?;
 }
 ```
 
-### Bot Login
+### Sign out
 
 ```rust
-client.bot_sign_in("1234567890:ABCdef...").await?;
-client.save_session().await?;
-```
-
-### Other Methods
-
-```rust
-// Get the currently logged-in user
-let me = client.get_me().await?;
-println!("Logged in as: {} (id={})", me.first_name.unwrap_or_default(), me.id);
-
-// Sign out (invalidates the server-side session)
 client.sign_out().await?;
 ```
 
 ---
 
-## 📦 String Sessions — Portable Auth
-
-A string session encodes your auth key and DC info as a base64 string — useful for deploying bots to servers or cloud functions without shipping a session file.
+## 🔑 String Sessions — Portable Auth
 
 ```rust
-// Export the session to a string
-let session_str = client.export_session_string().await?;
-println!("SESSION={session_str}");
+// Export — works from any running client
+let session_string = client.export_session_string().await?;
+std::env::set_var("TG_SESSION", &session_string);
 
-// Later, restore it:
-let (client, _sd) = Client::builder()
+// Restore — no phone/code flow needed
+let session = std::env::var("TG_SESSION").unwrap_or_default();
+let (client, _shutdown) = Client::builder()
     .api_id(12345)
-    .api_hash("abc123")
-    .session_string(std::env::var("SESSION").unwrap())
-    .connect().await?;
+    .api_hash("your_api_hash")
+    .session_string(session)
+    .connect()
+    .await?;
 ```
 
 ---
@@ -204,57 +213,38 @@ let (client, _sd) = Client::builder()
 
 ```rust
 let mut stream = client.stream_updates();
-
 while let Some(update) = stream.next().await {
     match update {
-        Update::NewMessage(msg)      => { /* new incoming message */ }
-        Update::MessageEdited(msg)   => { /* message was edited */   }
-        Update::MessageDeleted(del)  => { /* messages deleted */     }
-        Update::CallbackQuery(cb)    => { /* inline button pressed */ }
-        Update::InlineQuery(iq)      => { /* @bot inline query */     }
-        Update::InlineSend(is)       => { /* inline result chosen */  }
-        Update::ChatAction(ca)       => { /* user joined/left/etc */  }
-        Update::UserStatus(us)       => { /* online/offline status */ }
-        Update::Raw(raw)             => { /* unhandled constructor */ }
-        _ => {}
+        Update::NewMessage(msg)    => { /* new message */ }
+        Update::MessageEdited(msg) => { /* edited message */ }
+        Update::MessageDeleted(d)  => { /* deleted messages */ }
+        Update::CallbackQuery(cb)  => { /* inline button pressed */ }
+        Update::InlineQuery(iq)    => { /* @bot inline mode */ }
+        Update::InlineSend(is)     => { /* user selected inline result */ }
+        Update::UserTyping(a)      => { /* typing / uploading */ }
+        Update::UserStatus(s)      => { /* online/offline status */ }
+        Update::Raw(raw)           => { /* unmapped TL update */ }
+        _ => {}  // always add a fallback — Update is #[non_exhaustive]
     }
 }
 ```
 
-### IncomingMessage API
+### `IncomingMessage` accessors
 
 ```rust
-msg.id()               // → i32
-msg.text()             // → Option<&str>
-msg.markdown_text()    // → Option<String>   (text + entities as Markdown)
-msg.html_text()        // → Option<String>   (text + entities as HTML)
-msg.date()             // → i32              (Unix timestamp)
-msg.peer_id()          // → Option<&Peer>    (the chat this belongs to)
-msg.sender_id()        // → Option<&Peer>    (None for anonymous posts)
-msg.outgoing()         // → bool
-msg.via_bot_id()       // → Option<i64>
-msg.reply_to_msg_id()  // → Option<i32>
-
-// Reply with text
-msg.reply(&client, "text").await?;
-
-// Reply with an InputMessage builder
-msg.reply_ex(&client, InputMessage::text("bold").entities(vec![...]))await?;
-```
-
-### Spawning per-update tasks
-
-```rust
-use std::sync::Arc;
-let client = Arc::new(client);
-
-while let Some(Update::NewMessage(msg)) = stream.next().await {
-    let c = Arc::clone(&client);
-    tokio::spawn(async move {
-        if let Err(e) = handle(&c, msg).await {
-            eprintln!("handler error: {e}");
-        }
-    });
+Update::NewMessage(msg) => {
+    msg.id()        // i32
+    msg.text()      // Option<&str>
+    msg.peer_id()   // Option<&tl::enums::Peer>
+    msg.sender_id() // Option<&tl::enums::Peer>
+    msg.outgoing()  // bool
+    msg.date()      // i32 — Unix timestamp
+    msg.edit_date() // Option<i32>
+    msg.mentioned() // bool
+    msg.silent()    // bool
+    msg.pinned()    // bool
+    msg.post()      // bool — channel post
+    msg.raw         // tl::enums::Message — full TL object
 }
 ```
 
@@ -263,293 +253,251 @@ while let Some(Update::NewMessage(msg)) = stream.next().await {
 ## 💬 Messaging
 
 ```rust
-// Send by username, phone, "me", or numeric ID
+// Any peer format works — PeerRef accepts &str, i64, tl::enums::Peer
 client.send_message("@username", "Hello!").await?;
-client.send_message("me", "Saved message!").await?;
-client.send_to_self("Quick note").await?;
+client.send_message("me", "Note to self").await?;
+client.send_to_self("Reminder 📝").await?;
 
-// Send to a resolved peer directly
-client.send_message_to_peer(peer.clone(), "text").await?;
+// From an incoming message
+if let Some(peer) = msg.peer_id() {
+    client.send_message_to_peer(peer.clone(), "Reply!").await?;
+}
 
-// Send with full InputMessage options (see next section)
-client.send_message_to_peer_ex(peer, input_msg).await?;
+// Edit
+client.edit_message(peer.clone(), msg_id, "Updated text").await?;
 
-// Edit a message
-client.edit_message(peer, msg_id, "new text").await?;
+// Forward
+client.forward_messages(from_peer.clone(), to_peer.clone(), &[id1, id2]).await?;
 
-// Edit an inline message (for inline bot results)
-client.edit_inline_message(inline_msg_id, new_input_message).await?;
-
-// Forward messages
-client.forward_messages(from_peer, vec![msg_id1, msg_id2], to_peer).await?;
-
-// Delete messages
-client.delete_messages(peer, vec![123, 456], /*revoke=*/true).await?;
+// Delete
+client.delete_messages(peer.clone(), &[id1, id2]).await?;
 
 // Pin / unpin
-client.pin_message(peer, msg_id, /*notify=*/false, /*both_sides=*/false).await?;
-client.unpin_message(peer, msg_id).await?;
-client.unpin_all_messages(peer).await?;
+client.pin_message(peer.clone(), msg_id, true).await?;   // notify = true
+client.unpin_message(peer.clone(), msg_id).await?;
+client.unpin_all_messages(peer.clone()).await?;
 
-// Fetch message history
-let msgs = client.get_messages(peer, /*limit=*/50, /*offset_id=*/0).await?;
+// Get pinned message
+let pinned = client.get_pinned_message(peer.clone()).await?;
 
-// Fetch specific messages by ID
-let msgs = client.get_messages_by_id(peer, &[101, 202, 303]).await?;
-
-// Fetch pinned message
-let pinned = client.get_pinned_message(peer).await?;
+// Get reply-to message
+let replied_to = client.get_reply_to_message(peer.clone(), msg_id).await?;
 
 // Scheduled messages
-let scheduled = client.get_scheduled_messages(peer).await?;
-client.delete_scheduled_messages(peer, &[msg_id]).await?;
-
-// Mark as read
-client.mark_as_read(peer).await?;
-
-// Clear unread mentions
-client.clear_mentions(peer).await?;
+let scheduled = client.get_scheduled_messages(peer.clone()).await?;
+client.delete_scheduled_messages(peer.clone(), &[sched_id]).await?;
 ```
 
 ---
 
 ## 📝 InputMessage Builder
 
-`InputMessage` is the fluent builder for composing rich outgoing messages:
-
 ```rust
-use layer_client::InputMessage;
+use layer_client::{InputMessage, parsers::parse_markdown};
+use layer_client::keyboard::{Button, InlineKeyboard};
 
-let msg = InputMessage::text("Hello **world**!")
-    .reply_to(Some(orig_msg_id))
-    .silent(true)
-    .no_webpage(true)
-    .schedule_date(Some(unix_ts))          // schedule for later
-    .schedule_once_online()                // send when recipient comes online
-    .keyboard(inline_kb.into_reply_markup())
-    .entities(parsed_entities)
-    .copy_media(media_input);              // attach media from another message
+let (text, entities) = parse_markdown("**Bold** and `code`");
 
-client.send_message_to_peer_ex(peer, msg).await?;
+let kb = InlineKeyboard::new()
+    .row([
+        Button::callback("✅ Yes", b"confirm:yes"),
+        Button::callback("❌ No",  b"confirm:no"),
+    ])
+    .row([Button::url("📖 Docs", "https://docs.rs/layer-client")]);
+
+client
+    .send_message_to_peer_ex(
+        peer.clone(),
+        &InputMessage::text(text)
+            .entities(entities)
+            .reply_to(Some(msg_id))
+            .silent(true)
+            .no_webpage(true)
+            .keyboard(kb),
+    )
+    .await?;
 ```
+
+### `InputMessage` builder methods
+
+| Method | Description |
+|---|---|
+| `InputMessage::text(str)` | Create with text |
+| `.set_text(str)` | Change the text |
+| `.reply_to(Option<i32>)` | Reply to message ID |
+| `.silent(bool)` | No notification sound |
+| `.background(bool)` | Send in background |
+| `.clear_draft(bool)` | Clear the draft |
+| `.no_webpage(bool)` | Suppress link preview |
+| `.invert_media(bool)` | Show media above caption (Telegram ≥ 10.3) |
+| `.schedule_once_online()` | Send when recipient goes online |
+| `.schedule_date(Option<i32>)` | Schedule for Unix timestamp |
+| `.entities(Vec<MessageEntity>)` | Formatted text entities |
+| `.reply_markup(ReplyMarkup)` | Raw TL reply markup |
+| `.keyboard(impl Into<ReplyMarkup>)` | `InlineKeyboard` or `ReplyKeyboard` |
+| `.copy_media(InputMedia)` | Attach media from an existing message |
+| `.clear_media()` | Remove attached media |
 
 ---
 
 ## ⌨️ Keyboards
 
-### Inline Keyboards
+### Inline keyboard (triggers `CallbackQuery`)
 
 ```rust
-use layer_client::keyboard::{InlineKeyboard, Button};
+use layer_client::keyboard::{Button, InlineKeyboard};
 
 let kb = InlineKeyboard::new()
     .row([
-        Button::callback("✅ Yes", b"yes"),
-        Button::callback("❌ No",  b"no"),
+        Button::callback("👍 Like",  b"vote:like"),
+        Button::callback("👎 Dislike", b"vote:dislike"),
     ])
-    .row([Button::url("📖 Docs", "https://docs.rs/layer-client")]);
+    .row([
+        Button::url("🔗 Docs", "https://docs.rs/layer-client"),
+        Button::copy_text("📋 Copy token", "abc123"),
+    ]);
 
-let msg = InputMessage::text("Choose:").keyboard(kb);
+client
+    .send_message_to_peer_ex(peer.clone(), &InputMessage::text("Vote!").keyboard(kb))
+    .await?;
 ```
 
-### Reply Keyboards
+**All button types:** `callback`, `url`, `url_auth`, `switch_inline`, `switch_elsewhere`,
+`webview`, `simple_webview`, `request_phone`, `request_geo`, `request_poll`, `request_quiz`,
+`game`, `buy`, `copy_text`, `text` (reply keyboards only).
+
+### Reply keyboard
 
 ```rust
-use layer_client::keyboard::ReplyKeyboard;
+use layer_client::keyboard::{Button, ReplyKeyboard};
 
 let kb = ReplyKeyboard::new()
-    .row(["Option A", "Option B"])
-    .row(["Option C"]);
+    .row([Button::text("📸 Photo"), Button::text("📄 Document")])
+    .row([Button::text("❌ Cancel")])
+    .resize()
+    .single_use();
 
-let msg = InputMessage::text("Pick one:").keyboard(kb);
+client
+    .send_message_to_peer_ex(peer.clone(), &InputMessage::text("Choose:").keyboard(kb))
+    .await?;
 ```
 
-### Answering Callback Queries
+### Answer callback queries
 
 ```rust
-// Simple toast notification
-client.answer_callback_query(cb.query_id, Some("Done!"), /*alert=*/false).await?;
-
-// Alert popup
-client.answer_callback_query(cb.query_id, Some("Warning!"), /*alert=*/true).await?;
-```
-
-### Answering Inline Queries
-
-```rust
-use layer_tl_types as tl;
-
-let results = vec![
-    tl::enums::InputBotInlineResult::Result(tl::types::InputBotInlineResult { ... }),
-];
-
-client.answer_inline_query(
-    iq.query_id,
-    results,
-    /*cache_time=*/ 300,
-    /*is_personal=*/ false,
-    /*next_offset=*/ None,
-).await?;
+Update::CallbackQuery(cb) => {
+    client.answer_callback_query(cb.query_id, Some("✅ Done!"), false).await?;
+    // Pass alert: true for a popup alert
+}
 ```
 
 ---
 
 ## 📎 Media Upload & Download
 
-### Upload
-
 ```rust
-// Upload a file from disk (auto-chooses sequential or concurrent based on size)
-let uploaded = client.upload_file("photo.jpg").await?;
+// Upload from bytes
+let uploaded = client.upload_file("photo.jpg", &bytes).await?;
 
-// Concurrent upload (parallel worker pool — faster for large files)
-let uploaded = client.upload_file_concurrent("video.mp4", /*workers=*/4).await?;
+// Upload — parallel chunks (faster for large files)
+let uploaded = client.upload_file_concurrent("video.mp4", &bytes).await?;
 
-// Upload from an AsyncRead stream
-let uploaded = client.upload_stream(&mut reader, "name.bin", "application/octet-stream").await?;
+// Upload from async reader
+use tokio::fs::File;
+let f = File::open("document.pdf").await?;
+let uploaded = client.upload_stream("document.pdf", f).await?;
 
-// Send as photo
-let media = uploaded.as_photo_media();
-let msg = InputMessage::text("Caption").copy_media(media);
-client.send_message_to_peer_ex(peer, msg).await?;
+// Send file (false = as document, true = as photo/media)
+client.send_file(peer.clone(), uploaded, false).await?;
 
-// Send as document (forces download button in Telegram)
-let media = uploaded.as_document_media();
-```
+// Send album
+client.send_album(peer.clone(), vec![uploaded_a, uploaded_b]).await?;
 
-### Albums (Multi-media)
-
-```rust
-use layer_client::media::AlbumItem;
-
-let items = vec![
-    AlbumItem::new(photo1_media).caption("First"),
-    AlbumItem::new(photo2_media).caption("Second"),
-];
-client.send_album(peer, items).await?;
-```
-
-### Download
-
-```rust
-// Download to a file
-client.download_media_to_file(&msg_media, "output.jpg").await?;
-
-// Download to bytes in memory
+// Download to bytes
 let bytes = client.download_media(&msg_media).await?;
 
-// Concurrent download (multi-worker, faster for large files)
-let bytes = client.download_media_concurrent(&msg_media, /*workers=*/4).await?;
+// Download to file
+client.download_media_to_file(&msg_media, "output.jpg").await?;
 
-// Streaming iterator (process chunks as they arrive)
-let mut iter = client.iter_download(&msg_media);
-while let Some(chunk) = iter.next(&client).await? {
-    file.write_all(&chunk).await?;
-}
-```
-
-### Typed Media Wrappers
-
-```rust
-use layer_client::media::{Photo, Document, Sticker, Downloadable};
-
-// Extract from a message
-if let Some(photo) = Photo::from_media(msg.raw_media()) {
-    println!("photo id={}", photo.id());
-    let bytes = client.download_media(&photo).await?;
-}
-
-if let Some(doc) = Document::from_media(msg.raw_media()) {
-    println!("file: {:?}, {} bytes", doc.file_name(), doc.size());
-    let bytes = client.download_media(&doc).await?;
-}
-
-if let Some(sticker) = Sticker::from_document(doc) {
-    println!("emoji: {:?}", sticker.emoji());
-}
+// Use the Downloadable trait (Photo, Document, Sticker)
+use layer_client::media::{Photo, Downloadable};
+let photo = Photo::from_media(&msg.raw)?;
+let bytes = client.download(&photo).await?;
 ```
 
 ---
 
-## ✏️ Text Formatting
-
-### Markdown
+## 🖊️ Text Formatting
 
 ```rust
-use layer_client::parsers::parse_markdown;
+use layer_client::parsers::{parse_markdown, generate_markdown};
 
-let (text, entities) = parse_markdown("Hello **world** and `code`!")?;
-let msg = InputMessage::text(text).entities(entities);
+let (text, entities) = parse_markdown(
+    "**Bold**, `code`, _italic_, [link](https://example.com)"
+);
+client
+    .send_message_to_peer_ex(peer.clone(), &InputMessage::text(text).entities(entities))
+    .await?;
+
+let md = generate_markdown(&plain_text, &entities);
 ```
 
-### HTML
+With the `html` feature:
 
 ```rust
-// Built-in HTML parser (always available, no feature flag)
-use layer_client::parsers::parse_html;
+use layer_client::parsers::{parse_html, generate_html};
 
-let (text, entities) = parse_html("<b>Bold</b> and <code>code</code>")?;
-```
-
-With the `html5ever` feature, HTML parsing is backed by the spec-compliant `html5ever` tokenizer (handles malformed markup):
-
-```toml
-layer-client = { version = "0.4.5", features = ["html5ever"] }
-```
-
-### Formatting of incoming messages
-
-```rust
-// Reconstruct the Markdown from a received message's entities
-let md   = msg.markdown_text();  // e.g. Some("Hello **world**!")
-let html = msg.html_text();      // e.g. Some("Hello <b>world</b>!")
+let (text, entities) = parse_html("<b>Bold</b> and <code>mono</code>");
+let html_str = generate_html(&plain_text, &entities);
 ```
 
 ---
 
-## 💜 Reactions
+## 💥 Reactions
 
 ```rust
-// Send a reaction
-client.send_reaction(peer, msg_id, "👍").await?;
+use layer_client::reactions::InputReactions;
 
-// Remove a reaction (empty string)
-client.send_reaction(peer, msg_id, "").await?;
+// Simple emoji (&str converts automatically)
+client.send_reaction(peer.clone(), msg_id, "👍").await?;
+
+// Custom (premium) emoji
+client.send_reaction(peer.clone(), msg_id, InputReactions::custom_emoji(doc_id)).await?;
+
+// Big animated reaction
+client.send_reaction(peer.clone(), msg_id, InputReactions::emoticon("🔥").big()).await?;
+
+// Remove all reactions
+client.send_reaction(peer.clone(), msg_id, InputReactions::remove()).await?;
 ```
 
 ---
 
 ## ⌛ Typing Guard — RAII
 
-`TypingGuard` automatically manages the typing indicator — sends it immediately, keeps it alive by re-sending every ~4 seconds, and cancels it on drop.
+`TypingGuard` keeps a typing/uploading indicator alive and cancels it on drop:
 
 ```rust
+// Convenience methods on Client
+let _typing = client.typing(peer.clone()).await?;
+let _typing = client.uploading_document(peer.clone()).await?;
+let _typing = client.recording_video(peer.clone()).await?;
+let _typing = client.typing_in_topic(peer.clone(), topic_id).await?;
+
+// Any SendMessageAction via TypingGuard::start
 use layer_client::TypingGuard;
-use layer_tl_types as tl;
+let _guard = TypingGuard::start(
+    client, peer.clone(),
+    tl::enums::SendMessageAction::SendMessageRecordAudioAction,
+).await?;
 
-async fn handle(client: &Client, peer: tl::enums::Peer) -> anyhow::Result<()> {
-    // Typing indicator is live while `_guard` is in scope
-    let _guard = TypingGuard::start(
-        client,
-        peer.clone(),
-        tl::enums::SendMessageAction::SendMessageTypingAction,
-    ).await?;
+// Forum topic with custom repeat delay
+let _guard = TypingGuard::start_ex(
+    client, peer, action, Some(topic_id), Duration::from_secs(4)
+).await?;
 
-    let result = do_expensive_work().await;  // indicator stays alive here
-
-    // `_guard` drops here → indicator is cancelled immediately
-    Ok(result)
-}
-```
-
-For explicit chat actions without RAII:
-
-```rust
-use layer_tl_types::enums::SendMessageAction;
-
-client.send_chat_action(peer, SendMessageAction::SendMessageUploadDocumentAction(
-    tl::types::SendMessageUploadDocumentAction { progress: 0 }
-)).await?;
+// Cancel immediately without waiting for drop
+guard.cancel();
 ```
 
 ---
@@ -557,69 +505,73 @@ client.send_chat_action(peer, SendMessageAction::SendMessageUploadDocumentAction
 ## 👥 Participants & Chat Management
 
 ```rust
-// Fetch participants (paginated internally)
-let participants = client.get_participants(peer, /*limit=*/100).await?;
+use layer_client::participants::{AdminRightsBuilder, BannedRightsBuilder};
 
-// Search participants by name
-let matches = client.search_peer("alice").await?;
+// Fetch members
+let members = client.get_participants(peer.clone(), 100).await?;
 
-// Kick (remove from group)
-client.kick_participant(peer, user_peer).await?;
+// Lazy iterator
+let mut iter = client.iter_participants(peer.clone());
+while let Some(p) = iter.next(&client).await? {
+    println!("{}", p.user.first_name.as_deref().unwrap_or("?"));
+}
+
+// Kick (basic group)
+client.kick_participant(peer.clone(), user_id).await?;
 
 // Ban with granular rights
-use layer_client::BanRights;
-let rights = BanRights::default()
-    .send_messages(false)
-    .send_media(false);
-client.ban_participant(peer, user_peer, rights).await?;
+client
+    .ban_participant(peer.clone(), user_id,
+        BannedRightsBuilder::new().send_media(true).send_stickers(true))
+    .await?;
 
-// Promote to admin
-use layer_client::AdminRightsBuilder;
-client.promote_participant(
-    peer,
-    user_peer,
-    AdminRightsBuilder::new()
-        .can_post_messages(true)
-        .can_delete_messages(true),
-).await?;
+// Permanent full ban
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
+    .await?;
+
+// Promote admin
+client
+    .promote_participant(peer.clone(), user_id,
+        AdminRightsBuilder::new()
+            .delete_messages(true)
+            .ban_users(true)
+            .rank("Moderator"))
+    .await?;
+
+// Get permissions
+let perms = client.get_permissions(peer.clone(), user_id).await?;
 
 // Profile photos
-let photos = client.get_profile_photos(user_peer).await?;
-
-// Effective permissions
-let perms = client.get_permissions(peer, user_peer).await?;
-
-// Join a chat / channel
-client.join_chat(peer).await?;
-
-// Accept an invite link
-client.accept_invite_link("https://t.me/+XXXXXXXX").await?;
+let mut iter = client.iter_profile_photos(user_id);
+while let Some(photo) = iter.next(&client).await? {
+    let bytes = client.download(&photo).await?;
+}
 ```
 
 ---
 
 ## 🔍 Search
 
-### In-chat search
-
 ```rust
+use layer_tl_types::enums::MessagesFilter;
+
+// In-chat search
 let results = client
-    .search(peer, "hello world")
+    .search(peer.clone(), "hello world")
     .min_date(1_700_000_000)
-    .max_date(1_720_000_000)
-    .filter(tl::enums::MessagesFilter::InputMessagesFilterPhotos)
+    .filter(MessagesFilter::InputMessagesFilterPhotos)
     .limit(50)
     .fetch(&client)
     .await?;
-```
 
-### Global search
+// Only messages sent by me
+let mine = client.search(peer.clone(), "").sent_by_self().fetch(&client).await?;
 
-```rust
-let results = client
+// Global search (all chats)
+let global = client
     .search_global_builder("rust async")
     .broadcasts_only(true)
-    .min_date(1_700_000_000)
     .limit(30)
     .fetch(&client)
     .await?;
@@ -627,169 +579,136 @@ let results = client
 
 ---
 
-## 📋 Dialogs & Iterators
+## 📜 Dialogs & Iterators
 
 ```rust
-// Fetch the first N dialogs (snapshot)
-let dialogs = client.get_dialogs(100).await?;
+// Fetch first N dialogs
+let dialogs = client.get_dialogs(50).await?;
+for d in &dialogs {
+    println!("{} — {} unread", d.title(), d.unread_count());
+}
 
-// Streaming dialog iterator (all dialogs, paginated automatically)
+// Lazy dialog iterator
 let mut iter = client.iter_dialogs();
 while let Some(dialog) = iter.next(&client).await? {
-    println!("{}: {} unread", dialog.title(), dialog.unread_count());
+    println!("{}", dialog.title());
 }
 
-// Streaming message iterator for a chat
-let mut iter = client.iter_messages(peer);
-iter.limit(200);
+// Lazy message iterator for a peer
+let mut iter = client.iter_messages(peer.clone());
 while let Some(msg) = iter.next(&client).await? {
-    println!("[{}] {}", msg.id(), msg.text().unwrap_or("(media)"));
+    println!("{}", msg.message);
 }
 
-// Delete a dialog
-client.delete_dialog(peer).await?;
+// Fetch by ID
+let messages = client.get_messages_by_id(peer.clone(), &[100, 101, 102]).await?;
+let latest   = client.get_messages(peer.clone(), 20).await?;
+
+// Read / clear
+client.mark_as_read(peer.clone()).await?;
+client.clear_mentions(peer.clone()).await?;
+client.delete_dialog(peer.clone()).await?;
 ```
 
 ---
 
-## 🔎 Peer Resolution
+## 🧑 Peer Types
+
+High-level wrappers over raw TL types — no constant pattern-matching:
 
 ```rust
-// From a username
-let peer = client.resolve_peer("@username").await?;
+use layer_client::types::{User, Group, Channel, ChannelKind, Chat};
 
-// From "me" (yourself)
-let peer = client.resolve_peer("me").await?;
+// User
+if let Some(user) = User::from_raw(raw) {
+    println!("{}", user.full_name());   // "First Last"
+    println!("{:?}", user.username()); // Some("handle")
+    println!("bot: {}", user.bot());
+    println!("premium: {}", user.premium());
+    let peer = user.as_peer();
+    let input = user.as_input_peer();
+}
 
-// From a numeric ID string
-let peer = client.resolve_peer("123456789").await?;
+// Channel / supergroup
+if let Some(ch) = Channel::from_raw(raw) {
+    match ch.kind() {
+        ChannelKind::Broadcast => println!("Channel"),
+        ChannelKind::Megagroup => println!("Supergroup"),
+        ChannelKind::Gigagroup => println!("Broadcast group"),
+    }
+    let input_ch = ch.as_input_channel();
+}
 
-// Resolve a username directly (returns the full User or Chat)
-let entity = client.resolve_username("username").await?;
+// Unified Chat (Group or Channel)
+if let Some(chat) = Chat::from_raw(raw) {
+    println!("{} — {}", chat.id(), chat.title());
+}
+```
 
-// Resolve to InputPeer (needed for raw API calls)
-let input_peer = client.resolve_to_input_peer(peer).await?;
+---
+
+## 🔗 Peer Resolution & PeerRef
+
+Every method that takes a peer accepts `impl Into<PeerRef>`:
+
+```rust
+// All of these work anywhere a peer is expected:
+client.send_message_to_peer("@username", "hi").await?;
+client.send_message_to_peer("me",        "hi").await?;
+client.send_message_to_peer(12345678_i64,"hi").await?;
+client.send_message_to_peer(-1001234567890_i64, "hi").await?; // Bot-API channel ID
+client.send_message_to_peer(tl_peer_value,    "hi").await?;  // already resolved
+
+// Explicit resolution
+let peer = client.resolve_peer("@telegram").await?;
+let peer = client.resolve_peer("+1234567890").await?;
+let peer = client.resolve_username("telegram").await?;
 ```
 
 ---
 
 ## 💾 Session Backends
 
-| Backend | Type | Notes |
-|---|---|---|
-| `BinaryFileBackend` | File | Default — fast binary format, survives restarts |
-| `InMemoryBackend` | Memory | Ephemeral — lost on restart; useful for tests |
-| `StringSessionBackend` | String | Portable base64; inject via env var |
-| `SqliteBackend` | SQLite | Requires `sqlite-session` feature |
-| `LibSqlBackend` | libSQL | Requires `libsql-session` feature; works with Turso |
-
 ```rust
-use layer_client::session_backend::{SqliteBackend, InMemoryBackend, StringSessionBackend};
-use std::sync::Arc;
+// Binary file (default)
+Client::builder().session("bot.session")
 
-// SQLite
-let (client, _sd) = Client::builder()
-    .api_id(12345)
-    .api_hash("abc123")
-    .session_backend(Arc::new(SqliteBackend::open("sessions.db").await?))
-    .connect().await?;
+// In-memory (tests)
+Client::builder().in_memory()
 
-// In-memory (for tests)
-Client::builder()
-    .api_id(12345)
-    .api_hash("abc123")
-    .in_memory()
-    .connect().await?;
+// String session (serverless, env var)
+Client::builder().session_string(std::env::var("TG_SESSION")?)
+
+// SQLite (feature = "sqlite-session")
+Client::builder().session_backend(Arc::new(SqliteBackend::new("sessions.db")))
+
+// LibSql / Turso (feature = "libsql-session")
+Client::builder().session_backend(Arc::new(LibSqlBackend::remote(url, token)))
 ```
 
 ---
 
-## 🌐 Transport & Networking
-
-### Transport kinds
+## 🚂 Transport & Networking
 
 ```rust
 use layer_client::TransportKind;
-
-Client::builder()
-    .transport(TransportKind::Abridged)      // default — lowest overhead
-    .transport(TransportKind::Intermediate)   // fixed-width framing
-    .transport(TransportKind::Obfuscated)     // XOR-encrypted, resists DPI
-```
-
-### SOCKS5 Proxy
-
-```rust
 use layer_client::Socks5Config;
 
-Client::builder()
-    .api_id(12345)
-    .api_hash("abc123")
-    .socks5(Socks5Config {
-        proxy_addr: "127.0.0.1:1080".into(),
-        auth: Some(("user".into(), "pass".into())),
-    })
-    .connect().await?;
-```
+// Transport (default: Abridged)
+Client::builder().transport(TransportKind::Intermediate)
+Client::builder().transport(TransportKind::Obfuscated) // DPI bypass
 
-### DC Pool
+// SOCKS5 proxy — no auth
+Client::builder().socks5(Socks5Config::new("127.0.0.1:1080"))
 
-`layer-client` maintains a connection pool across Telegram's DCs. When an API call is routed to a different DC (e.g. for media downloads), the pool opens a new connection and caches it. DC migration after a `*_MIGRATE` error is handled transparently — no user code needed.
+// SOCKS5 proxy — with auth
+Client::builder().socks5(Socks5Config::with_auth("proxy.host:1080", "user", "pass"))
 
----
+// Force request to a specific DC
+client.invoke_on_dc(&req, 2).await?;
 
-## 🚩 Feature Flags
-
-| Feature | Default | Description |
-|---|---|---|
-| `sqlite-session` | ❌ | Enables `SqliteBackend` via `rusqlite` |
-| `libsql-session` | ❌ | Enables `LibSqlBackend` via `libsql` (Turso-compatible) |
-| `html` | ❌ | Built-in HTML ↔ entity parser |
-| `html5ever` | ❌ | HTML parser backed by `html5ever` (spec-compliant; implies `html`) |
-| `serde` | ❌ | Adds `serde::Serialize` / `Deserialize` on public types |
-
-```toml
-layer-client = { version = "0.4.5", features = ["sqlite-session", "html"] }
-```
-
----
-
-## ⚙️ Configuration Reference
-
-```rust
-Config {
-    session_path:  "my.session".into(),          // file path for BinaryFileBackend
-    api_id:        12345,                         // from https://my.telegram.org
-    api_hash:      "abc123".into(),               // from https://my.telegram.org
-    dc_addr:       None,                          // override initial DC (default: DC2)
-    retry_policy:  Arc::new(AutoSleep::default()), // FLOOD_WAIT handler
-    socks5:        None,                          // SOCKS5 proxy
-    allow_ipv6:    false,                         // prefer IPv4 by default
-    transport:     TransportKind::Abridged,       // wire framing format
-    catch_up:      false,                         // replay missed updates on start
-}
-```
-
-### Retry Policies
-
-```rust
-// Auto-sleep on FLOOD_WAIT (default) — sleeps for the duration Telegram specifies
-retry_policy: Arc::new(AutoSleep::default())
-
-// Never retry — propagate all errors immediately
-retry_policy: Arc::new(NoRetries)
-
-// Custom policy
-struct MyPolicy;
-impl RetryPolicy for MyPolicy {
-    fn should_retry(&self, ctx: &RetryContext) -> ControlFlow<(), Duration> {
-        if ctx.flood_wait_seconds < 60 {
-            ControlFlow::Continue(Duration::from_secs(ctx.flood_wait_seconds as u64))
-        } else {
-            ControlFlow::Break(())  // give up for long waits
-        }
-    }
-}
+// Signal network restored (skips exponential backoff)
+client.signal_network_restored();
 ```
 
 ---
@@ -799,85 +718,231 @@ impl RetryPolicy for MyPolicy {
 ```rust
 use layer_client::{InvocationError, RpcError};
 
-match client.send_message("@user", "hi").await {
+match client.send_message("@peer", "Hello").await {
     Ok(()) => {}
-    Err(InvocationError::Rpc(RpcError { code, name, .. })) => {
-        eprintln!("Telegram error {code}: {name}");
+    Err(InvocationError::Rpc(RpcError { code, message, .. })) => {
+        eprintln!("Telegram error {code}: {message}");
     }
-    Err(e) => eprintln!("Transport/IO error: {e}"),
+    Err(InvocationError::Io(e)) => eprintln!("I/O error: {e}"),
+    Err(e) => eprintln!("Other: {e}"),
 }
 ```
 
-Common RPC errors: `FLOOD_WAIT_X`, `USER_DEACTIVATED`, `AUTH_KEY_UNREGISTERED`, `PEER_ID_INVALID`, `USERNAME_NOT_OCCUPIED`.
-
----
-
-## 🔧 Raw API Escape Hatch
-
-Any TL function can be invoked directly:
+`FLOOD_WAIT` is handled automatically by the default `AutoSleep` retry policy. To disable:
 
 ```rust
-use layer_tl_types::functions;
-
-// Call any function directly
-let state = client.invoke(&functions::updates::GetState {}).await?;
-
-// Call on a specific DC (e.g. for media DCs)
-let result = client.invoke_on_dc(&functions::upload::GetFile { ... }, dc_id).await?;
+use layer_client::retry::NoRetries;
+Client::builder().retry_policy(Arc::new(NoRetries))
 ```
 
 ---
 
-## 🔌 Shutdown
+## 🔩 Raw API Escape Hatch
+
+Every Layer 224 method (2,329 total) is accessible:
 
 ```rust
-// Soft shutdown — signals the background task to stop
-let (client, shutdown) = Client::builder()
-    .api_id(12345)
-    .api_hash("abc123")
-    .session("my.session")
-    .connect().await?;
+use layer_client::tl;
 
-// ... use client ...
+let req = tl::functions::bots::SetBotCommands {
+    scope:     tl::enums::BotCommandScope::Default(tl::types::BotCommandScopeDefault {}),
+    lang_code: "en".into(),
+    commands:  vec![
+        tl::enums::BotCommand::BotCommand(tl::types::BotCommand {
+            command:     "start".into(),
+            description: "Start the bot".into(),
+        }),
+    ],
+};
+client.invoke(&req).await?;
+```
 
-// Initiate a graceful disconnect
+---
+
+## 🛑 Shutdown
+
+```rust
+let (client, shutdown) = Client::connect(config).await?;
+
+// Graceful shutdown from any task
+shutdown.cancel();
+
+// Immediate disconnect
 client.disconnect();
-
-// Or hold `shutdown` and drop it when done
-drop(shutdown);
 ```
 
-The `signal_network_restored()` method re-triggers an update catch-up after a network outage:
-
-```rust
-client.signal_network_restored();
-```
+`ShutdownToken` is a `CancellationToken` wrapper — clone and pass to multiple tasks.
 
 ---
 
-## 🔗 Part of the layer stack
+# Client Methods — Full Reference
 
-```
-layer-client        ← you are here
-└── layer-mtproto   (session, DH, framing)
-    └── layer-tl-types  (generated API types, TL Layer 224)
-        └── layer-crypto    (AES-IGE, RSA, SHA, factorize)
-```
+All `Client` methods. Every `async` method returns `Result<T, InvocationError>` unless noted.
 
 ---
 
-## 📄 License
+## Connection & Session
 
-Licensed under either of, at your option:
-
-- **MIT License** — see [LICENSE-MIT](../LICENSE-MIT)
-- **Apache License, Version 2.0** — see [LICENSE-APACHE](../LICENSE-APACHE)
+| Method | Signature | Description |
+|---|---|---|
+| `Client::builder()` | `→ ClientBuilder` | Fluent builder (recommended) |
+| `Client::connect()` | `async (Config) → (Client, ShutdownToken)` | Low-level connect |
+| `client.is_authorized()` | `async → bool` | Check if logged in |
+| `client.save_session()` | `async → ()` | Persist current session |
+| `client.export_session_string()` | `async → String` | Export portable base64 session |
+| `client.disconnect()` | `sync` | Immediate disconnect |
+| `client.signal_network_restored()` | `sync` | Skip reconnect backoff |
+| `client.sync_update_state()` | `async → ()` | Sync update sequence numbers |
 
 ---
 
-## 👤 Author
+## Authentication
 
-**Ankit Chaubey**  
-[github.com/ankit-chaubey](https://github.com/ankit-chaubey) · [ankitchaubey.in](https://ankitchaubey.in) · [ankitchaubey.dev@gmail.com](mailto:ankitchaubey.dev@gmail.com)
+| Method | Signature | Description |
+|---|---|---|
+| `client.bot_sign_in(token)` | `async → String` | Bot token login |
+| `client.request_login_code(phone)` | `async → LoginToken` | Start user login |
+| `client.sign_in(token, code)` | `async → String` | Complete user login |
+| `client.check_password(token, pw)` | `async → String` | Submit 2FA password |
+| `client.sign_out()` | `async → bool` | Log out |
+| `client.get_me()` | `async → tl::types::User` | Get own user info |
+| `client.get_users_by_id(ids)` | `async → Vec<Option<User>>` | Fetch users by ID |
 
-📦 [github.com/ankit-chaubey/layer](https://github.com/ankit-chaubey/layer)
+---
+
+## Updates
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.stream_updates()` | `sync → UpdateStream` | Typed async update stream |
+| `stream.next()` | `async → Option<Update>` | Next typed update |
+| `stream.next_raw()` | `async → Option<RawUpdate>` | Next raw TL update |
+
+---
+
+## Messaging
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.send_message(peer, text)` | `async → ()` | Send text |
+| `client.send_message_to_peer(peer, text)` | `async → ()` | Send text (explicit peer) |
+| `client.send_message_to_peer_ex(peer, msg)` | `async → ()` | Send `InputMessage` |
+| `client.send_to_self(text)` | `async → ()` | Send to Saved Messages |
+| `client.edit_message(peer, id, text)` | `async → ()` | Edit a message |
+| `client.edit_inline_message(id, msg)` | `async → ()` | Edit an inline message |
+| `client.forward_messages(from, to, ids)` | `async → ()` | Forward messages |
+| `client.forward_messages_returning(from, to, ids)` | `async → Vec<Message>` | Forward + return new messages |
+| `client.delete_messages(peer, ids)` | `async → ()` | Delete messages |
+| `client.get_messages(peer, limit)` | `async → Vec<Message>` | Fetch latest messages |
+| `client.get_messages_by_id(peer, ids)` | `async → Vec<Option<Message>>` | Fetch by ID |
+| `client.get_pinned_message(peer)` | `async → Option<Message>` | Get pinned message |
+| `client.pin_message(peer, id, notify)` | `async → ()` | Pin a message |
+| `client.unpin_message(peer, id)` | `async → ()` | Unpin a message |
+| `client.unpin_all_messages(peer)` | `async → ()` | Unpin all messages |
+| `client.get_reply_to_message(peer, id)` | `async → Option<Message>` | Get message replied to |
+| `client.get_scheduled_messages(peer)` | `async → Vec<Message>` | List scheduled messages |
+| `client.delete_scheduled_messages(peer, ids)` | `async → ()` | Cancel scheduled messages |
+
+---
+
+## Inline Mode (bots)
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.answer_inline_query(qid, results, cache, personal, next)` | `async → ()` | Answer inline query |
+| `client.answer_callback_query(qid, text, alert)` | `async → ()` | Answer callback query |
+
+---
+
+## Media
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.upload_file(name, bytes)` | `async → UploadedFile` | Upload (sequential) |
+| `client.upload_file_concurrent(name, bytes)` | `async → UploadedFile` | Upload (parallel chunks) |
+| `client.upload_stream(name, reader)` | `async → UploadedFile` | Upload from `AsyncRead` |
+| `client.send_file(peer, file, as_photo)` | `async → ()` | Send uploaded file |
+| `client.send_album(peer, files)` | `async → ()` | Send multiple files as album |
+| `client.download_media(loc)` | `async → Vec<u8>` | Download to memory |
+| `client.download_media_to_file(loc, path)` | `async → ()` | Stream download to file |
+| `client.download_media_concurrent(loc)` | `async → Vec<u8>` | Parallel download |
+| `client.download(item)` | `async → Vec<u8>` | Download `Downloadable` (Photo/Doc/Sticker) |
+| `client.iter_download(location)` | `sync → DownloadIter` | Lazy chunk iterator |
+
+---
+
+## Chat Actions
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.send_chat_action(peer, action, topic)` | `async → ()` | One-shot chat action |
+| `client.typing(peer)` | `async → TypingGuard` | RAII typing indicator |
+| `client.uploading_document(peer)` | `async → TypingGuard` | RAII upload indicator |
+| `client.recording_video(peer)` | `async → TypingGuard` | RAII video recording indicator |
+| `client.typing_in_topic(peer, topic_id)` | `async → TypingGuard` | RAII typing in forum topic |
+| `client.mark_as_read(peer)` | `async → ()` | Mark all messages as read |
+| `client.clear_mentions(peer)` | `async → ()` | Clear @mention badges |
+
+---
+
+## Reactions
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.send_reaction(peer, msg_id, reaction)` | `async → ()` | React / unreact; accepts `&str` or `InputReactions` |
+
+---
+
+## Dialogs & Peers
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.get_dialogs(limit)` | `async → Vec<Dialog>` | Fetch dialogs |
+| `client.iter_dialogs()` | `sync → DialogIter` | Lazy dialog iterator |
+| `client.iter_messages(peer)` | `sync → MessageIter` | Lazy message iterator |
+| `client.delete_dialog(peer)` | `async → ()` | Leave and delete dialog |
+| `client.join_chat(peer)` | `async → ()` | Join public chat |
+| `client.accept_invite_link(link)` | `async → ()` | Accept invite link |
+| `Client::parse_invite_hash(link)` | `sync → Option<&str>` | Extract hash from link |
+| `client.resolve_peer(str)` | `async → Peer` | Resolve username / phone / "me" |
+| `client.resolve_username(str)` | `async → Peer` | Resolve bare username |
+| `client.resolve_to_input_peer(str)` | `async → InputPeer` | Resolve to `InputPeer` |
+
+---
+
+## Search
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.search(peer, query)` | `sync → SearchBuilder` | In-chat search builder |
+| `client.search_messages(peer, q, limit)` | `async → Vec<IncomingMessage>` | Quick in-chat search |
+| `client.search_global_builder(query)` | `sync → GlobalSearchBuilder` | Global search builder |
+| `client.search_global(q, limit)` | `async → Vec<IncomingMessage>` | Quick global search |
+
+---
+
+## Participants
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.get_participants(peer, limit)` | `async → Vec<Participant>` | Fetch members |
+| `client.iter_participants(peer)` | `sync → impl Iterator` | Lazy member iterator |
+| `client.search_peer(query)` | `async → Vec<Peer>` | Search contacts/dialogs |
+| `client.kick_participant(peer, user_id)` | `async → ()` | Kick from basic group |
+| `client.ban_participant(peer, user_id, rights)` | `async → ()` | Ban/restrict with `BannedRightsBuilder` |
+| `client.promote_participant(peer, user_id, rights)` | `async → ()` | Promote with `AdminRightsBuilder` |
+| `client.get_permissions(peer, user_id)` | `async → ParticipantPermissions` | Check user's effective permissions |
+| `client.get_profile_photos(user_id, offset, limit)` | `async → Vec<Photo>` | Fetch profile photos |
+| `client.iter_profile_photos(user_id)` | `sync → ProfilePhotoIter` | Lazy profile photo iterator |
+
+---
+
+## Raw & Advanced
+
+| Method | Signature | Description |
+|---|---|---|
+| `client.invoke(req)` | `async → R::Return` | Call any Layer 224 TL method |
+| `client.invoke_on_dc(req, dc_id)` | `async → R::Return` | Call on a specific DC |
+| `client.cache_users_slice_pub(users)` | `async → ()` | Manually populate peer cache |
+| `client.cache_chats_slice_pub(chats)` | `async → ()` | Manually populate peer cache |
+| `client.rpc_call_raw_pub(req)` | `async → Vec<u8>` | Raw RPC bytes |

@@ -1,99 +1,140 @@
 # Search
 
-`layer-client` provides two search builders: `SearchBuilder` for searching within a single peer, and `GlobalSearchBuilder` for searching across all dialogs at once.
+`layer-client` provides two fluent search builders:
 
-## SearchBuilder — per-peer search
+- **`SearchBuilder`** — search within a single peer (`client.search()`)
+- **`GlobalSearchBuilder`** — search across all dialogs (`client.search_global_builder()`)
+
+Both builders return `Vec<IncomingMessage>` from `.fetch(&client).await?`.
+
+---
+
+## `SearchBuilder` — in-chat search
 
 ```rust
+use layer_tl_types::enums::MessagesFilter;
+
 let results = client
-    .search("@somechannel", "rust async")
-    .limit(20)
-    .fetch()
+    .search(peer.clone(), "rust async")  // peer: impl Into<PeerRef>
+    .limit(50)
+    .fetch(&client)
     .await?;
 
-for msg in results {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("[{}] {}", m.id, m.message);
-    }
+for msg in &results {
+    println!("[{}] {}", msg.id, msg.message);
 }
 ```
 
-### All builder methods
+`client.search(peer, query)` accepts any `impl Into<PeerRef>` — a `&str` username, a `tl::enums::Peer`, or a numeric `i64` ID.
+
+### All `SearchBuilder` methods
 
 | Method | Default | Description |
 |---|---|---|
-| `.limit(n)` | 20 | Maximum number of results |
-| `.min_date(ts)` | — | Only messages after this unix timestamp |
-| `.max_date(ts)` | — | Only messages before this unix timestamp |
-| `.offset_id(id)` | 0 | Start from this message ID (for pagination) |
-| `.add_offset(n)` | 0 | Skip this many results from the start |
-| `.max_id(id)` | 0 | Upper bound message ID |
-| `.min_id(id)` | 0 | Lower bound message ID |
-| `.from_peer(peer)` | — | Only messages from this sender |
-| `.top_msg_id(id)` | — | Restrict to a specific forum topic |
-| `.filter(f)` | Empty | Filter by media type (see below) |
-| `.fetch()` | — | Execute and return `Vec<tl::enums::Message>` |
-
-### Date range example
-
-```rust
-use chrono::{Utc, Duration};
-
-let one_week_ago = (Utc::now() - Duration::days(7)).timestamp() as i32;
-
-let results = client
-    .search("@mychannel", "error")
-    .min_date(one_week_ago)
-    .limit(50)
-    .fetch()
-    .await?;
-```
+| `.limit(n: i32)` | `100` | Maximum results to return |
+| `.min_date(ts: i32)` | `0` | Only messages at or after this Unix timestamp |
+| `.max_date(ts: i32)` | `0` | Only messages at or before this Unix timestamp |
+| `.offset_id(id: i32)` | `0` | Start from this message ID (pagination) |
+| `.add_offset(n: i32)` | `0` | Additional offset for fine pagination |
+| `.max_id(id: i32)` | `0` | Only messages with ID ≤ `max_id` |
+| `.min_id(id: i32)` | `0` | Only messages with ID ≥ `min_id` |
+| `.filter(f: MessagesFilter)` | `Empty` | Filter by media type |
+| `.sent_by_self()` | — | Only messages sent by the logged-in user |
+| `.from_peer(peer: InputPeer)` | `None` | Only messages from this specific sender |
+| `.top_msg_id(id: i32)` | `None` | Restrict search to a forum topic thread |
+| `.fetch(&client)` | — | Execute — returns `Vec<IncomingMessage>` |
 
 ### Filter by media type
 
 ```rust
-use layer_tl_types::{enums, types};
+use layer_tl_types::enums::MessagesFilter;
 
-// Only photo messages
+// Photos only
 let photos = client
-    .search("@channel", "")
-    .filter(enums::MessagesFilter::InputMessagesFilterPhotos)
+    .search(peer.clone(), "")
+    .filter(MessagesFilter::InputMessagesFilterPhotos)
     .limit(30)
-    .fetch()
+    .fetch(&client)
     .await?;
 
-// Only documents
+// Documents only
 let docs = client
-    .search("@channel", "report")
-    .filter(enums::MessagesFilter::InputMessagesFilterDocument)
-    .limit(30)
-    .fetch()
+    .search(peer.clone(), "report")
+    .filter(MessagesFilter::InputMessagesFilterDocument)
+    .fetch(&client)
+    .await?;
+
+// Voice messages
+let voices = client
+    .search(peer.clone(), "")
+    .filter(MessagesFilter::InputMessagesFilterVoice)
+    .fetch(&client)
     .await?;
 ```
 
-### Common MessagesFilter values
+### Common `MessagesFilter` values
 
 | Filter | Matches |
 |---|---|
 | `InputMessagesFilterEmpty` | All messages (default) |
 | `InputMessagesFilterPhotos` | Photos |
 | `InputMessagesFilterVideo` | Videos |
-| `InputMessagesFilterDocument` | Documents |
+| `InputMessagesFilterDocument` | Documents / files |
 | `InputMessagesFilterAudio` | Audio files |
 | `InputMessagesFilterVoice` | Voice messages |
-| `InputMessagesFilterUrl` | Messages containing URLs |
-| `InputMessagesFilterMyMentions` | Messages where you were mentioned |
+| `InputMessagesFilterRoundVideo` | Video notes (round videos) |
+| `InputMessagesFilterUrl` | Messages with URLs |
+| `InputMessagesFilterMyMentions` | Messages where you were @mentioned |
 | `InputMessagesFilterPinned` | Pinned messages |
+| `InputMessagesFilterGeo` | Messages with location |
+
+### Date-range search
+
+```rust
+// Messages from the last 7 days
+let week_ago = (std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .unwrap()
+    .as_secs() - 7 * 86400) as i32;
+
+let results = client
+    .search(peer.clone(), "error")
+    .min_date(week_ago)
+    .limit(100)
+    .fetch(&client)
+    .await?;
+```
 
 ### Search from a specific sender
 
 ```rust
-let sender = client.resolve_to_input_peer("@alice").await?;
+// Messages sent by yourself
+let mine = client
+    .search(peer.clone(), "")
+    .sent_by_self()
+    .fetch(&client)
+    .await?;
 
+// Messages from a specific InputPeer
+let alice_peer = tl::enums::InputPeer::User(tl::types::InputPeerUser {
+    user_id: alice_id,
+    access_hash: alice_hash,
+});
+
+let from_alice = client
+    .search(peer.clone(), "hello")
+    .from_peer(alice_peer)
+    .fetch(&client)
+    .await?;
+```
+
+### Forum topic search
+
+```rust
 let results = client
-    .search("@groupchat", "hello")
-    .from_peer(sender)
-    .fetch()
+    .search(supergroup_peer.clone(), "query")
+    .top_msg_id(topic_msg_id)
+    .fetch(&client)
     .await?;
 ```
 
@@ -101,99 +142,110 @@ let results = client
 
 ```rust
 let mut offset_id = 0;
-let page_size = 50;
 
 loop {
     let page = client
-        .search("@channel", "query")
+        .search(peer.clone(), "keyword")
         .offset_id(offset_id)
-        .limit(page_size)
-        .fetch()
+        .limit(50)
+        .fetch(&client)
         .await?;
 
-    if page.is_empty() {
-        break;
-    }
+    if page.is_empty() { break; }
 
     for msg in &page {
-        // process…
+        println!("[{}] {}", msg.id, msg.message);
     }
 
-    // Get the lowest message ID for the next page
-    offset_id = page.iter()
-        .filter_map(|m| if let tl::enums::Message::Message(m) = m { Some(m.id) } else { None })
-        .min()
-        .unwrap_or(0);
+    // Move the cursor to the oldest message in this page
+    offset_id = page.iter().map(|m| m.id).min().unwrap_or(0);
 }
 ```
 
 ---
 
-## GlobalSearchBuilder — search everywhere
+## `GlobalSearchBuilder` — search all chats
 
 ```rust
 let results = client
-    .search_global_builder("layer rust")
-    .limit(10)
-    .fetch()
+    .search_global_builder("rust async")
+    .limit(30)
+    .fetch(&client)
     .await?;
 
-for msg in results {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("[peer {:?}] [{}] {}", m.peer_id, m.id, m.message);
-    }
+for msg in &results {
+    println!("[{:?}] [{}] {}", msg.peer_id, msg.id, msg.message);
 }
 ```
 
-### All global builder methods
+### All `GlobalSearchBuilder` methods
 
 | Method | Default | Description |
 |---|---|---|
-| `.limit(n)` | 20 | Maximum number of results |
-| `.min_date(ts)` | — | Only messages after this timestamp |
-| `.max_date(ts)` | — | Only messages before this timestamp |
-| `.offset_rate(r)` | 0 | Pagination: rate value from last result |
-| `.offset_id(id)` | 0 | Pagination: message ID from last result |
-| `.folder_id(id)` | — | Restrict to a specific folder |
-| `.broadcasts_only(v)` | false | Only search channels |
-| `.groups_only(v)` | false | Only search groups |
-| `.users_only(v)` | false | Only search private chats |
-| `.filter(f)` | Empty | Filter by media type |
-| `.fetch()` | — | Execute and return results |
+| `.limit(n: i32)` | `100` | Maximum results |
+| `.min_date(ts: i32)` | `0` | Only messages at or after this timestamp |
+| `.max_date(ts: i32)` | `0` | Only messages at or before this timestamp |
+| `.offset_rate(r: i32)` | `0` | Pagination: rate from last response |
+| `.offset_id(id: i32)` | `0` | Pagination: message ID from last response |
+| `.folder_id(id: i32)` | `None` | Restrict to a specific dialog folder |
+| `.broadcasts_only(v: bool)` | `false` | Only search channels |
+| `.groups_only(v: bool)` | `false` | Only search groups / supergroups |
+| `.users_only(v: bool)` | `false` | Only search private chats / bots |
+| `.filter(f: MessagesFilter)` | `Empty` | Filter by media type |
+| `.fetch(&client)` | — | Execute — returns `Vec<IncomingMessage>` |
 
-### Filter by dialog type
+### Filter by chat type
 
 ```rust
-// Search only in channels
-let results = client
+// Channels only
+let channel_results = client
     .search_global_builder("announcement")
     .broadcasts_only(true)
     .limit(20)
-    .fetch()
+    .fetch(&client)
     .await?;
 
-// Search only in groups
-let results = client
+// Groups / supergroups only
+let group_results = client
     .search_global_builder("discussion")
     .groups_only(true)
-    .fetch()
+    .fetch(&client)
+    .await?;
+
+// Private chats and bots only
+let dm_results = client
+    .search_global_builder("invoice")
+    .users_only(true)
+    .fetch(&client)
     .await?;
 ```
 
-### Convenience one-liner
-
-For a quick global search without the builder:
+### Combined filters
 
 ```rust
-let results = client.search_global("rust async", 10).await?;
+// Photo messages from channels, last 30 days
+let cutoff = (chrono::Utc::now().timestamp() - 30 * 86400) as i32;
+
+let photos = client
+    .search_global_builder("")
+    .broadcasts_only(true)
+    .filter(MessagesFilter::InputMessagesFilterPhotos)
+    .min_date(cutoff)
+    .limit(50)
+    .fetch(&client)
+    .await?;
 ```
 
 ---
 
-## Simple per-peer search (no builder)
+## Simple one-liner methods (no builder)
 
-For basic cases without date filters:
+For quick lookups that don't need date/filter options:
 
 ```rust
-let results = client.search_messages(peer, "query", 20).await?;
+// Per-chat search — returns Vec<IncomingMessage>
+let results = client.search_messages(peer.clone(), "query", 20).await?;
+
+// Global search — returns Vec<IncomingMessage>
+let results = client.search_global("layer rust", 10).await?;
 ```

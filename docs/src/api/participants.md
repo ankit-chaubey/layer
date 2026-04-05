@@ -1,196 +1,240 @@
 # Participants & Members
 
-Methods for fetching, banning, promoting, and managing chat members.
+Methods for fetching, banning, kicking, promoting, and managing chat members. All methods accept `impl Into<PeerRef>` for the peer argument.
 
-## Get participants
+---
+
+## Fetch participants
 
 ```rust
-// Get up to 200 participants from a channel/supergroup
-let members = client.get_participants(
-    tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 123 }),
-    200,  // limit (0 = use default)
-).await?;
+use layer_client::participants::Participant;
 
-for member in members {
-    println!("{} ({:?})", member.user.first_name.as_deref().unwrap_or("?"), member.status);
+// Fetch up to N participants at once
+let members: Vec<Participant> = client
+    .get_participants(peer.clone(), 200)
+    .await?;
+
+for p in &members {
+    println!(
+        "{} — admin: {}, banned: {}",
+        p.user.first_name.as_deref().unwrap_or("?"),
+        p.is_admin(),
+        p.is_banned(),
+    );
 }
 ```
 
-### ParticipantStatus variants
+### Paginated iterator (large groups)
 
-| Variant | Meaning |
+```rust
+let mut iter = client.iter_participants(peer.clone());
+while let Some(p) = iter.next(&client).await? {
+    println!("{}", p.user.first_name.as_deref().unwrap_or(""));
+}
+```
+
+### Search contacts and dialogs by name
+
+```rust
+// Returns combined results from contacts, dialogs, and global
+let results: Vec<tl::enums::Peer> = client.search_peer("John").await?;
+```
+
+---
+
+## `Participant` fields
+
+```rust
+p.user          // tl::types::User — raw user data
+p.is_creator()  // bool — is the channel/group creator
+p.is_admin()    // bool — has any admin rights
+p.is_banned()   // bool — is banned/restricted
+p.is_member()   // bool — active member (not banned, not left)
+```
+
+---
+
+## Kick participant
+
+```rust
+// Removes the user from a basic group
+// For channels/supergroups, use ban_participant instead
+client.kick_participant(peer.clone(), user_id).await?;
+```
+
+---
+
+## Ban participant — `BannedRightsBuilder`
+
+Use the fluent `BannedRightsBuilder` for granular bans:
+
+```rust
+use layer_client::participants::BannedRightsBuilder;
+
+// Permanent full ban
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
+    .await?;
+
+// Partial restriction — no media, no stickers, expires in 24 h
+let expires = (std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
+
+client
+    .ban_participant(
+        peer.clone(),
+        user_id,
+        BannedRightsBuilder::new()
+            .send_media(true)
+            .send_stickers(true)
+            .send_gifs(true)
+            .until_date(expires),
+    )
+    .await?;
+
+// Unban — pass an empty builder to restore full permissions
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
+    .await?;
+```
+
+### `BannedRightsBuilder` methods
+
+| Method | Description |
 |---|---|
-| `Member` | Regular member |
-| `Creator` | The group/channel creator |
-| `Admin` | Has admin rights |
-| `Restricted` | Partially banned (some rights removed) |
-| `Banned` | Fully banned |
-| `Left` | Has left the group |
+| `BannedRightsBuilder::new()` | All permissions granted (empty ban = unban) |
+| `BannedRightsBuilder::full_ban()` | All rights revoked, permanent |
+| `.view_messages(bool)` | Prevent reading messages |
+| `.send_messages(bool)` | Prevent sending text |
+| `.send_media(bool)` | Prevent sending media |
+| `.send_stickers(bool)` | Prevent sending stickers |
+| `.send_gifs(bool)` | Prevent sending GIFs |
+| `.send_games(bool)` | Prevent sending games |
+| `.send_inline(bool)` | Prevent using inline bots |
+| `.embed_links(bool)` | Prevent embedding links |
+| `.send_polls(bool)` | Prevent sending polls |
+| `.change_info(bool)` | Prevent changing chat info |
+| `.invite_users(bool)` | Prevent inviting users |
+| `.pin_messages(bool)` | Prevent pinning messages |
+| `.until_date(ts: i32)` | Expiry Unix timestamp (`0` = permanent) |
 
 ---
 
-## Kick from basic group
+## Promote admin — `AdminRightsBuilder`
 
 ```rust
-// Removes the user from a basic group (not a supergroup/channel)
-client.kick_participant(chat_id, user_id).await?;
+use layer_client::participants::AdminRightsBuilder;
+
+// Promote with specific rights and a custom title
+client
+    .promote_participant(
+        peer.clone(),
+        user_id,
+        AdminRightsBuilder::new()
+            .post_messages(true)
+            .delete_messages(true)
+            .ban_users(true)
+            .invite_users(true)
+            .pin_messages(true)
+            .rank("Moderator"), // custom admin title (max 16 chars)
+    )
+    .await?;
+
+// Full admin (all standard rights except add_admins)
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
+    .await?;
+
+// Demote — pass an empty builder to remove all admin rights
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
+    .await?;
 ```
 
-For channels/supergroups, use `ban_participant` instead.
+### `AdminRightsBuilder` methods
+
+| Method | Description |
+|---|---|
+| `AdminRightsBuilder::new()` | No rights (use to demote) |
+| `AdminRightsBuilder::full_admin()` | All standard rights |
+| `.change_info(bool)` | Can change channel/group info |
+| `.post_messages(bool)` | Can post in channels |
+| `.edit_messages(bool)` | Can edit others' messages |
+| `.delete_messages(bool)` | Can delete messages |
+| `.ban_users(bool)` | Can ban / restrict members |
+| `.invite_users(bool)` | Can add members |
+| `.pin_messages(bool)` | Can pin messages |
+| `.add_admins(bool)` | Can promote other admins (**use carefully**) |
+| `.anonymous(bool)` | Posts appear as channel name, not user |
+| `.manage_call(bool)` | Can manage voice/video chats |
+| `.manage_topics(bool)` | Can manage forum topics |
+| `.rank(str)` | Custom admin title shown beside name |
 
 ---
 
-## Ban from channel
+## Get participant permissions
+
+Check the effective permissions of a user in a channel or supergroup:
 
 ```rust
-// Permanent ban (until_date = 0)
-client.ban_participant(
-    tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 123 }),
-    user_id,
-    0,  // until_date: 0 = permanent
-).await?;
+use layer_client::participants::ParticipantPermissions;
 
-// Temporary ban — expires at unix timestamp
-let expires = chrono::Utc::now().timestamp() as i32 + 86400; // 24h
-client.ban_participant(peer, user_id, expires).await?;
+let perms: ParticipantPermissions = client
+    .get_permissions(peer.clone(), user_id)
+    .await?;
+
+println!("Creator: {}", perms.is_creator());
+println!("Admin: {}",   perms.is_admin());
+println!("Banned: {}",  perms.is_banned());
+println!("Member: {}",  perms.is_member());
+println!("Can send: {}", perms.can_send_messages);
+println!("Can pin: {}",  perms.can_pin_messages);
+println!("Admin title: {:?}", perms.admin_rank);
 ```
 
-### What ban_participant does
+### `ParticipantPermissions` fields & methods
 
-Sets `ChatBannedRights` with `view_messages: true`, which is the Telegram way of banning — it prevents the user from reading or sending any messages.
-
-For selective restrictions (e.g. no stickers, no media), use the raw API with `channels.editBanned`.
+| Symbol | Type | Description |
+|---|---|---|
+| `is_creator()` | `bool` | Is the channel/group creator |
+| `is_admin()` | `bool` | Has any admin rights |
+| `is_banned()` | `bool` | Is banned or restricted |
+| `is_member()` | `bool` | Active member (not banned, not left) |
+| `can_send_messages` | `bool` | Can send text messages |
+| `can_send_media` | `bool` | Can send media |
+| `can_pin_messages` | `bool` | Can pin messages |
+| `can_add_admins` | `bool` | Can promote admins |
+| `admin_rank` | `Option<String>` | Custom admin title |
 
 ---
 
-## Promote / demote admin
+## Profile photos
 
 ```rust
-// Grant admin rights
-client.promote_participant(channel_peer, user_id, true).await?;
+// Fetch a page of profile photos (user_id, offset, limit)
+let photos = client.get_profile_photos(user_id, 0, 10).await?;
 
-// Remove admin rights
-client.promote_participant(channel_peer, user_id, false).await?;
-```
-
-The default promotion grants: `change_info`, `post_messages`, `edit_messages`, `delete_messages`, `ban_users`, `invite_users`, `pin_messages`, `manage_call`.
-
-For custom rights, use `channels.editAdmin` via `client.invoke()`:
-
-```rust
-use layer_tl_types::{functions, types, enums};
-
-client.invoke(&functions::channels::EditAdmin {
-    flags: 0,
-    channel: enums::InputChannel::InputChannel(types::InputChannel {
-        channel_id, access_hash,
-    }),
-    user_id: enums::InputUser::InputUser(types::InputUser {
-        user_id, access_hash: user_hash,
-    }),
-    admin_rights: enums::ChatAdminRights::ChatAdminRights(types::ChatAdminRights {
-        change_info:            true,
-        post_messages:          true,
-        edit_messages:          false,
-        delete_messages:        true,
-        ban_users:              true,
-        invite_users:           true,
-        pin_messages:           true,
-        add_admins:             false,  // can they add other admins?
-        anonymous:              false,
-        manage_call:            true,
-        other:                  false,
-        manage_topics:          false,
-        post_stories:           false,
-        edit_stories:           false,
-        delete_stories:         false,
-        manage_direct_messages: false,
-        manage_ranks:           false,   // Layer 223: custom rank management
-    }),
-    rank: Some("Moderator".into()),  // Layer 223: rank is now Option<String>
-}).await?;
-```
-
----
-
-## Get profile photos
-
-```rust
-let photos = client.get_profile_photos(peer, 10).await?;
-
-for photo in &photos {
-    if let tl::enums::Photo::Photo(p) = photo {
-        println!("Photo ID: {}", p.id);
-    }
+// Lazy iterator across all pages
+let mut iter = client.iter_profile_photos(user_id);
+while let Some(photo) = iter.next(&client).await? {
+    let bytes = client.download(&photo).await?;
 }
 ```
 
 ---
 
-## Send a reaction
+## Join and leave chats
 
 ```rust
-// React with 👍
-client.send_reaction(peer, message_id, "👍").await?;
+// Join a public group or channel
+client.join_chat("@somegroup").await?;
 
-// Remove reaction
-client.send_reaction(peer, message_id, "").await?;
+// Accept a private invite link
+client.accept_invite_link("https://t.me/joinchat/AbCdEfG").await?;
 
-// Custom emoji reaction (premium)
-// Use the raw API: messages.sendReaction with ReactionCustomEmoji
-```
+// Parse invite hash from any link format
+let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
 
----
-
-## ChatAdminRights — Layer 224 fields
-
-```rust
-types::ChatAdminRights {
-    change_info:            bool, // can change group info
-    post_messages:          bool, // can post in channels
-    edit_messages:          bool, // can edit any message
-    delete_messages:        bool, // can delete messages
-    ban_users:              bool, // can ban members
-    invite_users:           bool, // can invite members
-    pin_messages:           bool, // can pin messages
-    add_admins:             bool, // can promote admins
-    anonymous:              bool, // post as channel anonymously
-    manage_call:            bool, // can start/manage calls
-    other:                  bool, // other rights
-    manage_topics:          bool, // can manage forum topics
-    post_stories:           bool, // can post stories
-    edit_stories:           bool, // can edit stories
-    delete_stories:         bool, // can delete stories
-    manage_direct_messages: bool, // can manage DM links
-    manage_ranks:           bool, // ✨ NEW in Layer 223
-}
-```
-
-## ChatBannedRights — Layer 224 fields
-
-```rust
-types::ChatBannedRights {
-    view_messages:    bool, // ban completely (can't read)
-    send_messages:    bool, // can't send text
-    send_media:       bool, // can't send media
-    send_stickers:    bool,
-    send_gifs:        bool,
-    send_games:       bool,
-    send_inline:      bool, // can't use inline bots
-    embed_links:      bool, // can't embed link previews
-    send_polls:       bool,
-    change_info:      bool, // can't change group info
-    invite_users:     bool, // can't invite others
-    pin_messages:     bool, // can't pin messages
-    manage_topics:    bool,
-    send_photos:      bool,
-    send_videos:      bool,
-    send_roundvideos: bool,
-    send_audios:      bool,
-    send_voices:      bool,
-    send_docs:        bool,
-    send_plain:       bool, // can't send plain text
-    edit_rank:        bool, // ✨ NEW in Layer 223
-    until_date:       i32,  // 0 = permanent
-}
+// Leave / remove dialog
+client.delete_dialog(peer.clone()).await?;
 ```

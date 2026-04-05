@@ -1,110 +1,197 @@
 # Typing Guard
 
-`TypingGuard` is a RAII wrapper that keeps a "typing…" or "uploading…" indicator alive for the duration of an operation and automatically cancels it on drop.
+`TypingGuard` is a RAII wrapper that keeps a "typing…" or "uploading…" indicator alive for the duration of an operation and **automatically cancels it when dropped**. You never need to call `SetTyping` with `CancelAction` by hand.
 
-## Basic usage
+The guard re-sends the action every **4 seconds** (Telegram drops indicators after ~5 s) until the guard is dropped or `.cancel()` is called.
+
+---
+
+## Setup
+
+`TypingGuard` is re-exported from `layer_client` — no extra import needed beyond `use layer_client::TypingGuard;`.
+
+---
+
+## Convenience methods on `Client`
+
+These are the recommended entry points:
+
+```rust
+use layer_client::{Client, TypingGuard};
+
+// "typing…"
+let _typing = client.typing(peer.clone()).await?;
+
+// "uploading document…"
+let _typing = client.uploading_document(peer.clone()).await?;
+
+// "recording video…"
+let _typing = client.recording_video(peer.clone()).await?;
+
+// typing inside a forum topic (top_msg_id)
+let _typing = client.typing_in_topic(peer.clone(), topic_id).await?;
+```
+
+The guard auto-cancels when it goes out of scope.
+
+---
+
+## Using `TypingGuard::start` directly
+
+For any `SendMessageAction` variant — including ones that don't have a convenience method:
 
 ```rust
 use layer_client::TypingGuard;
+use layer_tl_types as tl;
 
-async fn process_message(client: &Client, peer: tl::enums::Peer) {
-    // Start "typing…" — cancelled automatically when guard drops
-    let _guard = TypingGuard::typing(client, peer).await;
-
-    // Do your slow work here
-    let response = compute_heavy_reply().await;
-
-    // _guard drops here → typing indicator cancelled automatically
-    client.send_message_to_peer(peer, &response).await.ok();
-}
-```
-
-## Action types
-
-```rust
-use layer_tl_types::{enums, types};
-
-// Typing a text message
-let _guard = TypingGuard::typing(client, peer).await;
-
-// Uploading a photo
-let _guard = TypingGuard::upload_photo(client, peer).await;
-
-// Uploading a document / file
-let _guard = TypingGuard::upload_document(client, peer).await;
-
-// Recording a voice message
-let _guard = TypingGuard::record_audio(client, peer).await;
-
-// Recording a video note
-let _guard = TypingGuard::record_round(client, peer).await;
-
-// Choose a sticker
-let _guard = TypingGuard::choose_sticker(client, peer).await;
-
-// Custom action (raw TL type)
-let _guard = TypingGuard::custom(
+// Record audio / voice message
+let _guard = TypingGuard::start(
     client,
-    peer,
-    enums::SendMessageAction::SendMessageTypingAction,
-).await;
-```
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageRecordAudioAction,
+).await?;
 
-## Forum topic typing (top_msg_id)
+// Upload photo
+let _guard = TypingGuard::start(
+    client,
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageUploadPhotoAction(
+        tl::types::SendMessageUploadPhotoAction { progress: 0 },
+    ),
+).await?;
 
-For forum supergroups, pass the topic's `top_msg_id` to restrict the indicator to that topic:
-
-```rust
-client.send_chat_action(
-    peer,
-    enums::SendMessageAction::SendMessageTypingAction,
-    Some(topic_msg_id),  // top_msg_id
+// Choose sticker
+let _guard = TypingGuard::start(
+    client,
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageChooseStickerAction,
 ).await?;
 ```
 
-`TypingGuard` sends this on an interval (default 5 seconds) so the indicator doesn't expire while you're working.
+---
 
-## Manual send_chat_action
-
-Without `TypingGuard`, you can fire a one-shot indicator:
+## `TypingGuard::start_ex` — forum topics + custom delay
 
 ```rust
-client.send_chat_action(
-    peer,
+use std::time::Duration;
+
+let _guard = TypingGuard::start_ex(
+    client,
+    peer,                   // tl::enums::Peer (already resolved)
     tl::enums::SendMessageAction::SendMessageTypingAction,
-    None,  // no topic
+    Some(topic_msg_id),     // top_msg_id — None for normal chats
+    Duration::from_secs(4), // repeat delay (≤ 4 s recommended)
 ).await?;
 ```
 
-The indicator automatically expires after ~5 seconds on Telegram's end. `TypingGuard` keeps refreshing it on an interval.
+---
 
-## How TypingGuard works
+## Manual `.cancel()`
 
-On creation, `TypingGuard`:
-1. Sends the action immediately
-2. Spawns a background task that re-sends the action every ~4.5 seconds
-
-On drop, it cancels the background task and optionally sends a `SendMessageCancelAction` to clear the indicator immediately.
-
-## Example: file upload with progress indicator
+Call `.cancel()` to stop the indicator immediately without waiting for the guard to drop:
 
 ```rust
-async fn send_file_with_progress(
+let mut guard = client.typing(peer.clone()).await?;
+
+do_some_work().await;
+
+guard.cancel(); // indicator stops here
+
+// guard still lives, but the task is already stopped
+send_reply(client, peer).await?;
+```
+
+---
+
+## One-shot `send_chat_action` (no guard)
+
+If you don't need the automatic renewal, fire a single action:
+
+```rust
+client.send_chat_action(
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageTypingAction,
+    None, // top_msg_id — Some(id) for forum topics
+).await?;
+```
+
+Telegram shows the indicator for ~5 seconds and then removes it automatically.
+
+---
+
+## Complete example — long task with typing
+
+```rust
+use layer_client::{Client, InvocationError};
+use layer_tl_types as tl;
+
+async fn handle_command(
     client: &Client,
     peer: tl::enums::Peer,
-    path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Show "uploading document…" while uploading
-    let _guard = TypingGuard::upload_document(client, peer.clone()).await;
+) -> Result<(), InvocationError> {
+    // Indicator starts immediately, renewed every 4 s
+    let _typing = client.typing(peer.clone()).await?;
 
-    let uploaded = client.upload_file(path).await?;
+    // Simulate a slow operation
+    let result = compute_answer().await;
 
-    // Guard drops here, cancelling the indicator
-    drop(_guard);
-
-    // Now send the file — no typing indicator
-    client.send_file(peer, uploaded.as_document_media(), None).await?;
+    // _typing drops here → indicator cancelled
+    client
+        .send_message_to_peer(peer, &result)
+        .await?;
 
     Ok(())
 }
+
+async fn compute_answer() -> String {
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    "Here is your answer!".into()
+}
 ```
+
+---
+
+## Example — upload with "uploading document…" indicator
+
+```rust
+async fn send_document(
+    client: &Client,
+    peer: tl::enums::Peer,
+    bytes: Vec<u8>,
+    filename: &str,
+) -> Result<(), InvocationError> {
+    // Show "uploading document…" while the upload runs
+    let _guard = client.uploading_document(peer.clone()).await?;
+
+    let uploaded = client.upload_file(filename, &bytes).await?;
+
+    drop(_guard); // cancel the indicator before sending
+
+    client.send_file(peer, uploaded, false).await?;
+    Ok(())
+}
+```
+
+---
+
+## How it works internally
+
+1. `start()` calls `send_chat_action_ex(peer, action, topic_id)` immediately.
+2. A `tokio::spawn` loop wakes every `repeat_delay` (default 4 s) and re-sends the action.
+3. A `tokio::sync::Notify` signals the loop to stop when the guard is dropped or `.cancel()` is called.
+4. On loop exit, `SendMessageCancelAction` is sent to immediately clear the indicator.
+
+---
+
+## API reference
+
+| Symbol | Kind | Description |
+|---|---|---|
+| `TypingGuard` | struct | RAII guard; drop to cancel |
+| `TypingGuard::start(client, peer, action)` | `async fn` | Start any `SendMessageAction` |
+| `TypingGuard::start_ex(client, peer, action, topic_id, delay)` | `async fn` | Full control — topic support + custom repeat delay |
+| `guard.cancel()` | `fn` | Stop the indicator immediately (guard stays alive) |
+| `client.typing(peer)` | `async fn` | Shorthand for `TypingAction` |
+| `client.uploading_document(peer)` | `async fn` | Shorthand for `UploadDocumentAction` |
+| `client.recording_video(peer)` | `async fn` | Shorthand for `RecordVideoAction` |
+| `client.typing_in_topic(peer, topic_id)` | `async fn` | Typing inside a forum topic thread |

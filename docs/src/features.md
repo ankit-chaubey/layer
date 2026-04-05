@@ -12,6 +12,18 @@
 | `html5ever` | ❌ | Spec-compliant html5ever tokenizer — overrides the built-in `html` parser |
 | `serde` | ❌ | `serde::Serialize` / `Deserialize` on `Config` and public structs |
 
+The following are **always available** without any feature flag:
+- `InlineKeyboard`, `ReplyKeyboard`, `Button` — keyboard builders
+- `InputReactions` — reaction builder
+- `TypingGuard` — RAII typing indicator
+- `SearchBuilder`, `GlobalSearchBuilder` — fluent search
+- `PeerRef` — flexible peer argument
+- `User`, `Group`, `Channel`, `Chat` — ergonomic type wrappers
+- `Socks5Config` — SOCKS5 proxy config
+- `BannedRightsBuilder`, `AdminRightsBuilder`, `ParticipantPermissions`
+- `StringSessionBackend`, `InMemoryBackend`, `BinaryFileBackend`
+- `ClientBuilder` — fluent connection builder
+
 ```toml
 # SQLite session only
 layer-client = { version = "0.4.5", features = ["sqlite-session"] }

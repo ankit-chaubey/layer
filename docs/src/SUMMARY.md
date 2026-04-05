@@ -39,6 +39,7 @@
 - [IncomingMessage](./updates/incoming-message.md)
 - [Callback Queries](./updates/callbacks.md)
 - [Inline Mode](./updates/inline-mode.md)
+- [Peer Types & PeerRef](./api/peer-types.md)
 
 ---
 
@@ -46,6 +47,7 @@
 
 - [Client Methods](./api/client.md)
 - [InputMessage Builder](./api/input-message.md)
+- [Peer Types & PeerRef](./api/peer-types.md)
 - [Participants & Members](./api/participants.md)
 - [Admin & Ban Rights](./api/admin-rights.md)
 - [Dialogs & History](./api/dialogs.md)
