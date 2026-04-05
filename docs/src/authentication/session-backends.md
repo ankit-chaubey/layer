@@ -114,7 +114,7 @@ Pass an **empty string** to start a fresh session with no stored data.
 Requires feature flag:
 
 ```toml
-layer-client = { version = "0.4.5", features = ["sqlite-session"] }
+layer-client = { version = "0.4.6", features = ["sqlite-session"] }
 ```
 
 ```rust
@@ -138,7 +138,7 @@ The file is created if it doesn't exist.
 Requires feature flag:
 
 ```toml
-layer-client = { version = "0.4.5", features = ["libsql-session"] }
+layer-client = { version = "0.4.6", features = ["libsql-session"] }
 ```
 
 ```rust

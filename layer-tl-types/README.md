@@ -22,10 +22,10 @@
 
 ```toml
 [dependencies]
-layer-tl-types = "0.4.5"
+layer-tl-types = "0.4.6"
 
 # With MTProto low-level types too (required by layer-mtproto):
-layer-tl-types = { version = "0.4.5", features = ["tl-mtproto"] }
+layer-tl-types = { version = "0.4.6", features = ["tl-mtproto"] }
 ```
 
 ---

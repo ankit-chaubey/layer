@@ -7,7 +7,7 @@
 | Feature | Default | Description |
 |---|---|---|
 | `sqlite-session` | ❌ | SQLite-backed session storage via `rusqlite` |
-| `libsql-session` | ❌ | libsql / Turso session storage — local or remote (**New in v0.4.5**) |
+| `libsql-session` | ❌ | libsql / Turso session storage — local or remote (**New in v0.4.6**) |
 | `html` | ❌ | Built-in hand-rolled HTML parser (`parse_html`, `generate_html`) |
 | `html5ever` | ❌ | Spec-compliant html5ever tokenizer — overrides the built-in `html` parser |
 | `serde` | ❌ | `serde::Serialize` / `Deserialize` on `Config` and public structs |
@@ -26,19 +26,19 @@ The following are **always available** without any feature flag:
 
 ```toml
 # SQLite session only
-layer-client = { version = "0.4.5", features = ["sqlite-session"] }
+layer-client = { version = "0.4.6", features = ["sqlite-session"] }
 
-# LibSQL / Turso session (new in 0.4.5)
-layer-client = { version = "0.4.5", features = ["libsql-session"] }
+# LibSQL / Turso session (new in 0.4.6)
+layer-client = { version = "0.4.6", features = ["libsql-session"] }
 
 # HTML parsing (minimal, no extra deps)
-layer-client = { version = "0.4.5", features = ["html"] }
+layer-client = { version = "0.4.6", features = ["html"] }
 
 # HTML parsing (spec-compliant, adds html5ever dep)
-layer-client = { version = "0.4.5", features = ["html5ever"] }
+layer-client = { version = "0.4.6", features = ["html5ever"] }
 
 # Multiple features at once
-layer-client = { version = "0.4.5", features = ["sqlite-session", "html"] }
+layer-client = { version = "0.4.6", features = ["sqlite-session", "html"] }
 ```
 
 ---
@@ -59,7 +59,7 @@ layer-client = { version = "0.4.5", features = ["sqlite-session", "html"] }
 ### Example: enable serde
 
 ```toml
-layer-tl-types = { version = "0.4.5", features = ["tl-api", "impl-serde"] }
+layer-tl-types = { version = "0.4.6", features = ["tl-api", "impl-serde"] }
 ```
 
 ```rust
@@ -69,7 +69,7 @@ let json = serde_json::to_string(&some_tl_type)?;
 ### Example: name_for_id (debugging)
 
 ```toml
-layer-tl-types = { version = "0.4.5", features = ["tl-api", "name-for-id"] }
+layer-tl-types = { version = "0.4.6", features = ["tl-api", "name-for-id"] }
 ```
 
 ```rust
@@ -83,7 +83,7 @@ if let Some(name) = name_for_id(0x74ae4240) {
 ### Example: minimal (no Debug, no conversions)
 
 ```toml
-layer-tl-types = { version = "0.4.5", default-features = false, features = ["tl-api"] }
+layer-tl-types = { version = "0.4.6", default-features = false, features = ["tl-api"] }
 ```
 
 Reduces compile time when you don't need convenience traits.
@@ -95,7 +95,7 @@ Reduces compile time when you don't need convenience traits.
 `StringSessionBackend` and `export_session_string()` are available in the default build — no feature flag required:
 
 ```toml
-layer-client = "0.4.5"   # already includes StringSessionBackend
+layer-client = "0.4.6"   # already includes StringSessionBackend
 ```
 
 ```rust

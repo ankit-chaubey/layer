@@ -54,7 +54,7 @@
 
 ```toml
 [dependencies]
-layer-client = "0.4.5"
+layer-client = "0.4.6"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -66,16 +66,16 @@ Get your `api_id` and `api_hash` from **[my.telegram.org](https://my.telegram.or
 
 ```toml
 # SQLite session persistence
-layer-client = { version = "0.4.5", features = ["sqlite-session"] }
+layer-client = { version = "0.4.6", features = ["sqlite-session"] }
 
 # libsql / Turso session (local or remote)
-layer-client = { version = "0.4.5", features = ["libsql-session"] }
+layer-client = { version = "0.4.6", features = ["libsql-session"] }
 
 # Hand-rolled HTML parser
-layer-client = { version = "0.4.5", features = ["html"] }
+layer-client = { version = "0.4.6", features = ["html"] }
 
 # Spec-compliant html5ever parser (replaces built-in)
-layer-client = { version = "0.4.5", features = ["html5ever"] }
+layer-client = { version = "0.4.6", features = ["html5ever"] }
 ```
 
 `StringSessionBackend`, `InMemoryBackend`, and `BinaryFileBackend` are always available — no flag needed.

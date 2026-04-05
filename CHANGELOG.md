@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.4.5] — 2026-04-02
+## [0.4.6] — 2026-04-02
 
 ### Added
 
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Docs
 - Comprehensive rewrite of all documentation pages to reflect the full 0.4.x API surface.
 - New pages: Session Backends, Search, Reactions, Admin Rights, Typing Guard.
-- Every code example audited and updated for 0.4.5 API.
+- Every code example audited and updated for 0.4.6 API.
 - `SUMMARY.md` expanded with new sections.
 
 ### Fixed

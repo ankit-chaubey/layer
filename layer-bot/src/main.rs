@@ -254,7 +254,7 @@ async fn dispatch(upd: Update, client: Arc<Client>, me: Arc<tl::types::User>, bo
                     let _ = client
                         .answer_callback_query(
                             qid,
-                            Some(&format!("Layer {} · layer-client 0.4.5 🦀", tl::LAYER)),
+                            Some(&format!("Layer {} · layer-client 0.4.6 🦀", tl::LAYER)),
                             false,
                         )
                         .await;
@@ -514,7 +514,7 @@ async fn h_stats(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
 
 async fn h_layer(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     let text = format!(
-        "📡 <b>layer library</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.4.5</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
+        "📡 <b>layer library</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.4.6</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
         tl::LAYER
     );
     let kb = kb(vec![vec![

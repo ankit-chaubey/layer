@@ -1,5 +1,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc(html_root_url = "https://docs.rs/layer-tl-gen/0.4.5")]
+#![doc(html_root_url = "https://docs.rs/layer-tl-gen/0.4.6")]
 //! Build-time code generator that transforms a parsed TL schema into Rust source files.
 //!
 //! Intended to be used from a `build.rs` script.

@@ -294,7 +294,7 @@ async fn cmd_dc(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
 
 async fn cmd_layer(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     rh(client, peer, reply_to, &format!(
-        "📡 <b>layer</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.4.5</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
+        "📡 <b>layer</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.4.6</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
         tl::LAYER
     )).await;
 }

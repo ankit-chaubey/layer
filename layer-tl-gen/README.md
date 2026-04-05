@@ -21,7 +21,7 @@
 
 ```toml
 [build-dependencies]
-layer-tl-gen = "0.4.5"
+layer-tl-gen = "0.4.6"
 ```
 
 > This crate is a **build-dependency** only. It runs during `cargo build` via `build.rs` and produces Rust source code. It is not linked into your final binary.
