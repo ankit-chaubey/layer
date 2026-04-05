@@ -682,6 +682,14 @@ struct ClientInner {
     pub is_bot: std::sync::atomic::AtomicBool,
     /// Guards against calling `stream_updates()` more than once.
     stream_active: std::sync::atomic::AtomicBool,
+    /// Prevents spawning more than one proactive GetFutureSalts at a time.
+    /// Without this guard every bad_server_salt spawns a new task, which causes
+    /// an exponential storm when many messages are queued with a stale salt.
+    salt_request_in_flight: std::sync::atomic::AtomicBool,
+    /// Prevents two concurrent fresh-DH handshakes racing each other.
+    /// A double-DH results in one key being unregistered on Telegram's servers,
+    /// causing AUTH_KEY_UNREGISTERED immediately after reconnect.
+    dh_in_progress: std::sync::atomic::AtomicBool,
 }
 
 /// The main Telegram client. Cheap to clone — internally Arc-wrapped.
@@ -853,6 +861,8 @@ impl Client {
             update_tx,
             is_bot: std::sync::atomic::AtomicBool::new(false),
             stream_active: std::sync::atomic::AtomicBool::new(false),
+            salt_request_in_flight: std::sync::atomic::AtomicBool::new(false),
+            dh_in_progress: std::sync::atomic::AtomicBool::new(false),
         });
 
         let client = Self {
@@ -887,6 +897,12 @@ impl Client {
         if let Err(e) = client.init_connection().await {
             let key_is_stale = match &e {
                 InvocationError::Rpc(r) if r.code == -404 => true,
+                // -429 = TRANSPORT_FLOOD (rate limit). The auth key is valid —
+                // Telegram is just throttling us. Do NOT do fresh DH here; it
+                // would race with the reader task's error handler and produce two
+                // concurrent DH handshakes whose keys clobber each other, leading
+                // to AUTH_KEY_UNREGISTERED on every post-reconnect RPC call.
+                InvocationError::Rpc(r) if r.code == -429 => false,
                 InvocationError::Io(io)
                     if io.kind() == std::io::ErrorKind::UnexpectedEof
                         || io.kind() == std::io::ErrorKind::ConnectionReset =>
@@ -896,7 +912,22 @@ impl Client {
                 _ => false,
             };
 
-            if key_is_stale {
+            // Concurrency guard: only one fresh-DH handshake at a time.
+            // If the reader task already started DH (e.g. it also got a -404
+            // from the same burst), skip this code path and let that one finish.
+            let dh_allowed = key_is_stale
+                && client
+                    .inner
+                    .dh_in_progress
+                    .compare_exchange(
+                        false,
+                        true,
+                        std::sync::atomic::Ordering::SeqCst,
+                        std::sync::atomic::Ordering::SeqCst,
+                    )
+                    .is_ok();
+
+            if dh_allowed {
                 tracing::warn!("[layer] init_connection: definitive bad-key ({e}), fresh DH …");
                 {
                     let home_dc_id = *client.inner.home_dc_id.lock().await;
@@ -952,7 +983,16 @@ impl Client {
                     .send((new_read, new_fk, new_ak, new_sid));
                 tokio::task::yield_now().await;
 
+                // Brief pause so the new key propagates to all of Telegram's
+                // app servers before we send getDifference (same reason grammers
+                // does a yield after fresh DH before any RPCs).
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
                 client.init_connection().await?;
+                client
+                    .inner
+                    .dh_in_progress
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
                 // Persist the new auth key so next startup loads the correct key.
                 client.save_session().await.ok();
 
@@ -1636,9 +1676,32 @@ impl Client {
                         Err(e) => break Err(e),
                     }
                 };
-                if result.is_ok()
-                    && let Ok(missed) = c.get_difference().await
-                {
+                if result.is_ok() {
+                    // After fresh DH, wait 2 s for key propagation before getDifference.
+                    if c.inner
+                        .dh_in_progress
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                    {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
+                    let missed = match c.get_difference().await {
+                        Ok(updates) => updates,
+                        Err(ref e)
+                            if matches!(e,
+                            InvocationError::Rpc(r) if r.code == 401) =>
+                        {
+                            tracing::warn!(
+                                "[layer] getDifference AUTH_KEY_UNREGISTERED after \
+                                 fresh DH — falling back to sync_pts_state"
+                            );
+                            let _ = c.sync_pts_state().await;
+                            vec![]
+                        }
+                        Err(e) => {
+                            tracing::warn!("[layer] getDifference failed after reconnect: {e}");
+                            vec![]
+                        }
+                    };
                     for u in missed {
                         if utx.try_send(u).is_err() {
                             tracing::warn!(
@@ -1743,14 +1806,28 @@ impl Client {
                             // we clear the saved key so do_reconnect_loop falls through to
                             // connect_raw (fresh DH) rather than reconnecting with the same
                             // expired key and getting -404 forever.
+                            //
+                            // -429 = TRANSPORT_FLOOD (rate limit). The key is fine — do NOT
+                            // clear it. Clearing on -429 causes a double-DH race with the
+                            // startup path, producing AUTH_KEY_UNREGISTERED post-reconnect.
                             let key_is_stale = match &e {
                                 InvocationError::Rpc(r) if r.code == -404 => true,
+                                InvocationError::Rpc(r) if r.code == -429 => false,
                                 InvocationError::Io(io)
                                     if io.kind() == std::io::ErrorKind::UnexpectedEof
                                     || io.kind() == std::io::ErrorKind::ConnectionReset => true,
                                 _ => false,
                             };
-                            if key_is_stale {
+                            // Only clear the key if no DH is already in progress.
+                            // The startup init_connection path may have already claimed
+                            // dh_in_progress; honour that to avoid a double-DH race.
+                            let clear_key = key_is_stale
+                                && self.inner.dh_in_progress
+                                    .compare_exchange(false, true,
+                                        std::sync::atomic::Ordering::SeqCst,
+                                        std::sync::atomic::Ordering::SeqCst)
+                                    .is_ok();
+                            if clear_key {
                                 let home_dc_id = *self.inner.home_dc_id.lock().await;
                                 let mut opts = self.inner.dc_options.lock().await;
                                 if let Some(entry) = opts.get_mut(&home_dc_id) {
@@ -1778,13 +1855,23 @@ impl Client {
 
                             // Skip backoff when the key is stale: no point waiting before
                             // fresh DH — the server told us directly to renegotiate.
-                            let reconnect_delay = if key_is_stale { 0 } else { RECONNECT_BASE_MS };
+                            let reconnect_delay = if clear_key { 0 } else { RECONNECT_BASE_MS };
                             match self.do_reconnect_loop(
                                 reconnect_delay, &mut rh, &mut fk, &mut ak, &mut sid,
                                 network_hint_rx,
                             ).await {
-                                Some(rx) => { init_rx = Some(rx); }
-                                None     => return, // shutdown requested
+                                Some(rx) => {
+                                    // DH (if any) is complete; release the guard so a future
+                                    // stale-key event can claim it again.
+                                    self.inner.dh_in_progress
+                                        .store(false, std::sync::atomic::Ordering::SeqCst);
+                                    init_rx = Some(rx);
+                                }
+                                None => {
+                                    self.inner.dh_in_progress
+                                        .store(false, std::sync::atomic::Ordering::SeqCst);
+                                    return; // shutdown requested
+                                }
                             }
                         }
 
@@ -1823,14 +1910,23 @@ impl Client {
                         Ok(Err(e)) => {
                             // TCP connected but init RPC failed.
                             // Only clear auth key on definitive bad-key signals from Telegram.
+                            // -429 = TRANSPORT_FLOOD: key is valid, just throttled — do NOT clear.
                             let key_is_stale = match &e {
                                 InvocationError::Rpc(r) if r.code == -404 => true,
+                                InvocationError::Rpc(r) if r.code == -429 => false,
                                 InvocationError::Io(io) if io.kind() == std::io::ErrorKind::UnexpectedEof
                                     || io.kind() == std::io::ErrorKind::ConnectionReset => true,
                                 _ => false,
                             };
+                            // Use compare_exchange so we don't stomp on another in-progress DH.
+                            let dh_claimed = key_is_stale
+                                && self.inner.dh_in_progress
+                                    .compare_exchange(false, true,
+                                        std::sync::atomic::Ordering::SeqCst,
+                                        std::sync::atomic::Ordering::SeqCst)
+                                    .is_ok();
 
-                            if key_is_stale {
+                            if dh_claimed {
                                 tracing::warn!(
                                     "[layer] init_connection: definitive bad-key ({e}) \
                                      — clearing auth key for fresh DH …"
@@ -1841,6 +1937,7 @@ impl Client {
                                 if let Some(entry) = opts.get_mut(&home_dc_id) {
                                     entry.auth_key = None;
                                 }
+                                // dh_in_progress is released by do_reconnect_loop's caller.
                             } else {
                                 init_fail_count += 1;
                                 tracing::warn!(
@@ -1985,14 +2082,17 @@ impl Client {
                 }
             }
             ID_BAD_SERVER_SALT => {
-                // bad_server_salt#edab447b bad_msg_id:long bad_msg_seqno:int new_server_salt:long
+                // bad_server_salt#edab447b bad_msg_id:long bad_msg_seqno:int error_code:int new_server_salt:long
                 // body[0..4]   = constructor
-                // body[4..12]  = bad_msg_id
-                // body[12..16] = bad_msg_seqno
-                // body[16..24] = new_server_salt  ← was wrongly [8..16]
-                if body.len() >= 24 {
+                // body[4..12]  = bad_msg_id       (long,  8 bytes)
+                // body[12..16] = bad_msg_seqno     (int,   4 bytes)
+                // body[16..20] = error_code        (int,   4 bytes)  ← NOT the salt!
+                // body[20..28] = new_server_salt   (long,  8 bytes)  ← actual salt
+                // Reading from [16..24] mixed error_code into the salt word, producing
+                // a garbage value that was always rejected → infinite re-send loop.
+                if body.len() >= 28 {
                     let bad_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
-                    let new_salt = i64::from_le_bytes(body[16..24].try_into().unwrap());
+                    let new_salt = i64::from_le_bytes(body[20..28].try_into().unwrap());
 
                     // Update session salt so re-sent request uses the correct salt.
                     self.inner.writer.lock().await.enc.salt = new_salt;
@@ -2001,13 +2101,23 @@ impl Client {
                     );
 
                     // Re-transmit the original request under the new salt.
+                    // IMPORTANT: do NOT re-insert into sent_bodies after the re-send.
+                    // If the re-sent message also gets bad_server_salt we must NOT
+                    // re-send it again — that creates an infinite chain:
+                    //   A→bad_salt→B→bad_salt→C→bad_salt→… forever.
+                    // By keeping the re-sent msg_id out of sent_bodies, a second
+                    // bad_server_salt for it finds nothing and stops the chain.
+                    // The RPC response (rpc_result) is still routed correctly because
+                    // the pending oneshot is moved to new_msg_id below.
                     {
                         let mut w = self.inner.writer.lock().await;
                         if let Some(orig_body) = w.sent_bodies.remove(&bad_msg_id) {
                             let (wire, new_msg_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
                             let fk = w.frame_kind.clone();
-                            w.sent_bodies.insert(new_msg_id, orig_body);
-                            // Drop writer before touching pending (lock-order safety).
+                            // Intentionally NOT inserting new_msg_id into sent_bodies.
+                            // A second bad_server_salt for new_msg_id will not find it
+                            // here and will fall through to the else-branch below to fail
+                            // the pending oneshot, unblocking the RPC caller.
                             drop(w);
                             let mut pending = self.inner.pending.lock().await;
                             if let Some(tx) = pending.remove(&bad_msg_id) {
@@ -2024,40 +2134,73 @@ impl Client {
                                     );
                                 }
                             }
+                        } else {
+                            // Not in sent_bodies = this is a re-sent message that got
+                            // rejected again. Fail the pending caller so it doesn't hang.
+                            drop(w);
+                            if let Some(tx) = self.inner.pending.lock().await.remove(&bad_msg_id) {
+                                let _ = tx.send(Err(InvocationError::Io(std::io::Error::new(
+                                    std::io::ErrorKind::InvalidData,
+                                    "bad_server_salt on re-sent message; caller should retry",
+                                ))));
+                            }
                         }
                     }
 
                     // G-08: proactively refresh salt pool in background.
-                    let inner = Arc::clone(&self.inner);
-                    tokio::spawn(async move {
-                        tracing::debug!("[layer] G-08 proactive GetFutureSalts …");
-                        // get_future_salts#b921bd04 num:int = FutureSalts
-                        let mut req_body = Vec::with_capacity(8);
-                        req_body.extend_from_slice(&0xb921bd04_u32.to_le_bytes());
-                        req_body.extend_from_slice(&64_i32.to_le_bytes());
-                        // G-09 fix: store in sent_bodies so bad_msg_notify can re-send it.
-                        let (wire, fs_msg_id) = {
-                            let mut w = inner.writer.lock().await;
-                            let (wire, id) = w.enc.pack_body_with_msg_id(&req_body, true);
-                            w.sent_bodies.insert(id, req_body);
-                            (wire, id)
-                        };
-                        let fk = inner.writer.lock().await.frame_kind.clone();
-                        let (tx, rx) = tokio::sync::oneshot::channel();
-                        inner.pending.lock().await.insert(fs_msg_id, tx);
-                        {
-                            let mut w = inner.writer.lock().await;
-                            if send_frame_write(&mut w.write_half, &wire, &fk)
-                                .await
-                                .is_err()
-                            {
+                    // Guard: only one GetFutureSalts in flight at a time.
+                    // Without this guard, every bad_server_salt in a burst (e.g. all
+                    // queued messages sent with the old salt after a reconnect) spawns
+                    // its own task → exponential storm → -429 TRANSPORT_FLOOD.
+                    if self
+                        .inner
+                        .salt_request_in_flight
+                        .compare_exchange(
+                            false,
+                            true,
+                            std::sync::atomic::Ordering::SeqCst,
+                            std::sync::atomic::Ordering::SeqCst,
+                        )
+                        .is_ok()
+                    {
+                        let inner = Arc::clone(&self.inner);
+                        tokio::spawn(async move {
+                            tracing::debug!("[layer] G-08 proactive GetFutureSalts …");
+                            // get_future_salts#b921bd04 num:int = FutureSalts
+                            let mut req_body = Vec::with_capacity(8);
+                            req_body.extend_from_slice(&0xb921bd04_u32.to_le_bytes());
+                            req_body.extend_from_slice(&64_i32.to_le_bytes());
+                            // G-09 fix: store in sent_bodies so bad_msg_notify can re-send it.
+                            let (wire, fs_msg_id) = {
+                                let mut w = inner.writer.lock().await;
+                                let (wire, id) = w.enc.pack_body_with_msg_id(&req_body, true);
+                                w.sent_bodies.insert(id, req_body);
+                                (wire, id)
+                            };
+                            let fk = inner.writer.lock().await.frame_kind.clone();
+                            let (tx, rx) = tokio::sync::oneshot::channel();
+                            inner.pending.lock().await.insert(fs_msg_id, tx);
+                            let send_ok = {
+                                let mut w = inner.writer.lock().await;
+                                send_frame_write(&mut w.write_half, &wire, &fk)
+                                    .await
+                                    .is_ok()
+                            };
+                            if !send_ok {
                                 inner.pending.lock().await.remove(&fs_msg_id);
                                 inner.writer.lock().await.sent_bodies.remove(&fs_msg_id);
+                                inner
+                                    .salt_request_in_flight
+                                    .store(false, std::sync::atomic::Ordering::SeqCst);
                                 return;
                             }
-                        }
-                        let _ = rx.await;
-                    });
+                            let _ = rx.await;
+                            // Always clear so the next salt error can spawn a new request.
+                            inner
+                                .salt_request_in_flight
+                                .store(false, std::sync::atomic::Ordering::SeqCst);
+                        });
+                    }
                 }
             }
             ID_PONG => {
@@ -2905,14 +3048,44 @@ impl Client {
                         };
                         if result.is_ok() {
                             // Replay any updates missed during the outage.
-                            if let Ok(missed) = c.get_difference().await {
-                                for u in missed {
-                                    if utx.try_send(attach_client_to_update(u, &c)).is_err() {
-                                        tracing::warn!(
-                                            "[layer] update channel full — dropping catch-up update"
-                                        );
-                                        break;
-                                    }
+                            // After fresh DH the new key may not have propagated to
+                            // all of Telegram's app servers yet, so getDifference can
+                            // return AUTH_KEY_UNREGISTERED (401).  A 2 s pause lets the
+                            // key replicate before we send any RPCs (same reason grammers
+                            // yields after fresh DH).  Without this, post-reconnect RPC
+                            // calls silently fail and the bot stops responding.
+                            if c.inner
+                                .dh_in_progress
+                                .load(std::sync::atomic::Ordering::SeqCst)
+                            {
+                                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            }
+                            let missed = match c.get_difference().await {
+                                Ok(updates) => updates,
+                                Err(ref e)
+                                    if matches!(e,
+                                    InvocationError::Rpc(r) if r.code == 401) =>
+                                {
+                                    tracing::warn!(
+                                        "[layer] getDifference AUTH_KEY_UNREGISTERED after \
+                                         fresh DH — falling back to sync_pts_state"
+                                    );
+                                    let _ = c.sync_pts_state().await;
+                                    vec![]
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "[layer] getDifference failed after reconnect: {e}"
+                                    );
+                                    vec![]
+                                }
+                            };
+                            for u in missed {
+                                if utx.try_send(attach_client_to_update(u, &c)).is_err() {
+                                    tracing::warn!(
+                                        "[layer] update channel full — dropping catch-up update"
+                                    );
+                                    break;
                                 }
                             }
                         }
@@ -2986,6 +3159,17 @@ impl Client {
         let new_ak = new_writer.enc.auth_key_bytes();
         let new_sid = new_writer.enc.session_id();
         *self.inner.writer.lock().await = new_writer;
+
+        // Persist the new auth key so subsequent reconnects reuse it instead of
+        // repeating fresh DH.  (Cleared keys cause a fresh-DH loop: clear → DH →
+        // key not saved → next disconnect clears nothing → but dc_options still
+        // None → DH again → AUTH_KEY_UNREGISTERED on getDifference forever.)
+        {
+            let mut opts = self.inner.dc_options.lock().await;
+            if let Some(entry) = opts.get_mut(&home_dc_id) {
+                entry.auth_key = Some(new_ak);
+            }
+        }
 
         // NOTE: init_connection() is intentionally NOT called here.
         //
