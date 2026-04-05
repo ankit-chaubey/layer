@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>DC Migration - layer — Async Telegram MTProto in Rust</title>
+        <title>Peer Types &amp; PeerRef - layer — Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -147,7 +147,7 @@
                         <a href="https://github.com/ankit-chaubey/layer" title="Git repository" aria-label="Git repository">
                             <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
                         </a>
-                        <a href="https://github.com/ankit-chaubey/layer/edit/main/docs/src/advanced/dc-migration.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/ankit-chaubey/layer/edit/main/docs/src/api/peer-types.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
                         </a>
 
@@ -181,60 +181,246 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="dc-migration"><a class="header" href="#dc-migration">DC Migration</a></h1>
-<p>Telegram’s infrastructure is split across multiple <strong>Data Centers (DCs)</strong>. When you connect to the wrong DC for your account, Telegram responds with a <code>PHONE_MIGRATE_X</code> or <code>USER_MIGRATE_X</code> error telling you which DC to use instead.</p>
-<p><code>layer-client</code> handles DC migration <strong>automatically and transparently</strong>. You don’t need to do anything.</p>
-<h2 id="how-it-works"><a class="header" href="#how-it-works">How it works</a></h2>
-<ol>
-<li>You connect to DC2 (the default)</li>
-<li>You log in with a phone number registered on DC1</li>
-<li>Telegram returns <code>PHONE_MIGRATE_1</code></li>
-<li><code>layer-client</code> reconnects to DC1, re-performs the DH handshake, and retries your request</li>
-<li>Your code sees a successful response — the migration is invisible</li>
-</ol>
-<p>The correct DC is then saved in the session file for future connections.</p>
-<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange used on each DC connection" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
-<p><em>Each new DC connection performs a full DH key exchange to establish a fresh auth key for that DC.</em></p>
-<h2 id="overriding-the-initial-dc"><a class="header" href="#overriding-the-initial-dc">Overriding the initial DC</a></h2>
-<p>By default, <code>layer-client</code> starts on DC2. If you know your account is on a different DC, you can set the initial address:</p>
+                        <h1 id="peer-types--peerref"><a class="header" href="#peer-types--peerref">Peer Types &amp; PeerRef</a></h1>
+<p><code>layer-client</code> provides ergonomic high-level wrappers over the raw <code>tl::enums::User</code> and <code>tl::enums::Chat</code> types, plus <code>PeerRef</code> — a flexible peer argument accepted by every <code>Client</code> method.</p>
+<hr>
+<h2 id="peerref--flexible-peer-argument"><a class="header" href="#peerref--flexible-peer-argument"><code>PeerRef</code> — flexible peer argument</a></h2>
+<p>Every <code>Client</code> method that previously required a bare <code>tl::enums::Peer</code> now accepts <code>impl Into&lt;PeerRef&gt;</code>. That means you can pass:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let (client, _shutdown) = Client::builder()
-    .api_id(12345)
-    .api_hash("your_hash")
-    .session("my.session")
-    .dc_addr("149.154.167.91:443")   // DC4
-    .connect()
-    .await?;
+</span>// @username string (with or without @)
+client.send_message_to_peer("@durov", "hi").await?;
+client.send_message_to_peer("durov",  "hi").await?;
+
+// "me" / "self" — always resolves to the logged-in account
+client.send_message_to_peer("me", "Note to self").await?;
+
+// Positive i64 — Telegram user ID
+client.send_message_to_peer(12345678_i64, "hi").await?;
+
+// Negative i64 — Bot-API channel ID (-100… prefix)
+client.iter_messages(-1001234567890_i64);
+
+// Negative i64 — Bot-API basic-group ID (small negative)
+client.mark_as_read(-123456_i64).await?;
+
+// Already-resolved TL peer — zero overhead, no network call
+use layer_client::tl;
+let peer = tl::enums::Peer::User(tl::types::PeerUser { user_id: 123 });
+client.send_message_to_peer(peer, "hi").await?;
 <span class="boring">}</span></code></pre>
-<p>DC addresses:</p>
+<h3 id="peerref-variants"><a class="header" href="#peerref-variants"><code>PeerRef</code> variants</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>DC</th><th>Primary IP</th><th>Notes</th></tr>
+<tr><th>Variant</th><th>How resolved</th></tr>
 </thead>
 <tbody>
-<tr><td>DC1</td><td>149.154.175.53</td><td>US East</td></tr>
-<tr><td>DC2</td><td>149.154.167.51</td><td>US East (default)</td></tr>
-<tr><td>DC3</td><td>149.154.175.100</td><td>US West</td></tr>
-<tr><td>DC4</td><td>149.154.167.91</td><td>EU Amsterdam</td></tr>
-<tr><td>DC5</td><td>91.108.56.130</td><td>Singapore</td></tr>
+<tr><td><code>PeerRef::Username(s)</code></td><td><code>contacts.resolveUsername</code> RPC (cached after first call)</td></tr>
+<tr><td><code>PeerRef::Id(i64)</code></td><td>Decoded from Bot-API encoding — <strong>no network call</strong></td></tr>
+<tr><td><code>PeerRef::Peer(tl::enums::Peer)</code></td><td>Forwarded as-is — <strong>zero cost</strong></td></tr>
 </tbody>
 </table>
 </div>
-<p>In practice, just leave the default and let auto-migration handle it.</p>
-<h2 id="dc-pool-for-media"><a class="header" href="#dc-pool-for-media">DC pool (for media)</a></h2>
-<p>When downloading media, Telegram may route large files through CDN DCs different from your account’s home DC. <code>layer-client</code> maintains a connection pool across DCs and handles this automatically via <code>invoke_on_dc</code>.</p>
+<h3 id="bot-api-id-encoding"><a class="header" href="#bot-api-id-encoding">Bot-API ID encoding</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Range</th><th>Maps to</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id &gt; 0</code></td><td>User (<code>PeerUser { user_id: id }</code>)</td></tr>
+<tr><td><code>-1_000_000_000_000 &lt; id &lt; 0</code></td><td>Basic group (<code>PeerChat { chat_id: -id }</code>)</td></tr>
+<tr><td><code>id ≤ -1_000_000_000_000</code></td><td>Channel (<code>channel_id = -id - 1_000_000_000_000</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="resolving-manually"><a class="header" href="#resolving-manually">Resolving manually</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::PeerRef;
+
+let peer_ref = PeerRef::from("@someuser");
+let peer: tl::enums::Peer = peer_ref.resolve(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="user--user-account-wrapper"><a class="header" href="#user--user-account-wrapper"><code>User</code> — user account wrapper</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::types::User;
+
+// Wrap from raw TL
+if let Some(user) = User::from_raw(raw_tl_user) {
+    println!("ID: {}", user.id());
+    println!("Name: {}", user.full_name());
+    println!("Username: {:?}", user.username());
+    println!("Is bot: {}", user.bot());
+    println!("Is premium: {}", user.premium());
+}
+<span class="boring">}</span></code></pre>
+<h3 id="user-accessor-methods"><a class="header" href="#user-accessor-methods"><code>User</code> accessor methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id()</code></td><td><code>i64</code></td><td>Telegram user ID</td></tr>
+<tr><td><code>access_hash()</code></td><td><code>Option&lt;i64&gt;</code></td><td>Access hash for API calls</td></tr>
+<tr><td><code>first_name()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>First name</td></tr>
+<tr><td><code>last_name()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Last name</td></tr>
+<tr><td><code>full_name()</code></td><td><code>String</code></td><td><code>"First [Last]"</code> combined</td></tr>
+<tr><td><code>username()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Primary username (without <code>@</code>)</td></tr>
+<tr><td><code>usernames()</code></td><td><code>Vec&lt;&amp;str&gt;</code></td><td>All active usernames</td></tr>
+<tr><td><code>phone()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Phone number (if visible)</td></tr>
+<tr><td><code>bot()</code></td><td><code>bool</code></td><td>Is a bot account</td></tr>
+<tr><td><code>verified()</code></td><td><code>bool</code></td><td>Is a verified account</td></tr>
+<tr><td><code>premium()</code></td><td><code>bool</code></td><td>Is a premium account</td></tr>
+<tr><td><code>deleted()</code></td><td><code>bool</code></td><td>Account has been deleted</td></tr>
+<tr><td><code>scam()</code></td><td><code>bool</code></td><td>Flagged as scam</td></tr>
+<tr><td><code>restricted()</code></td><td><code>bool</code></td><td>Account is restricted</td></tr>
+<tr><td><code>is_self()</code></td><td><code>bool</code></td><td>Is the currently logged-in user</td></tr>
+<tr><td><code>contact()</code></td><td><code>bool</code></td><td>In the logged-in user’s contacts</td></tr>
+<tr><td><code>mutual_contact()</code></td><td><code>bool</code></td><td>Mutual contact</td></tr>
+<tr><td><code>support()</code></td><td><code>bool</code></td><td>Telegram support staff</td></tr>
+<tr><td><code>lang_code()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>User’s client language code</td></tr>
+<tr><td><code>status()</code></td><td><code>Option&lt;&amp;tl::enums::UserStatus&gt;</code></td><td>Online/offline status</td></tr>
+<tr><td><code>photo()</code></td><td><code>Option&lt;&amp;tl::types::UserProfilePhoto&gt;</code></td><td>Profile photo</td></tr>
+<tr><td><code>bot_inline_placeholder()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Inline mode compose bar hint</td></tr>
+<tr><td><code>bot_inline_geo()</code></td><td><code>bool</code></td><td>Bot supports inline without location</td></tr>
+<tr><td><code>bot_supports_chats()</code></td><td><code>bool</code></td><td>Bot can be added to groups</td></tr>
+<tr><td><code>restriction_reason()</code></td><td><code>Vec&lt;&amp;tl::enums::RestrictionReason&gt;</code></td><td>Restriction reasons</td></tr>
+<tr><td><code>as_peer()</code></td><td><code>tl::enums::Peer</code></td><td>Convert to <code>Peer</code></td></tr>
+<tr><td><code>as_input_peer()</code></td><td><code>tl::enums::InputPeer</code></td><td>Convert to <code>InputPeer</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>User</code> implements <code>Display</code> as <code>"Full Name (@username)"</code> or <code>"Full Name [user_id]"</code>.</p>
+<hr>
+<h2 id="group--basic-group-wrapper"><a class="header" href="#group--basic-group-wrapper"><code>Group</code> — basic group wrapper</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::types::Group;
+
+if let Some(group) = Group::from_raw(raw_tl_chat) {
+    println!("ID: {}", group.id());
+    println!("Title: {}", group.title());
+    println!("Members: {}", group.participants_count());
+    println!("I am creator: {}", group.creator());
+}
+<span class="boring">}</span></code></pre>
+<h3 id="group-accessor-methods"><a class="header" href="#group-accessor-methods"><code>Group</code> accessor methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id()</code></td><td><code>i64</code></td><td>Group ID</td></tr>
+<tr><td><code>title()</code></td><td><code>&amp;str</code></td><td>Group name</td></tr>
+<tr><td><code>participants_count()</code></td><td><code>i32</code></td><td>Member count</td></tr>
+<tr><td><code>creator()</code></td><td><code>bool</code></td><td>Logged-in user is the creator</td></tr>
+<tr><td><code>migrated_to()</code></td><td><code>Option&lt;&amp;tl::enums::InputChannel&gt;</code></td><td>Points to supergroup after migration</td></tr>
+<tr><td><code>as_peer()</code></td><td><code>tl::enums::Peer</code></td><td>Convert to <code>Peer</code></td></tr>
+<tr><td><code>as_input_peer()</code></td><td><code>tl::enums::InputPeer</code></td><td>Convert to <code>InputPeer</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="channel--channel--supergroup-wrapper"><a class="header" href="#channel--channel--supergroup-wrapper"><code>Channel</code> — channel / supergroup wrapper</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::types::{Channel, ChannelKind};
+
+if let Some(channel) = Channel::from_raw(raw_tl_chat) {
+    println!("ID: {}", channel.id());
+    println!("Title: {}", channel.title());
+    println!("Username: {:?}", channel.username());
+    println!("Kind: {:?}", channel.kind());
+    println!("Members: {:?}", channel.participants_count());
+}
+<span class="boring">}</span></code></pre>
+<h3 id="channel-accessor-methods"><a class="header" href="#channel-accessor-methods"><code>Channel</code> accessor methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id()</code></td><td><code>i64</code></td><td>Channel ID</td></tr>
+<tr><td><code>access_hash()</code></td><td><code>Option&lt;i64&gt;</code></td><td>Access hash</td></tr>
+<tr><td><code>title()</code></td><td><code>&amp;str</code></td><td>Channel / supergroup name</td></tr>
+<tr><td><code>username()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Public username (without <code>@</code>)</td></tr>
+<tr><td><code>usernames()</code></td><td><code>Vec&lt;&amp;str&gt;</code></td><td>All active usernames</td></tr>
+<tr><td><code>megagroup()</code></td><td><code>bool</code></td><td>Is a supergroup (not a broadcast channel)</td></tr>
+<tr><td><code>broadcast()</code></td><td><code>bool</code></td><td>Is a broadcast channel</td></tr>
+<tr><td><code>gigagroup()</code></td><td><code>bool</code></td><td>Is a broadcast group (gigagroup)</td></tr>
+<tr><td><code>kind()</code></td><td><code>ChannelKind</code></td><td><code>Broadcast</code> / <code>Megagroup</code> / <code>Gigagroup</code></td></tr>
+<tr><td><code>verified()</code></td><td><code>bool</code></td><td>Verified account</td></tr>
+<tr><td><code>restricted()</code></td><td><code>bool</code></td><td>Is restricted</td></tr>
+<tr><td><code>signatures()</code></td><td><code>bool</code></td><td>Posts have author signatures</td></tr>
+<tr><td><code>participants_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Approximate member count</td></tr>
+<tr><td><code>photo()</code></td><td><code>Option&lt;&amp;tl::types::ChatPhoto&gt;</code></td><td>Channel photo</td></tr>
+<tr><td><code>admin_rights()</code></td><td><code>Option&lt;&amp;tl::types::ChatAdminRights&gt;</code></td><td>Your admin rights</td></tr>
+<tr><td><code>restriction_reason()</code></td><td><code>Vec&lt;&amp;tl::enums::RestrictionReason&gt;</code></td><td>Restriction reasons</td></tr>
+<tr><td><code>as_peer()</code></td><td><code>tl::enums::Peer</code></td><td>Convert to <code>Peer</code></td></tr>
+<tr><td><code>as_input_peer()</code></td><td><code>tl::enums::InputPeer</code></td><td>Convert to <code>InputPeer</code> (requires hash)</td></tr>
+<tr><td><code>as_input_channel()</code></td><td><code>tl::enums::InputChannel</code></td><td>Convert to <code>InputChannel</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="channelkind-enum"><a class="header" href="#channelkind-enum"><code>ChannelKind</code> enum</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::types::ChannelKind;
+
+match channel.kind() {
+    ChannelKind::Broadcast  =&gt; { /* Posts only, no member replies */ }
+    ChannelKind::Megagroup  =&gt; { /* All members can post */ }
+    ChannelKind::Gigagroup  =&gt; { /* Large public broadcast group */ }
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="chat--unified-chat-enum"><a class="header" href="#chat--unified-chat-enum"><code>Chat</code> — unified chat enum</a></h2>
+<p><code>Chat</code> unifies <code>Group</code> and <code>Channel</code> into one enum with shared accessors:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::types::Chat;
+
+if let Some(chat) = Chat::from_raw(raw_tl_chat) {
+    println!("ID: {}", chat.id());
+    println!("Title: {}", chat.title());
+
+    match &amp;chat {
+        Chat::Group(g)   =&gt; println!("Basic group, {} members", g.participants_count()),
+        Chat::Channel(c) =&gt; println!("{:?} channel", c.kind()),
+    }
+}
+<span class="boring">}</span></code></pre>
+<h3 id="chat-methods"><a class="header" href="#chat-methods"><code>Chat</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id()</code></td><td><code>i64</code></td><td>ID regardless of variant</td></tr>
+<tr><td><code>title()</code></td><td><code>&amp;str</code></td><td>Name regardless of variant</td></tr>
+<tr><td><code>as_peer()</code></td><td><code>tl::enums::Peer</code></td><td><code>Peer</code> variant</td></tr>
+<tr><td><code>as_input_peer()</code></td><td><code>tl::enums::InputPeer</code></td><td><code>InputPeer</code> variant</td></tr>
+</tbody>
+</table>
+</div>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../advanced/retry.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../api/input-message.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../advanced/proxy.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../api/participants.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -244,11 +430,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../advanced/retry.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../api/input-message.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../advanced/proxy.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../api/participants.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

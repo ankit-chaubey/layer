@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c09552cd.js";
+            window.path_to_searchindex_js = "../searchindex-5f3e9a69.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-747e4d8b.js"></script>
+        <script src="../toc-aabd3487.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,104 +182,180 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="typing-guard"><a class="header" href="#typing-guard">Typing Guard</a></h1>
-<p><code>TypingGuard</code> is a RAII wrapper that keeps a “typing…” or “uploading…” indicator alive for the duration of an operation and automatically cancels it on drop.</p>
-<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic usage</a></h2>
+<p><code>TypingGuard</code> is a RAII wrapper that keeps a “typing…” or “uploading…” indicator alive for the duration of an operation and <strong>automatically cancels it when dropped</strong>. You never need to call <code>SetTyping</code> with <code>CancelAction</code> by hand.</p>
+<p>The guard re-sends the action every <strong>4 seconds</strong> (Telegram drops indicators after ~5 s) until the guard is dropped or <code>.cancel()</code> is called.</p>
+<hr>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<p><code>TypingGuard</code> is re-exported from <code>layer_client</code> — no extra import needed beyond <code>use layer_client::TypingGuard;</code>.</p>
+<hr>
+<h2 id="convenience-methods-on-client"><a class="header" href="#convenience-methods-on-client">Convenience methods on <code>Client</code></a></h2>
+<p>These are the recommended entry points:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::{Client, TypingGuard};
+
+// "typing…"
+let _typing = client.typing(peer.clone()).await?;
+
+// "uploading document…"
+let _typing = client.uploading_document(peer.clone()).await?;
+
+// "recording video…"
+let _typing = client.recording_video(peer.clone()).await?;
+
+// typing inside a forum topic (top_msg_id)
+let _typing = client.typing_in_topic(peer.clone(), topic_id).await?;
+<span class="boring">}</span></code></pre>
+<p>The guard auto-cancels when it goes out of scope.</p>
+<hr>
+<h2 id="using-typingguardstart-directly"><a class="header" href="#using-typingguardstart-directly">Using <code>TypingGuard::start</code> directly</a></h2>
+<p>For any <code>SendMessageAction</code> variant — including ones that don’t have a convenience method:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::TypingGuard;
+use layer_tl_types as tl;
 
-async fn process_message(client: &amp;Client, peer: tl::enums::Peer) {
-    // Start "typing…" — cancelled automatically when guard drops
-    let _guard = TypingGuard::typing(client, peer).await;
-
-    // Do your slow work here
-    let response = compute_heavy_reply().await;
-
-    // _guard drops here → typing indicator cancelled automatically
-    client.send_message_to_peer(peer, &amp;response).await.ok();
-}
-<span class="boring">}</span></code></pre>
-<h2 id="action-types"><a class="header" href="#action-types">Action types</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_tl_types::{enums, types};
-
-// Typing a text message
-let _guard = TypingGuard::typing(client, peer).await;
-
-// Uploading a photo
-let _guard = TypingGuard::upload_photo(client, peer).await;
-
-// Uploading a document / file
-let _guard = TypingGuard::upload_document(client, peer).await;
-
-// Recording a voice message
-let _guard = TypingGuard::record_audio(client, peer).await;
-
-// Recording a video note
-let _guard = TypingGuard::record_round(client, peer).await;
-
-// Choose a sticker
-let _guard = TypingGuard::choose_sticker(client, peer).await;
-
-// Custom action (raw TL type)
-let _guard = TypingGuard::custom(
+// Record audio / voice message
+let _guard = TypingGuard::start(
     client,
-    peer,
-    enums::SendMessageAction::SendMessageTypingAction,
-).await;
-<span class="boring">}</span></code></pre>
-<h2 id="forum-topic-typing-top_msg_id"><a class="header" href="#forum-topic-typing-top_msg_id">Forum topic typing (top_msg_id)</a></h2>
-<p>For forum supergroups, pass the topic’s <code>top_msg_id</code> to restrict the indicator to that topic:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.send_chat_action(
-    peer,
-    enums::SendMessageAction::SendMessageTypingAction,
-    Some(topic_msg_id),  // top_msg_id
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageRecordAudioAction,
+).await?;
+
+// Upload photo
+let _guard = TypingGuard::start(
+    client,
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageUploadPhotoAction(
+        tl::types::SendMessageUploadPhotoAction { progress: 0 },
+    ),
+).await?;
+
+// Choose sticker
+let _guard = TypingGuard::start(
+    client,
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageChooseStickerAction,
 ).await?;
 <span class="boring">}</span></code></pre>
-<p><code>TypingGuard</code> sends this on an interval (default 5 seconds) so the indicator doesn’t expire while you’re working.</p>
-<h2 id="manual-send_chat_action"><a class="header" href="#manual-send_chat_action">Manual send_chat_action</a></h2>
-<p>Without <code>TypingGuard</code>, you can fire a one-shot indicator:</p>
+<hr>
+<h2 id="typingguardstart_ex--forum-topics--custom-delay"><a class="header" href="#typingguardstart_ex--forum-topics--custom-delay"><code>TypingGuard::start_ex</code> — forum topics + custom delay</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>client.send_chat_action(
-    peer,
+</span>use std::time::Duration;
+
+let _guard = TypingGuard::start_ex(
+    client,
+    peer,                   // tl::enums::Peer (already resolved)
     tl::enums::SendMessageAction::SendMessageTypingAction,
-    None,  // no topic
+    Some(topic_msg_id),     // top_msg_id — None for normal chats
+    Duration::from_secs(4), // repeat delay (≤ 4 s recommended)
 ).await?;
 <span class="boring">}</span></code></pre>
-<p>The indicator automatically expires after ~5 seconds on Telegram’s end. <code>TypingGuard</code> keeps refreshing it on an interval.</p>
-<h2 id="how-typingguard-works"><a class="header" href="#how-typingguard-works">How TypingGuard works</a></h2>
-<p>On creation, <code>TypingGuard</code>:</p>
-<ol>
-<li>Sends the action immediately</li>
-<li>Spawns a background task that re-sends the action every ~4.5 seconds</li>
-</ol>
-<p>On drop, it cancels the background task and optionally sends a <code>SendMessageCancelAction</code> to clear the indicator immediately.</p>
-<h2 id="example-file-upload-with-progress-indicator"><a class="header" href="#example-file-upload-with-progress-indicator">Example: file upload with progress indicator</a></h2>
+<hr>
+<h2 id="manual-cancel"><a class="header" href="#manual-cancel">Manual <code>.cancel()</code></a></h2>
+<p>Call <code>.cancel()</code> to stop the indicator immediately without waiting for the guard to drop:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>async fn send_file_with_progress(
+</span>let mut guard = client.typing(peer.clone()).await?;
+
+do_some_work().await;
+
+guard.cancel(); // indicator stops here
+
+// guard still lives, but the task is already stopped
+send_reply(client, peer).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="one-shot-send_chat_action-no-guard"><a class="header" href="#one-shot-send_chat_action-no-guard">One-shot <code>send_chat_action</code> (no guard)</a></h2>
+<p>If you don’t need the automatic renewal, fire a single action:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>client.send_chat_action(
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageTypingAction,
+    None, // top_msg_id — Some(id) for forum topics
+).await?;
+<span class="boring">}</span></code></pre>
+<p>Telegram shows the indicator for ~5 seconds and then removes it automatically.</p>
+<hr>
+<h2 id="complete-example--long-task-with-typing"><a class="header" href="#complete-example--long-task-with-typing">Complete example — long task with typing</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::{Client, InvocationError};
+use layer_tl_types as tl;
+
+async fn handle_command(
     client: &amp;Client,
     peer: tl::enums::Peer,
-    path: &amp;str,
-) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-    // Show "uploading document…" while uploading
-    let _guard = TypingGuard::upload_document(client, peer.clone()).await;
+) -&gt; Result&lt;(), InvocationError&gt; {
+    // Indicator starts immediately, renewed every 4 s
+    let _typing = client.typing(peer.clone()).await?;
 
-    let uploaded = client.upload_file(path).await?;
+    // Simulate a slow operation
+    let result = compute_answer().await;
 
-    // Guard drops here, cancelling the indicator
-    drop(_guard);
-
-    // Now send the file — no typing indicator
-    client.send_file(peer, uploaded.as_document_media(), None).await?;
+    // _typing drops here → indicator cancelled
+    client
+        .send_message_to_peer(peer, &amp;result)
+        .await?;
 
     Ok(())
 }
+
+async fn compute_answer() -&gt; String {
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    "Here is your answer!".into()
+}
 <span class="boring">}</span></code></pre>
+<hr>
+<h2 id="example--upload-with-uploading-document-indicator"><a class="header" href="#example--upload-with-uploading-document-indicator">Example — upload with “uploading document…” indicator</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>async fn send_document(
+    client: &amp;Client,
+    peer: tl::enums::Peer,
+    bytes: Vec&lt;u8&gt;,
+    filename: &amp;str,
+) -&gt; Result&lt;(), InvocationError&gt; {
+    // Show "uploading document…" while the upload runs
+    let _guard = client.uploading_document(peer.clone()).await?;
+
+    let uploaded = client.upload_file(filename, &amp;bytes).await?;
+
+    drop(_guard); // cancel the indicator before sending
+
+    client.send_file(peer, uploaded, false).await?;
+    Ok(())
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="how-it-works-internally"><a class="header" href="#how-it-works-internally">How it works internally</a></h2>
+<ol>
+<li><code>start()</code> calls <code>send_chat_action_ex(peer, action, topic_id)</code> immediately.</li>
+<li>A <code>tokio::spawn</code> loop wakes every <code>repeat_delay</code> (default 4 s) and re-sends the action.</li>
+<li>A <code>tokio::sync::Notify</code> signals the loop to stop when the guard is dropped or <code>.cancel()</code> is called.</li>
+<li>On loop exit, <code>SendMessageCancelAction</code> is sent to immediately clear the indicator.</li>
+</ol>
+<hr>
+<h2 id="api-reference"><a class="header" href="#api-reference">API reference</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Symbol</th><th>Kind</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>TypingGuard</code></td><td>struct</td><td>RAII guard; drop to cancel</td></tr>
+<tr><td><code>TypingGuard::start(client, peer, action)</code></td><td><code>async fn</code></td><td>Start any <code>SendMessageAction</code></td></tr>
+<tr><td><code>TypingGuard::start_ex(client, peer, action, topic_id, delay)</code></td><td><code>async fn</code></td><td>Full control — topic support + custom repeat delay</td></tr>
+<tr><td><code>guard.cancel()</code></td><td><code>fn</code></td><td>Stop the indicator immediately (guard stays alive)</td></tr>
+<tr><td><code>client.typing(peer)</code></td><td><code>async fn</code></td><td>Shorthand for <code>TypingAction</code></td></tr>
+<tr><td><code>client.uploading_document(peer)</code></td><td><code>async fn</code></td><td>Shorthand for <code>UploadDocumentAction</code></td></tr>
+<tr><td><code>client.recording_video(peer)</code></td><td><code>async fn</code></td><td>Shorthand for <code>RecordVideoAction</code></td></tr>
+<tr><td><code>client.typing_in_topic(peer, topic_id)</code></td><td><code>async fn</code></td><td>Typing inside a forum topic thread</td></tr>
+</tbody>
+</table>
+</div>
 
                     </main>
 

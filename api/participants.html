@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c09552cd.js";
+            window.path_to_searchindex_js = "../searchindex-5f3e9a69.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-747e4d8b.js"></script>
+        <script src="../toc-aabd3487.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,191 +182,245 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="participants--members"><a class="header" href="#participants--members">Participants &amp; Members</a></h1>
-<p>Methods for fetching, banning, promoting, and managing chat members.</p>
-<h2 id="get-participants"><a class="header" href="#get-participants">Get participants</a></h2>
+<p>Methods for fetching, banning, kicking, promoting, and managing chat members. All methods accept <code>impl Into&lt;PeerRef&gt;</code> for the peer argument.</p>
+<hr>
+<h2 id="fetch-participants"><a class="header" href="#fetch-participants">Fetch participants</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Get up to 200 participants from a channel/supergroup
-let members = client.get_participants(
-    tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 123 }),
-    200,  // limit (0 = use default)
-).await?;
+</span>use layer_client::participants::Participant;
 
-for member in members {
-    println!("{} ({:?})", member.user.first_name.as_deref().unwrap_or("?"), member.status);
+// Fetch up to N participants at once
+let members: Vec&lt;Participant&gt; = client
+    .get_participants(peer.clone(), 200)
+    .await?;
+
+for p in &amp;members {
+    println!(
+        "{} — admin: {}, banned: {}",
+        p.user.first_name.as_deref().unwrap_or("?"),
+        p.is_admin(),
+        p.is_banned(),
+    );
 }
 <span class="boring">}</span></code></pre>
-<h3 id="participantstatus-variants"><a class="header" href="#participantstatus-variants">ParticipantStatus variants</a></h3>
+<h3 id="paginated-iterator-large-groups"><a class="header" href="#paginated-iterator-large-groups">Paginated iterator (large groups)</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut iter = client.iter_participants(peer.clone());
+while let Some(p) = iter.next(&amp;client).await? {
+    println!("{}", p.user.first_name.as_deref().unwrap_or(""));
+}
+<span class="boring">}</span></code></pre>
+<h3 id="search-contacts-and-dialogs-by-name"><a class="header" href="#search-contacts-and-dialogs-by-name">Search contacts and dialogs by name</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Returns combined results from contacts, dialogs, and global
+let results: Vec&lt;tl::enums::Peer&gt; = client.search_peer("John").await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="participant-fields"><a class="header" href="#participant-fields"><code>Participant</code> fields</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>p.user          // tl::types::User — raw user data
+p.is_creator()  // bool — is the channel/group creator
+p.is_admin()    // bool — has any admin rights
+p.is_banned()   // bool — is banned/restricted
+p.is_member()   // bool — active member (not banned, not left)
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="kick-participant"><a class="header" href="#kick-participant">Kick participant</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Removes the user from a basic group
+// For channels/supergroups, use ban_participant instead
+client.kick_participant(peer.clone(), user_id).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="ban-participant--bannedrightsbuilder"><a class="header" href="#ban-participant--bannedrightsbuilder">Ban participant — <code>BannedRightsBuilder</code></a></h2>
+<p>Use the fluent <code>BannedRightsBuilder</code> for granular bans:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::BannedRightsBuilder;
+
+// Permanent full ban
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
+    .await?;
+
+// Partial restriction — no media, no stickers, expires in 24 h
+let expires = (std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
+
+client
+    .ban_participant(
+        peer.clone(),
+        user_id,
+        BannedRightsBuilder::new()
+            .send_media(true)
+            .send_stickers(true)
+            .send_gifs(true)
+            .until_date(expires),
+    )
+    .await?;
+
+// Unban — pass an empty builder to restore full permissions
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="bannedrightsbuilder-methods"><a class="header" href="#bannedrightsbuilder-methods"><code>BannedRightsBuilder</code> methods</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Variant</th><th>Meaning</th></tr>
+<tr><th>Method</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Member</code></td><td>Regular member</td></tr>
-<tr><td><code>Creator</code></td><td>The group/channel creator</td></tr>
-<tr><td><code>Admin</code></td><td>Has admin rights</td></tr>
-<tr><td><code>Restricted</code></td><td>Partially banned (some rights removed)</td></tr>
-<tr><td><code>Banned</code></td><td>Fully banned</td></tr>
-<tr><td><code>Left</code></td><td>Has left the group</td></tr>
+<tr><td><code>BannedRightsBuilder::new()</code></td><td>All permissions granted (empty ban = unban)</td></tr>
+<tr><td><code>BannedRightsBuilder::full_ban()</code></td><td>All rights revoked, permanent</td></tr>
+<tr><td><code>.view_messages(bool)</code></td><td>Prevent reading messages</td></tr>
+<tr><td><code>.send_messages(bool)</code></td><td>Prevent sending text</td></tr>
+<tr><td><code>.send_media(bool)</code></td><td>Prevent sending media</td></tr>
+<tr><td><code>.send_stickers(bool)</code></td><td>Prevent sending stickers</td></tr>
+<tr><td><code>.send_gifs(bool)</code></td><td>Prevent sending GIFs</td></tr>
+<tr><td><code>.send_games(bool)</code></td><td>Prevent sending games</td></tr>
+<tr><td><code>.send_inline(bool)</code></td><td>Prevent using inline bots</td></tr>
+<tr><td><code>.embed_links(bool)</code></td><td>Prevent embedding links</td></tr>
+<tr><td><code>.send_polls(bool)</code></td><td>Prevent sending polls</td></tr>
+<tr><td><code>.change_info(bool)</code></td><td>Prevent changing chat info</td></tr>
+<tr><td><code>.invite_users(bool)</code></td><td>Prevent inviting users</td></tr>
+<tr><td><code>.pin_messages(bool)</code></td><td>Prevent pinning messages</td></tr>
+<tr><td><code>.until_date(ts: i32)</code></td><td>Expiry Unix timestamp (<code>0</code> = permanent)</td></tr>
 </tbody>
 </table>
 </div>
 <hr>
-<h2 id="kick-from-basic-group"><a class="header" href="#kick-from-basic-group">Kick from basic group</a></h2>
+<h2 id="promote-admin--adminrightsbuilder"><a class="header" href="#promote-admin--adminrightsbuilder">Promote admin — <code>AdminRightsBuilder</code></a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Removes the user from a basic group (not a supergroup/channel)
-client.kick_participant(chat_id, user_id).await?;
+</span>use layer_client::participants::AdminRightsBuilder;
+
+// Promote with specific rights and a custom title
+client
+    .promote_participant(
+        peer.clone(),
+        user_id,
+        AdminRightsBuilder::new()
+            .post_messages(true)
+            .delete_messages(true)
+            .ban_users(true)
+            .invite_users(true)
+            .pin_messages(true)
+            .rank("Moderator"), // custom admin title (max 16 chars)
+    )
+    .await?;
+
+// Full admin (all standard rights except add_admins)
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
+    .await?;
+
+// Demote — pass an empty builder to remove all admin rights
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
+    .await?;
 <span class="boring">}</span></code></pre>
-<p>For channels/supergroups, use <code>ban_participant</code> instead.</p>
+<h3 id="adminrightsbuilder-methods"><a class="header" href="#adminrightsbuilder-methods"><code>AdminRightsBuilder</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>AdminRightsBuilder::new()</code></td><td>No rights (use to demote)</td></tr>
+<tr><td><code>AdminRightsBuilder::full_admin()</code></td><td>All standard rights</td></tr>
+<tr><td><code>.change_info(bool)</code></td><td>Can change channel/group info</td></tr>
+<tr><td><code>.post_messages(bool)</code></td><td>Can post in channels</td></tr>
+<tr><td><code>.edit_messages(bool)</code></td><td>Can edit others’ messages</td></tr>
+<tr><td><code>.delete_messages(bool)</code></td><td>Can delete messages</td></tr>
+<tr><td><code>.ban_users(bool)</code></td><td>Can ban / restrict members</td></tr>
+<tr><td><code>.invite_users(bool)</code></td><td>Can add members</td></tr>
+<tr><td><code>.pin_messages(bool)</code></td><td>Can pin messages</td></tr>
+<tr><td><code>.add_admins(bool)</code></td><td>Can promote other admins (<strong>use carefully</strong>)</td></tr>
+<tr><td><code>.anonymous(bool)</code></td><td>Posts appear as channel name, not user</td></tr>
+<tr><td><code>.manage_call(bool)</code></td><td>Can manage voice/video chats</td></tr>
+<tr><td><code>.manage_topics(bool)</code></td><td>Can manage forum topics</td></tr>
+<tr><td><code>.rank(str)</code></td><td>Custom admin title shown beside name</td></tr>
+</tbody>
+</table>
+</div>
 <hr>
-<h2 id="ban-from-channel"><a class="header" href="#ban-from-channel">Ban from channel</a></h2>
+<h2 id="get-participant-permissions"><a class="header" href="#get-participant-permissions">Get participant permissions</a></h2>
+<p>Check the effective permissions of a user in a channel or supergroup:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Permanent ban (until_date = 0)
-client.ban_participant(
-    tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 123 }),
-    user_id,
-    0,  // until_date: 0 = permanent
-).await?;
+</span>use layer_client::participants::ParticipantPermissions;
 
-// Temporary ban — expires at unix timestamp
-let expires = chrono::Utc::now().timestamp() as i32 + 86400; // 24h
-client.ban_participant(peer, user_id, expires).await?;
+let perms: ParticipantPermissions = client
+    .get_permissions(peer.clone(), user_id)
+    .await?;
+
+println!("Creator: {}", perms.is_creator());
+println!("Admin: {}",   perms.is_admin());
+println!("Banned: {}",  perms.is_banned());
+println!("Member: {}",  perms.is_member());
+println!("Can send: {}", perms.can_send_messages);
+println!("Can pin: {}",  perms.can_pin_messages);
+println!("Admin title: {:?}", perms.admin_rank);
 <span class="boring">}</span></code></pre>
-<h3 id="what-ban_participant-does"><a class="header" href="#what-ban_participant-does">What ban_participant does</a></h3>
-<p>Sets <code>ChatBannedRights</code> with <code>view_messages: true</code>, which is the Telegram way of banning — it prevents the user from reading or sending any messages.</p>
-<p>For selective restrictions (e.g. no stickers, no media), use the raw API with <code>channels.editBanned</code>.</p>
+<h3 id="participantpermissions-fields--methods"><a class="header" href="#participantpermissions-fields--methods"><code>ParticipantPermissions</code> fields &amp; methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Symbol</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_creator()</code></td><td><code>bool</code></td><td>Is the channel/group creator</td></tr>
+<tr><td><code>is_admin()</code></td><td><code>bool</code></td><td>Has any admin rights</td></tr>
+<tr><td><code>is_banned()</code></td><td><code>bool</code></td><td>Is banned or restricted</td></tr>
+<tr><td><code>is_member()</code></td><td><code>bool</code></td><td>Active member (not banned, not left)</td></tr>
+<tr><td><code>can_send_messages</code></td><td><code>bool</code></td><td>Can send text messages</td></tr>
+<tr><td><code>can_send_media</code></td><td><code>bool</code></td><td>Can send media</td></tr>
+<tr><td><code>can_pin_messages</code></td><td><code>bool</code></td><td>Can pin messages</td></tr>
+<tr><td><code>can_add_admins</code></td><td><code>bool</code></td><td>Can promote admins</td></tr>
+<tr><td><code>admin_rank</code></td><td><code>Option&lt;String&gt;</code></td><td>Custom admin title</td></tr>
+</tbody>
+</table>
+</div>
 <hr>
-<h2 id="promote--demote-admin"><a class="header" href="#promote--demote-admin">Promote / demote admin</a></h2>
+<h2 id="profile-photos"><a class="header" href="#profile-photos">Profile photos</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Grant admin rights
-client.promote_participant(channel_peer, user_id, true).await?;
+</span>// Fetch a page of profile photos (user_id, offset, limit)
+let photos = client.get_profile_photos(user_id, 0, 10).await?;
 
-// Remove admin rights
-client.promote_participant(channel_peer, user_id, false).await?;
-<span class="boring">}</span></code></pre>
-<p>The default promotion grants: <code>change_info</code>, <code>post_messages</code>, <code>edit_messages</code>, <code>delete_messages</code>, <code>ban_users</code>, <code>invite_users</code>, <code>pin_messages</code>, <code>manage_call</code>.</p>
-<p>For custom rights, use <code>channels.editAdmin</code> via <code>client.invoke()</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_tl_types::{functions, types, enums};
-
-client.invoke(&amp;functions::channels::EditAdmin {
-    flags: 0,
-    channel: enums::InputChannel::InputChannel(types::InputChannel {
-        channel_id, access_hash,
-    }),
-    user_id: enums::InputUser::InputUser(types::InputUser {
-        user_id, access_hash: user_hash,
-    }),
-    admin_rights: enums::ChatAdminRights::ChatAdminRights(types::ChatAdminRights {
-        change_info:            true,
-        post_messages:          true,
-        edit_messages:          false,
-        delete_messages:        true,
-        ban_users:              true,
-        invite_users:           true,
-        pin_messages:           true,
-        add_admins:             false,  // can they add other admins?
-        anonymous:              false,
-        manage_call:            true,
-        other:                  false,
-        manage_topics:          false,
-        post_stories:           false,
-        edit_stories:           false,
-        delete_stories:         false,
-        manage_direct_messages: false,
-        manage_ranks:           false,   // Layer 223: custom rank management
-    }),
-    rank: Some("Moderator".into()),  // Layer 223: rank is now Option&lt;String&gt;
-}).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="get-profile-photos"><a class="header" href="#get-profile-photos">Get profile photos</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let photos = client.get_profile_photos(peer, 10).await?;
-
-for photo in &amp;photos {
-    if let tl::enums::Photo::Photo(p) = photo {
-        println!("Photo ID: {}", p.id);
-    }
+// Lazy iterator across all pages
+let mut iter = client.iter_profile_photos(user_id);
+while let Some(photo) = iter.next(&amp;client).await? {
+    let bytes = client.download(&amp;photo).await?;
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="send-a-reaction"><a class="header" href="#send-a-reaction">Send a reaction</a></h2>
+<h2 id="join-and-leave-chats"><a class="header" href="#join-and-leave-chats">Join and leave chats</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// React with 👍
-client.send_reaction(peer, message_id, "👍").await?;
+</span>// Join a public group or channel
+client.join_chat("@somegroup").await?;
 
-// Remove reaction
-client.send_reaction(peer, message_id, "").await?;
+// Accept a private invite link
+client.accept_invite_link("https://t.me/joinchat/AbCdEfG").await?;
 
-// Custom emoji reaction (premium)
-// Use the raw API: messages.sendReaction with ReactionCustomEmoji
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="chatadminrights--layer-224-fields"><a class="header" href="#chatadminrights--layer-224-fields">ChatAdminRights — Layer 224 fields</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>types::ChatAdminRights {
-    change_info:            bool, // can change group info
-    post_messages:          bool, // can post in channels
-    edit_messages:          bool, // can edit any message
-    delete_messages:        bool, // can delete messages
-    ban_users:              bool, // can ban members
-    invite_users:           bool, // can invite members
-    pin_messages:           bool, // can pin messages
-    add_admins:             bool, // can promote admins
-    anonymous:              bool, // post as channel anonymously
-    manage_call:            bool, // can start/manage calls
-    other:                  bool, // other rights
-    manage_topics:          bool, // can manage forum topics
-    post_stories:           bool, // can post stories
-    edit_stories:           bool, // can edit stories
-    delete_stories:         bool, // can delete stories
-    manage_direct_messages: bool, // can manage DM links
-    manage_ranks:           bool, // ✨ NEW in Layer 223
-}
-<span class="boring">}</span></code></pre>
-<h2 id="chatbannedrights--layer-224-fields"><a class="header" href="#chatbannedrights--layer-224-fields">ChatBannedRights — Layer 224 fields</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>types::ChatBannedRights {
-    view_messages:    bool, // ban completely (can't read)
-    send_messages:    bool, // can't send text
-    send_media:       bool, // can't send media
-    send_stickers:    bool,
-    send_gifs:        bool,
-    send_games:       bool,
-    send_inline:      bool, // can't use inline bots
-    embed_links:      bool, // can't embed link previews
-    send_polls:       bool,
-    change_info:      bool, // can't change group info
-    invite_users:     bool, // can't invite others
-    pin_messages:     bool, // can't pin messages
-    manage_topics:    bool,
-    send_photos:      bool,
-    send_videos:      bool,
-    send_roundvideos: bool,
-    send_audios:      bool,
-    send_voices:      bool,
-    send_docs:        bool,
-    send_plain:       bool, // can't send plain text
-    edit_rank:        bool, // ✨ NEW in Layer 223
-    until_date:       i32,  // 0 = permanent
-}
+// Parse invite hash from any link format
+let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
+
+// Leave / remove dialog
+client.delete_dialog(peer.clone()).await?;
 <span class="boring">}</span></code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../api/input-message.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../api/peer-types.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -380,7 +434,7 @@ client.send_reaction(peer, message_id, "").await?;
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../api/input-message.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../api/peer-types.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

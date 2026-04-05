@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c09552cd.js";
+            window.path_to_searchindex_js = "../searchindex-5f3e9a69.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-747e4d8b.js"></script>
+        <script src="../toc-aabd3487.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,12 +181,191 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="inline-keyboards"><a class="header" href="#inline-keyboards">Inline Keyboards</a></h1>
-<p>Inline keyboards appear as button rows attached below messages. They trigger <code>Update::CallbackQuery</code> when pressed.</p>
-<h2 id="helper-functions-recommended-pattern"><a class="header" href="#helper-functions-recommended-pattern">Helper functions (recommended pattern)</a></h2>
+                        <h1 id="inline-keyboards--reply-markup"><a class="header" href="#inline-keyboards--reply-markup">Inline Keyboards &amp; Reply Markup</a></h1>
+<p><code>layer-client</code> ships with two high-level keyboard builders — <code>InlineKeyboard</code> and <code>ReplyKeyboard</code> — so you never have to construct raw TL types by hand.</p>
+<p>Both builders are in <code>layer_client::keyboard</code> and re-exported at the crate root:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::keyboard::{Button, InlineKeyboard, ReplyKeyboard};
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="inlinekeyboard--buttons-attached-to-a-message"><a class="header" href="#inlinekeyboard--buttons-attached-to-a-message"><code>InlineKeyboard</code> — buttons attached to a message</a></h2>
+<p>Inline keyboards appear below a message and trigger <code>Update::CallbackQuery</code> when tapped.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::keyboard::{Button, InlineKeyboard};
+use layer_client::InputMessage;
+
+let kb = InlineKeyboard::new()
+    .row([
+        Button::callback("✅ Yes", b"confirm:yes"),
+        Button::callback("❌ No",  b"confirm:no"),
+    ])
+    .row([
+        Button::url("📖 Docs", "https://docs.rs/layer-client"),
+    ]);
+
+client
+    .send_message_to_peer_ex(
+        peer.clone(),
+        &amp;InputMessage::text("Do you want to proceed?").keyboard(kb),
+    )
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="inlinekeyboard-methods"><a class="header" href="#inlinekeyboard-methods"><code>InlineKeyboard</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>InlineKeyboard::new()</code></td><td>Create an empty keyboard</td></tr>
+<tr><td><code>.row(buttons)</code></td><td>Append a row; accepts any <code>IntoIterator&lt;Item = Button&gt;</code></td></tr>
+<tr><td><code>.into_markup()</code></td><td>Convert to <code>tl::enums::ReplyMarkup</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>InlineKeyboard</code> implements <code>Into&lt;tl::enums::ReplyMarkup&gt;</code>, so you can also pass it directly to <code>InputMessage::reply_markup()</code>.</p>
+<hr>
+<h2 id="button--all-button-types"><a class="header" href="#button--all-button-types"><code>Button</code> — all button types</a></h2>
+<h3 id="callback-url-and-common-types"><a class="header" href="#callback-url-and-common-types">Callback, URL, and common types</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Sends data to your bot as Update::CallbackQuery (max 64 bytes)
+Button::callback("✅ Confirm", b"action:confirm")
+
+// Opens URL in a browser
+Button::url("🌐 Website", "https://example.com")
+
+// Copy text to clipboard (Telegram 10.3+)
+Button::copy_text("📋 Copy code", "PROMO2024")
+
+// Login-widget: authenticates user before opening URL
+Button::url_auth("🔐 Login", "https://example.com/auth", None, bot_input_user)
+
+// Opens bot inline mode in the current chat with query pre-filled
+Button::switch_inline("🔍 Search here", "default query")
+
+// Chat picker so user can choose which chat to use inline mode in
+Button::switch_elsewhere("📤 Share", "")
+
+// Telegram Mini App with full JS bridge
+Button::webview("🚀 Open App", "https://myapp.example.com")
+
+// Simple webview without JS bridge
+Button::simple_webview("ℹ️ Info", "https://info.example.com")
+
+// Plain text for reply keyboards
+Button::text("📸 Send photo")
+
+// Launch a Telegram game (bots only)
+Button::game("🎮 Play")
+
+// Payment buy button (bots only, used with invoice)
+Button::buy("💳 Pay $4.99")
+<span class="boring">}</span></code></pre>
+<h3 id="reply-keyboard-only-buttons"><a class="header" href="#reply-keyboard-only-buttons">Reply-keyboard-only buttons</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Shares user's phone number on tap
+Button::request_phone("📞 Share my number")
+
+// Shares user's location on tap
+Button::request_geo("📍 Share location")
+
+// Opens poll creation interface
+Button::request_poll("📊 Create poll")
+
+// Forces quiz mode in poll creator
+Button::request_quiz("🧠 Create quiz")
+<span class="boring">}</span></code></pre>
+<h3 id="escape-hatch"><a class="header" href="#escape-hatch">Escape hatch</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get the underlying tl::enums::KeyboardButton
+let raw = Button::callback("x", b"x").into_raw();
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="replykeyboard--replacement-keyboard"><a class="header" href="#replykeyboard--replacement-keyboard"><code>ReplyKeyboard</code> — replacement keyboard</a></h2>
+<p>A reply keyboard replaces the user’s text input keyboard until dismissed.
+The user’s tap arrives as a plain-text <code>Update::NewMessage</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::keyboard::{Button, ReplyKeyboard};
+
+let kb = ReplyKeyboard::new()
+    .row([
+        Button::text("📸 Photo"),
+        Button::text("📄 Document"),
+    ])
+    .row([Button::text("❌ Cancel")])
+    .resize()      // shrink to fit content (recommended)
+    .single_use(); // hide after one press
+
+client
+    .send_message_to_peer_ex(
+        peer.clone(),
+        &amp;InputMessage::text("Choose file type:").keyboard(kb),
+    )
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="replykeyboard-methods"><a class="header" href="#replykeyboard-methods"><code>ReplyKeyboard</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ReplyKeyboard::new()</code></td><td>Create an empty keyboard</td></tr>
+<tr><td><code>.row(buttons)</code></td><td>Append a row of buttons</td></tr>
+<tr><td><code>.resize()</code></td><td>Shrink keyboard to fit button count</td></tr>
+<tr><td><code>.single_use()</code></td><td>Dismiss after one tap</td></tr>
+<tr><td><code>.selective()</code></td><td>Show only to mentioned/replied users</td></tr>
+<tr><td><code>.into_markup()</code></td><td>Convert to <code>tl::enums::ReplyMarkup</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="remove-keyboard"><a class="header" href="#remove-keyboard">Remove keyboard</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_tl_types as tl;
+
+let remove = tl::enums::ReplyMarkup::ReplyKeyboardHide(
+    tl::types::ReplyKeyboardHide { selective: false }
+);
+client
+    .send_message_to_peer_ex(peer.clone(), &amp;InputMessage::text("Done.").reply_markup(remove))
+    .await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="answer-callback-queries"><a class="header" href="#answer-callback-queries">Answer callback queries</a></h2>
+<p>Always answer every <code>CallbackQuery</code> — Telegram shows a loading spinner until you do.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Update::CallbackQuery(cb) =&gt; {
+    let data = cb.data().unwrap_or(b"");
+    match data {
+        b"confirm:yes" =&gt; client.answer_callback_query(cb.query_id, Some("✅ Done!"), false).await?,
+        b"confirm:no"  =&gt; client.answer_callback_query(cb.query_id, Some("❌ Cancelled"), false).await?,
+        _              =&gt; client.answer_callback_query(cb.query_id, None, false).await?,
+    }
+}
+<span class="boring">}</span></code></pre>
+<p>Pass <code>alert: true</code> to show a popup alert instead of a toast:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>client.answer_callback_query(cb.query_id, Some("⛔ Access denied"), true).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="legacy-raw-tl-pattern-still-works"><a class="header" href="#legacy-raw-tl-pattern-still-works">Legacy raw TL pattern (still works)</a></h2>
+<p>If you prefer constructing TL types directly:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn inline_kb(rows: Vec&lt;Vec&lt;tl::enums::KeyboardButton&gt;&gt;) -&gt; tl::enums::ReplyMarkup {
+
+```rust
+use layer_tl_types as tl;
 
 fn inline_kb(rows: Vec&lt;Vec&lt;tl::enums::KeyboardButton&gt;&gt;) -&gt; tl::enums::ReplyMarkup {
     tl::enums::ReplyMarkup::ReplyInlineMarkup(tl::types::ReplyInlineMarkup {
@@ -307,7 +486,7 @@ client.send_message_to_peer_ex(peer, &amp;msg).await?;
 );
 <span class="boring">}</span></code></pre>
 <p>The user’s choices arrive as plain text <code>NewMessage</code> updates.</p>
-<h2 id="remove-keyboard"><a class="header" href="#remove-keyboard">Remove keyboard</a></h2>
+<h2 id="remove-keyboard-1"><a class="header" href="#remove-keyboard-1">Remove keyboard</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let remove = tl::enums::ReplyMarkup::ReplyKeyboardHide(

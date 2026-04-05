@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c09552cd.js";
+            window.path_to_searchindex_js = "../searchindex-5f3e9a69.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-747e4d8b.js"></script>
+        <script src="../toc-aabd3487.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,174 +182,175 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="admin--ban-rights"><a class="header" href="#admin--ban-rights">Admin &amp; Ban Rights</a></h1>
-<p><code>layer-client</code> provides typed builders for promoting administrators and restricting users.</p>
+<p><code>layer-client</code> provides two fluent builders for granular admin and ban rights — <code>AdminRightsBuilder</code> and <code>BannedRightsBuilder</code> — both in the <code>layer_client::participants</code> module.</p>
 <hr>
-<h2 id="promoting-an-admin--adminrightsbuilder"><a class="header" href="#promoting-an-admin--adminrightsbuilder">Promoting an admin — AdminRightsBuilder</a></h2>
+<h2 id="bannedrightsbuilder--restrict-a-member"><a class="header" href="#bannedrightsbuilder--restrict-a-member"><code>BannedRightsBuilder</code> — restrict a member</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::BannedRightsBuilder;
+
+// ── Permanent full ban ────────────────────────────────────────────────────────
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
+    .await?;
+
+// ── Partial restriction (no media, expires in 24 h) ───────────────────────────
+let tomorrow = (std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
+
+client
+    .ban_participant(
+        peer.clone(), user_id,
+        BannedRightsBuilder::new()
+            .send_media(true)
+            .send_stickers(true)
+            .send_gifs(true)
+            .until_date(tomorrow),
+    )
+    .await?;
+
+// ── Unban ─────────────────────────────────────────────────────────────────────
+// Passing an empty builder restores full permissions
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="method-reference"><a class="header" href="#method-reference">Method reference</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>BannedRightsBuilder::new()</code></td><td>all <code>false</code></td><td>No restrictions (use to unban)</td></tr>
+<tr><td><code>BannedRightsBuilder::full_ban()</code></td><td>all <code>true</code>, <code>until_date = 0</code></td><td>Total permanent ban</td></tr>
+<tr><td><code>.view_messages(bool)</code></td><td><code>false</code></td><td>Block reading messages</td></tr>
+<tr><td><code>.send_messages(bool)</code></td><td><code>false</code></td><td>Block sending text</td></tr>
+<tr><td><code>.send_media(bool)</code></td><td><code>false</code></td><td>Block sending media</td></tr>
+<tr><td><code>.send_stickers(bool)</code></td><td><code>false</code></td><td>Block stickers</td></tr>
+<tr><td><code>.send_gifs(bool)</code></td><td><code>false</code></td><td>Block GIFs</td></tr>
+<tr><td><code>.send_games(bool)</code></td><td><code>false</code></td><td>Block games</td></tr>
+<tr><td><code>.send_inline(bool)</code></td><td><code>false</code></td><td>Block inline bots</td></tr>
+<tr><td><code>.embed_links(bool)</code></td><td><code>false</code></td><td>Block link embeds</td></tr>
+<tr><td><code>.send_polls(bool)</code></td><td><code>false</code></td><td>Block polls</td></tr>
+<tr><td><code>.change_info(bool)</code></td><td><code>false</code></td><td>Block changing chat info</td></tr>
+<tr><td><code>.invite_users(bool)</code></td><td><code>false</code></td><td>Block inviting users</td></tr>
+<tr><td><code>.pin_messages(bool)</code></td><td><code>false</code></td><td>Block pinning messages</td></tr>
+<tr><td><code>.until_date(ts: i32)</code></td><td><code>0</code></td><td>Expiry Unix timestamp (<code>0</code> = permanent)</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><strong>Note:</strong> Setting <code>view_messages: true</code> is a full ban — the member cannot read messages or remain in the group.</p>
+</blockquote>
+<hr>
+<h2 id="adminrightsbuilder--grant-admin-rights"><a class="header" href="#adminrightsbuilder--grant-admin-rights"><code>AdminRightsBuilder</code> — grant admin rights</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::participants::AdminRightsBuilder;
 
-client.set_admin_rights(
-    peer,
-    user_id,
+// ── Custom moderator ──────────────────────────────────────────────────────────
+client
+    .promote_participant(
+        peer.clone(), user_id,
+        AdminRightsBuilder::new()
+            .delete_messages(true)
+            .ban_users(true)
+            .invite_users(true)
+            .pin_messages(true)
+            .rank("Moderator"),  // shown next to name
+    )
+    .await?;
+
+// ── Full admin (all standard rights) ─────────────────────────────────────────
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
+    .await?;
+
+// ── Demote (remove all admin rights) ─────────────────────────────────────────
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="method-reference-1"><a class="header" href="#method-reference-1">Method reference</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>AdminRightsBuilder::new()</code></td><td>all <code>false</code></td><td>No rights (use to demote)</td></tr>
+<tr><td><code>AdminRightsBuilder::full_admin()</code></td><td>standard set</td><td>All rights except <code>add_admins</code></td></tr>
+<tr><td><code>.change_info(bool)</code></td><td><code>false</code></td><td>Can edit channel/group info &amp; photo</td></tr>
+<tr><td><code>.post_messages(bool)</code></td><td><code>false</code></td><td>Can post in broadcast channels</td></tr>
+<tr><td><code>.edit_messages(bool)</code></td><td><code>false</code></td><td>Can edit other users’ messages</td></tr>
+<tr><td><code>.delete_messages(bool)</code></td><td><code>false</code></td><td>Can delete any message</td></tr>
+<tr><td><code>.ban_users(bool)</code></td><td><code>false</code></td><td>Can restrict / ban members</td></tr>
+<tr><td><code>.invite_users(bool)</code></td><td><code>false</code></td><td>Can add new members</td></tr>
+<tr><td><code>.pin_messages(bool)</code></td><td><code>false</code></td><td>Can pin messages</td></tr>
+<tr><td><code>.add_admins(bool)</code></td><td><code>false</code></td><td>Can promote others to admin ⚠️</td></tr>
+<tr><td><code>.anonymous(bool)</code></td><td><code>false</code></td><td>Posts appear as channel name</td></tr>
+<tr><td><code>.manage_call(bool)</code></td><td><code>false</code></td><td>Can start/manage voice chats</td></tr>
+<tr><td><code>.manage_topics(bool)</code></td><td><code>false</code></td><td>Can create/edit/delete forum topics</td></tr>
+<tr><td><code>.rank(str)</code></td><td><code>None</code></td><td>Custom admin title (max 16 chars)</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><code>.add_admins(true)</code> grants significant trust — admins with this right can promote others to full admin level.</p>
+</blockquote>
+<hr>
+<h2 id="participantpermissions--read-effective-rights"><a class="header" href="#participantpermissions--read-effective-rights"><code>ParticipantPermissions</code> — read effective rights</a></h2>
+<p>To inspect the actual current permissions of a user in a channel:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::ParticipantPermissions;
+
+let perms: ParticipantPermissions = client
+    .get_permissions(peer.clone(), user_id)
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="fields--methods"><a class="header" href="#fields--methods">Fields &amp; methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Symbol</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_creator()</code></td><td><code>bool</code></td><td>Is the creator</td></tr>
+<tr><td><code>is_admin()</code></td><td><code>bool</code></td><td>Has any admin rights</td></tr>
+<tr><td><code>is_banned()</code></td><td><code>bool</code></td><td>Is banned or restricted</td></tr>
+<tr><td><code>is_member()</code></td><td><code>bool</code></td><td>Active member (<code>!is_banned &amp;&amp; !is_left</code>)</td></tr>
+<tr><td><code>can_send_messages</code></td><td><code>bool</code></td><td>Can send text</td></tr>
+<tr><td><code>can_send_media</code></td><td><code>bool</code></td><td>Can send media</td></tr>
+<tr><td><code>can_pin_messages</code></td><td><code>bool</code></td><td>Can pin messages</td></tr>
+<tr><td><code>can_add_admins</code></td><td><code>bool</code></td><td>Can promote others</td></tr>
+<tr><td><code>admin_rank</code></td><td><code>Option&lt;String&gt;</code></td><td>Custom admin title</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="quick-patterns"><a class="header" href="#quick-patterns">Quick patterns</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Temporarily mute — no messages for 1 hour
+let in_1h = (chrono::Utc::now().timestamp() + 3600) as i32;
+client.ban_participant(peer.clone(), uid,
+    BannedRightsBuilder::new().send_messages(true).until_date(in_1h)
+).await?;
+
+// Promote to channel editor
+client.promote_participant(peer.clone(), uid,
     AdminRightsBuilder::new()
         .post_messages(true)
         .edit_messages(true)
         .delete_messages(true)
-        .invite_users(true)
-        .pin_messages(true)
-        .rank("Editor"),  // optional custom title
 ).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="all-adminrightsbuilder-methods"><a class="header" href="#all-adminrightsbuilder-methods">All AdminRightsBuilder methods</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>.change_info(v)</code></td><td>false</td><td>Edit channel title, description, photo</td></tr>
-<tr><td><code>.post_messages(v)</code></td><td>false</td><td>Post in the channel</td></tr>
-<tr><td><code>.edit_messages(v)</code></td><td>false</td><td>Edit any message</td></tr>
-<tr><td><code>.delete_messages(v)</code></td><td>false</td><td>Delete any message</td></tr>
-<tr><td><code>.ban_users(v)</code></td><td>false</td><td>Restrict other members</td></tr>
-<tr><td><code>.invite_users(v)</code></td><td>false</td><td>Add members</td></tr>
-<tr><td><code>.pin_messages(v)</code></td><td>false</td><td>Pin and unpin messages</td></tr>
-<tr><td><code>.add_admins(v)</code></td><td>false</td><td>Promote other admins (requires self to have this right)</td></tr>
-<tr><td><code>.anonymous(v)</code></td><td>false</td><td>Post as the channel (anonymous)</td></tr>
-<tr><td><code>.manage_call(v)</code></td><td>false</td><td>Start/manage video chats</td></tr>
-<tr><td><code>.manage_topics(v)</code></td><td>false</td><td>Create/edit/delete forum topics</td></tr>
-<tr><td><code>.rank(r)</code></td><td>—</td><td>Custom admin title shown in the member list</td></tr>
-<tr><td><code>AdminRightsBuilder::full_admin()</code></td><td>—</td><td>All rights enabled</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="full-admin-shorthand"><a class="header" href="#full-admin-shorthand">Full admin shorthand</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.set_admin_rights(
-    peer,
-    user_id,
-    AdminRightsBuilder::full_admin(),
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="remove-admin-rights"><a class="header" href="#remove-admin-rights">Remove admin rights</a></h3>
-<p>Pass an empty builder to revoke all rights:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.set_admin_rights(
-    peer,
-    user_id,
-    AdminRightsBuilder::new(),  // all false = remove admin
-).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="restricting-a-member--banrightsbuilder"><a class="header" href="#restricting-a-member--banrightsbuilder">Restricting a member — BanRightsBuilder</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::participants::BanRightsBuilder;
 
-// Mute a user (disable text, stickers, GIFs, inline)
-client.set_banned_rights(
-    peer,
-    user_id,
-    BanRightsBuilder::new()
-        .send_messages(false)
-        .send_stickers(false)
-        .send_gifs(false)
-        .send_inline(false),
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="all-banrightsbuilder-methods"><a class="header" href="#all-banrightsbuilder-methods">All BanRightsBuilder methods</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>.view_messages(v)</code></td><td>true</td><td>Can see the chat at all</td></tr>
-<tr><td><code>.send_messages(v)</code></td><td>true</td><td>Can send text messages</td></tr>
-<tr><td><code>.send_media(v)</code></td><td>true</td><td>Can send photos, videos, etc.</td></tr>
-<tr><td><code>.send_stickers(v)</code></td><td>true</td><td>Can send stickers</td></tr>
-<tr><td><code>.send_gifs(v)</code></td><td>true</td><td>Can send GIFs</td></tr>
-<tr><td><code>.send_games(v)</code></td><td>true</td><td>Can send games</td></tr>
-<tr><td><code>.send_inline(v)</code></td><td>true</td><td>Can use inline bots</td></tr>
-<tr><td><code>.embed_links(v)</code></td><td>true</td><td>Can include link previews</td></tr>
-<tr><td><code>.send_polls(v)</code></td><td>true</td><td>Can create polls</td></tr>
-<tr><td><code>.change_info(v)</code></td><td>true</td><td>Can edit group info</td></tr>
-<tr><td><code>.invite_users(v)</code></td><td>true</td><td>Can add members</td></tr>
-<tr><td><code>.pin_messages(v)</code></td><td>true</td><td>Can pin messages</td></tr>
-<tr><td><code>.until_date(ts)</code></td><td>0 (permanent)</td><td>Restriction expires at this unix timestamp</td></tr>
-<tr><td><code>BanRightsBuilder::full_ban()</code></td><td>—</td><td>All rights false (full kick/ban)</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="temporary-restriction-mute-for-24-hours"><a class="header" href="#temporary-restriction-mute-for-24-hours">Temporary restriction (mute for 24 hours)</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let expires = chrono::Utc::now().timestamp() as i32 + 86_400; // 24h
-
-client.set_banned_rights(
-    peer,
-    user_id,
-    BanRightsBuilder::new()
-        .send_messages(false)
-        .send_media(false)
-        .until_date(expires),
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="full-ban-kick--block-from-re-joining"><a class="header" href="#full-ban-kick--block-from-re-joining">Full ban (kick + block from re-joining)</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.set_banned_rights(
-    peer,
-    user_id,
-    BanRightsBuilder::full_ban(),
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="lift-all-restrictions-unban"><a class="header" href="#lift-all-restrictions-unban">Lift all restrictions (unban)</a></h3>
-<p>Pass a builder with all defaults (everything true, no until_date):</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.set_banned_rights(
-    peer,
-    user_id,
-    BanRightsBuilder::new(),  // all true = no restrictions
-).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="check-effective-permissions"><a class="header" href="#check-effective-permissions">Check effective permissions</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let perms = client.get_permissions(peer, user_id).await?;
-println!("can send messages: {}", perms.can_send_messages());
-println!("is admin: {}", perms.is_admin());
-println!("is creator: {}", perms.is_creator());
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="kick-from-basic-group"><a class="header" href="#kick-from-basic-group">Kick from basic group</a></h2>
-<p>For legacy basic groups (not supergroups/channels), use the kick method:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.kick_participant(chat_id, user_id).await?;
-<span class="boring">}</span></code></pre>
-<p>This removes the user from the group. They can be added back by any member.</p>
-<hr>
-<h2 id="participant-status"><a class="header" href="#participant-status">Participant status</a></h2>
-<p><code>get_participants</code> returns <code>Participant</code> structs with a <code>status</code> field:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let members = client.get_participants(peer, 0).await?;
-
-for member in members {
-    match member.status {
-        ParticipantStatus::Creator  =&gt; println!("{} is the creator", member.user.first_name.as_deref().unwrap_or("?")),
-        ParticipantStatus::Admin    =&gt; println!("{} is an admin", member.user.first_name.as_deref().unwrap_or("?")),
-        ParticipantStatus::Member   =&gt; {}
-        ParticipantStatus::Banned   =&gt; println!("{} is banned", member.user.first_name.as_deref().unwrap_or("?")),
-        ParticipantStatus::Restricted =&gt; println!("{} is restricted", member.user.first_name.as_deref().unwrap_or("?")),
-        ParticipantStatus::Left     =&gt; println!("{} has left", member.user.first_name.as_deref().unwrap_or("?")),
-    }
+// Check before acting
+let perms = client.get_permissions(peer.clone(), uid).await?;
+if !perms.is_admin() &amp;&amp; !perms.is_banned() {
+    client.ban_participant(peer.clone(), uid, BannedRightsBuilder::full_ban()).await?;
 }
 <span class="boring">}</span></code></pre>
 

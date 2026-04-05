@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c09552cd.js";
+            window.path_to_searchindex_js = "searchindex-5f3e9a69.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-747e4d8b.js"></script>
+        <script src="toc-aabd3487.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -198,6 +198,19 @@
 </tbody>
 </table>
 </div>
+<p>The following are <strong>always available</strong> without any feature flag:</p>
+<ul>
+<li><code>InlineKeyboard</code>, <code>ReplyKeyboard</code>, <code>Button</code> — keyboard builders</li>
+<li><code>InputReactions</code> — reaction builder</li>
+<li><code>TypingGuard</code> — RAII typing indicator</li>
+<li><code>SearchBuilder</code>, <code>GlobalSearchBuilder</code> — fluent search</li>
+<li><code>PeerRef</code> — flexible peer argument</li>
+<li><code>User</code>, <code>Group</code>, <code>Channel</code>, <code>Chat</code> — ergonomic type wrappers</li>
+<li><code>Socks5Config</code> — SOCKS5 proxy config</li>
+<li><code>BannedRightsBuilder</code>, <code>AdminRightsBuilder</code>, <code>ParticipantPermissions</code></li>
+<li><code>StringSessionBackend</code>, <code>InMemoryBackend</code>, <code>BinaryFileBackend</code></li>
+<li><code>ClientBuilder</code> — fluent connection builder</li>
+</ul>
 <pre><code class="language-toml"># SQLite session only
 layer-client = { version = "0.4.5", features = ["sqlite-session"] }
 

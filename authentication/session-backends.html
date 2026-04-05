@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c09552cd.js";
+            window.path_to_searchindex_js = "../searchindex-5f3e9a69.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-747e4d8b.js"></script>
+        <script src="../toc-aabd3487.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,194 +182,243 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="session-backends"><a class="header" href="#session-backends">Session Backends</a></h1>
-<p><code>layer-client</code> ships four session backends out of the box. All implement the <code>SessionBackend</code> trait, so you can also plug in your own.</p>
-<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>Layer ships five session backends out of the box. They all implement the <code>SessionBackend</code> trait and are <strong>hot-swappable</strong> — switch by changing one line.</p>
+<hr>
+<h2 id="built-in-backends"><a class="header" href="#built-in-backends">Built-in backends</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Backend</th><th>Feature flag</th><th>Storage</th><th>Best for</th></tr>
+<tr><th>Backend</th><th>Feature flag</th><th>Best for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>BinaryFileBackend</code></td><td><em>(default)</em></td><td>Local binary file</td><td>Development, simple scripts</td></tr>
-<tr><td><code>InMemoryBackend</code></td><td><em>(default)</em></td><td>RAM only</td><td>Tests, ephemeral bots</td></tr>
-<tr><td><code>SqliteBackend</code></td><td><code>sqlite-session</code></td><td>Local SQLite file</td><td>Production bots, long-running servers</td></tr>
-<tr><td><code>LibSqlBackend</code></td><td><code>libsql-session</code></td><td>libsql / Turso (remote or embedded)</td><td>Serverless, distributed deployments</td></tr>
-<tr><td><code>StringSessionBackend</code></td><td><em>(default)</em></td><td>Caller-provided string</td><td>Env vars, DB columns, CI environments</td></tr>
+<tr><td><code>BinaryFileBackend</code></td><td><em>(default, no flag)</em></td><td>Single-process bots, local scripts</td></tr>
+<tr><td><code>InMemoryBackend</code></td><td><em>(default, no flag)</em></td><td>Tests, ephemeral tasks</td></tr>
+<tr><td><code>StringSessionBackend</code></td><td><em>(default, no flag)</em></td><td>Serverless, env-var storage, CI bots</td></tr>
+<tr><td><code>SqliteBackend</code></td><td><code>sqlite-session</code></td><td>Multi-session local apps</td></tr>
+<tr><td><code>LibSqlBackend</code></td><td><code>libsql-session</code></td><td>Distributed / Turso-backed storage</td></tr>
 </tbody>
 </table>
 </div>
 <hr>
-<h2 id="binaryfilebackend-default"><a class="header" href="#binaryfilebackend-default">BinaryFileBackend (default)</a></h2>
-<pre><code class="language-toml"># No extra feature needed
-layer-client = "0.4.5"
-</code></pre>
+<h2 id="binaryfilebackend-default"><a class="header" href="#binaryfilebackend-default"><code>BinaryFileBackend</code> (default)</a></h2>
+<p>Saves the session as a binary file on disk. No feature flag needed.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config};
-
-let (client, _shutdown) = Client::connect(Config {
-    session_path: "my.session".into(),
-    api_id:       12345,
-    api_hash:     "abc123".into(),
-    ..Default::default()
-}).await?;
-<span class="boring">}</span></code></pre>
-<p>The session is stored in a compact binary format at <code>session_path</code>. Created on first login; reloaded automatically on subsequent <code>connect()</code> calls.</p>
-<p><strong>Security:</strong> treat this file like a password — add <code>*.session</code> to <code>.gitignore</code> and <code>chmod 600</code>.</p>
-<hr>
-<h2 id="inmemorybackend"><a class="header" href="#inmemorybackend">InMemoryBackend</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config};
-use layer_client::session_backend::InMemoryBackend;
+</span>use layer_client::Client;
 
 let (client, _shutdown) = Client::builder()
-    .session(InMemoryBackend::new())
     .api_id(12345)
-    .api_hash("abc123")
+    .api_hash("your_api_hash")
+    .session("my.session")  // BinaryFileBackend at this path
     .connect()
     .await?;
 <span class="boring">}</span></code></pre>
-<p>Nothing is written to disk. Login is required on every run. Ideal for integration tests and short-lived scripts.</p>
+<p>Or construct directly:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::BinaryFileBackend;
+use std::sync::Arc;
+
+let backend = Arc::new(BinaryFileBackend::new("bot.session"));
+<span class="boring">}</span></code></pre>
 <hr>
-<h2 id="sqlitebackend"><a class="header" href="#sqlitebackend">SqliteBackend</a></h2>
+<h2 id="inmemorybackend"><a class="header" href="#inmemorybackend"><code>InMemoryBackend</code></a></h2>
+<p>Non-persistent — lost on process exit. Ideal for tests.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .in_memory()
+    .connect()
+    .await?;
+<span class="boring">}</span></code></pre>
+<p>Or construct directly:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::InMemoryBackend;
+use std::sync::Arc;
+
+let backend = Arc::new(InMemoryBackend::new());
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="stringsessionbackend--portable-auth"><a class="header" href="#stringsessionbackend--portable-auth"><code>StringSessionBackend</code> — portable auth</a></h2>
+<p>Encodes the entire session (auth key + DC + peer cache) as a single base64 string. Store it in an environment variable, a database column, or a secret manager.</p>
+<h3 id="export"><a class="header" href="#export">Export</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let session_string = client.export_session_string().await?;
+println!("{session_string}"); // store this somewhere safe
+<span class="boring">}</span></code></pre>
+<h3 id="restore"><a class="header" href="#restore">Restore</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Via builder
+let session = std::env::var("TG_SESSION").unwrap_or_default();
+
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .session_string(session)
+    .connect()
+    .await?;
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Via Config shorthand
+let (client, _shutdown) = Client::connect(Config::with_string_session(session_string))
+    .await?;
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Construct backend directly
+use layer_client::session_backend::StringSessionBackend;
+use std::sync::Arc;
+
+let backend = Arc::new(StringSessionBackend::new(session_string));
+<span class="boring">}</span></code></pre>
+<p>Pass an <strong>empty string</strong> to start a fresh session with no stored data.</p>
+<hr>
+<h2 id="sqlitebackend--local-database"><a class="header" href="#sqlitebackend--local-database"><code>SqliteBackend</code> — local database</a></h2>
+<p>Requires feature flag:</p>
 <pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config};
+</span>use layer_client::SqliteBackend;
+use std::sync::Arc;
 
-let (client, _shutdown) = Client::connect(Config {
-    session_path: "session.db".into(),  // use a .db extension
-    api_id:       12345,
-    api_hash:     "abc123".into(),
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .session_backend(Arc::new(SqliteBackend::new("sessions.db")))
+    .connect()
+    .await?;
 <span class="boring">}</span></code></pre>
-<p>SQLite is more resilient against crash-corruption than the binary format. A good choice for any bot that runs continuously or handles many accounts.</p>
+<p>The file is created if it doesn’t exist.</p>
 <hr>
-<h2 id="libsqlbackend--new-in-045"><a class="header" href="#libsqlbackend--new-in-045">LibSqlBackend — New in 0.4.5</a></h2>
-<p>For <a href="https://github.com/tursodatabase/libsql">libsql</a> (the open-source Turso database engine):</p>
+<h2 id="libsqlbackend--libsql--turso"><a class="header" href="#libsqlbackend--libsql--turso"><code>LibSqlBackend</code> — libsql / Turso</a></h2>
+<p>Requires feature flag:</p>
 <pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["libsql-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::session_backend::LibSqlBackend;
-use layer_client::{Client, Config};
+</span>use layer_client::LibSqlBackend;
+use std::sync::Arc;
 
-// Local embedded libsql file
-let backend = LibSqlBackend::open_local("session.libsql").await?;
+// Local embedded database
+let backend = LibSqlBackend::new("local.db");
 
-// OR: remote Turso cloud database
-let backend = LibSqlBackend::open_remote(
+// Remote Turso database
+let backend = LibSqlBackend::remote(
     "libsql://your-db.turso.io",
     "your-turso-auth-token",
-).await?;
+);
 
 let (client, _shutdown) = Client::builder()
-    .session(backend)
     .api_id(12345)
-    .api_hash("abc123")
+    .api_hash("your_api_hash")
+    .session_backend(Arc::new(backend))
     .connect()
     .await?;
 <span class="boring">}</span></code></pre>
-<p><code>LibSqlBackend</code> is a drop-in replacement for <code>SqliteBackend</code> but works with remote databases, making it ideal for serverless or horizontally-scaled deployments.</p>
 <hr>
-<h2 id="stringsessionbackend--new-in-045"><a class="header" href="#stringsessionbackend--new-in-045">StringSessionBackend — New in 0.4.5</a></h2>
-<p>Encodes the entire session as a portable base64 string. Store it in environment variables, a secrets manager, a database column, or anywhere else you can store a string.</p>
-<h3 id="export-an-existing-session"><a class="header" href="#export-an-existing-session">Export an existing session</a></h3>
+<h2 id="custom-backend"><a class="header" href="#custom-backend">Custom backend</a></h2>
+<p>Implement <code>SessionBackend</code> to use any storage — Redis, Postgres, S3, or anything else:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// After a successful login, export the session
-let session_string = client.export_session_string().await?;
-println!("{session_string}");
-// → "AQAAAAEDAADtE1lMHBT7...LrKO3y8=" (example)
-<span class="boring">}</span></code></pre>
-<p>Save this string securely (e.g. in a <code>SESSION</code> environment variable).</p>
-<h3 id="restore-from-string"><a class="header" href="#restore-from-string">Restore from string</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config};
-use layer_client::session_backend::StringSessionBackend;
+</span>use layer_client::session_backend::{SessionBackend, PersistedSession, DcEntry, UpdateStateChange};
+use std::io;
 
-let session_str = std::env::var("TG_SESSION")?;
+struct MyBackend {
+    // your fields (e.g. a DB pool)
+}
 
+impl SessionBackend for MyBackend {
+    fn save(&amp;self, session: &amp;PersistedSession) -&gt; io::Result&lt;()&gt; {
+        // Serialize and store session
+        let bytes = serde_json::to_vec(session)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        // e.g. write to Redis / Postgres
+        Ok(())
+    }
+
+    fn load(&amp;self) -&gt; io::Result&lt;Option&lt;PersistedSession&gt;&gt; {
+        // Load and deserialize
+        Ok(None)
+    }
+
+    fn delete(&amp;self) -&gt; io::Result&lt;()&gt; {
+        Ok(())
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "my-custom-backend"
+    }
+
+    // Optional: override granular methods for better performance
+    // Default impls call load() → mutate → save()
+
+    fn update_dc(&amp;self, entry: &amp;DcEntry) -&gt; io::Result&lt;()&gt; {
+        // UPDATE single DC row (e.g. SQL UPDATE)
+        todo!()
+    }
+
+    fn set_home_dc(&amp;self, dc_id: i32) -&gt; io::Result&lt;()&gt; {
+        // UPDATE home_dc column only
+        todo!()
+    }
+}
+
+// Use it
 let (client, _shutdown) = Client::builder()
-    .session(StringSessionBackend::new(&amp;session_str))
     .api_id(12345)
-    .api_hash("abc123")
+    .api_hash("your_api_hash")
+    .session_backend(Arc::new(MyBackend { /* ... */ }))
     .connect()
     .await?;
-
-// If the session is valid, is_authorized() returns true — no re-login needed
-assert!(client.is_authorized().await?);
 <span class="boring">}</span></code></pre>
-<h3 id="convenience-constructor"><a class="header" href="#convenience-constructor">Convenience constructor</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Equivalent to the above — shorthand for StringSessionBackend
-let session_str = std::env::var("TG_SESSION")?;
-let (client, _shutdown) = Client::with_string_session(
-    &amp;session_str,
-    12345,         // api_id
-    "abc123",      // api_hash
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="typical-workflow-for-ci--serverless"><a class="header" href="#typical-workflow-for-ci--serverless">Typical workflow for CI / serverless</a></h3>
-<pre><code class="language-bash"># One-time: generate session on your dev machine
-cargo run --bin login_helper
-# → prints: TG_SESSION=AQAAAAEDAADtE1lMHBT7...
-# Add TG_SESSION to your CI secrets
-</code></pre>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// In production / CI
-let (client, _shutdown) = Client::with_string_session(
-    &amp;std::env::var("TG_SESSION")?,
-    std::env::var("TG_API_ID")?.parse()?,
-    std::env::var("TG_API_HASH")?,
-).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="implementing-a-custom-backend"><a class="header" href="#implementing-a-custom-backend">Implementing a custom backend</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::session_backend::SessionBackend;
-
-pub struct MyRedisBackend {
-    key: String,
-    // ... your redis client
-}
-
-#[async_trait::async_trait]
-impl SessionBackend for MyRedisBackend {
-    async fn load(&amp;self) -&gt; Option&lt;Vec&lt;u8&gt;&gt; {
-        // read bytes from Redis
-    }
-
-    async fn save(&amp;self, data: &amp;[u8]) -&gt; Result&lt;(), Box&lt;dyn std::error::Error + Send + Sync&gt;&gt; {
-        // write bytes to Redis
-    }
-}
-<span class="boring">}</span></code></pre>
-<p>Then pass it via <code>ClientBuilder::session()</code>.</p>
-<hr>
-<h2 id="comparing-session-backends"><a class="header" href="#comparing-session-backends">Comparing session backends</a></h2>
+<h3 id="granular-sessionbackend-methods"><a class="header" href="#granular-sessionbackend-methods">Granular <code>SessionBackend</code> methods</a></h3>
+<p>High-performance backends can override these to avoid full load/save round-trips:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th></th><th style="text-align: center">File</th><th style="text-align: center">SQLite</th><th style="text-align: center">LibSQL</th><th style="text-align: center">String</th><th style="text-align: center">Memory</th></tr>
+<tr><th>Method</th><th>When called</th><th>Default behaviour</th></tr>
 </thead>
 <tbody>
-<tr><td>Survives restart</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td><td style="text-align: center">✅*</td><td style="text-align: center">❌</td></tr>
-<tr><td>Crash-safe</td><td style="text-align: center">⚠️</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td><td style="text-align: center">N/A</td><td style="text-align: center">N/A</td></tr>
-<tr><td>Remote storage</td><td style="text-align: center">❌</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td><td style="text-align: center">✅*</td><td style="text-align: center">❌</td></tr>
-<tr><td>Zero disk I/O</td><td style="text-align: center">❌</td><td style="text-align: center">❌</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td></tr>
-<tr><td>Extra deps</td><td style="text-align: center">None</td><td style="text-align: center">rusqlite</td><td style="text-align: center">libsql</td><td style="text-align: center">None</td><td style="text-align: center">None</td></tr>
+<tr><td><code>save(session)</code></td><td>Any state change</td><td>Required</td></tr>
+<tr><td><code>load()</code></td><td>On connect, and by default impls</td><td>Required</td></tr>
+<tr><td><code>delete()</code></td><td>Session wipe</td><td>Required</td></tr>
+<tr><td><code>name()</code></td><td>Logging/debug</td><td>Required</td></tr>
+<tr><td><code>update_dc(entry)</code></td><td>After DH handshake on a new DC</td><td><code>load → mutate → save</code></td></tr>
+<tr><td><code>set_home_dc(dc_id)</code></td><td>After a MIGRATE redirect</td><td><code>load → mutate → save</code></td></tr>
+<tr><td><code>apply_update_state(change)</code></td><td>After update-sequence change</td><td><code>load → mutate → save</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>* — provided the caller re-saves the exported string after each connect.</p>
+<hr>
+<h2 id="using-clientbuilder-to-attach-a-backend"><a class="header" href="#using-clientbuilder-to-attach-a-backend">Using <code>ClientBuilder</code> to attach a backend</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use std::sync::Arc;
+use layer_client::{Client, session_backend::SessionBackend};
+
+async fn connect_with_backend(
+    backend: impl SessionBackend + 'static,
+    api_id: i32,
+    api_hash: &amp;str,
+) -&gt; anyhow::Result&lt;()&gt; {
+    let (client, _shutdown) = Client::builder()
+        .api_id(api_id)
+        .api_hash(api_hash)
+        .session_backend(Arc::new(backend))
+        .connect()
+        .await?;
+
+    // ...
+    Ok(())
+}
+<span class="boring">}</span></code></pre>
 
                     </main>
 

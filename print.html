@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c09552cd.js";
+            window.path_to_searchindex_js = "searchindex-5f3e9a69.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-747e4d8b.js"></script>
+        <script src="toc-aabd3487.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -723,7 +723,7 @@ fn make_article(id: &amp;str, title: &amp;str, text: &amp;str) -&gt; tl::enums::
 <li><a href="#bot-login">Bot Login — full guide</a></li>
 <li><a href="#callback-queries">Callback Queries</a></li>
 <li><a href="#inline-mode">Inline Mode</a></li>
-<li><a href="#inline-keyboards">Inline Keyboards</a></li>
+<li><a href="#inline-keyboards--reply-markup">Inline Keyboards</a></li>
 <li><a href="#admin--ban-rights">Admin &amp; Ban Rights</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1049,194 +1049,243 @@ let (client_b, _) = Client::connect(Config {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="session-backends"><a class="header" href="#session-backends">Session Backends</a></h1>
-<p><code>layer-client</code> ships four session backends out of the box. All implement the <code>SessionBackend</code> trait, so you can also plug in your own.</p>
-<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>Layer ships five session backends out of the box. They all implement the <code>SessionBackend</code> trait and are <strong>hot-swappable</strong> — switch by changing one line.</p>
+<hr>
+<h2 id="built-in-backends"><a class="header" href="#built-in-backends">Built-in backends</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Backend</th><th>Feature flag</th><th>Storage</th><th>Best for</th></tr>
+<tr><th>Backend</th><th>Feature flag</th><th>Best for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>BinaryFileBackend</code></td><td><em>(default)</em></td><td>Local binary file</td><td>Development, simple scripts</td></tr>
-<tr><td><code>InMemoryBackend</code></td><td><em>(default)</em></td><td>RAM only</td><td>Tests, ephemeral bots</td></tr>
-<tr><td><code>SqliteBackend</code></td><td><code>sqlite-session</code></td><td>Local SQLite file</td><td>Production bots, long-running servers</td></tr>
-<tr><td><code>LibSqlBackend</code></td><td><code>libsql-session</code></td><td>libsql / Turso (remote or embedded)</td><td>Serverless, distributed deployments</td></tr>
-<tr><td><code>StringSessionBackend</code></td><td><em>(default)</em></td><td>Caller-provided string</td><td>Env vars, DB columns, CI environments</td></tr>
+<tr><td><code>BinaryFileBackend</code></td><td><em>(default, no flag)</em></td><td>Single-process bots, local scripts</td></tr>
+<tr><td><code>InMemoryBackend</code></td><td><em>(default, no flag)</em></td><td>Tests, ephemeral tasks</td></tr>
+<tr><td><code>StringSessionBackend</code></td><td><em>(default, no flag)</em></td><td>Serverless, env-var storage, CI bots</td></tr>
+<tr><td><code>SqliteBackend</code></td><td><code>sqlite-session</code></td><td>Multi-session local apps</td></tr>
+<tr><td><code>LibSqlBackend</code></td><td><code>libsql-session</code></td><td>Distributed / Turso-backed storage</td></tr>
 </tbody>
 </table>
 </div>
 <hr>
-<h2 id="binaryfilebackend-default"><a class="header" href="#binaryfilebackend-default">BinaryFileBackend (default)</a></h2>
-<pre><code class="language-toml"># No extra feature needed
-layer-client = "0.4.5"
-</code></pre>
+<h2 id="binaryfilebackend-default"><a class="header" href="#binaryfilebackend-default"><code>BinaryFileBackend</code> (default)</a></h2>
+<p>Saves the session as a binary file on disk. No feature flag needed.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config};
-
-let (client, _shutdown) = Client::connect(Config {
-    session_path: "my.session".into(),
-    api_id:       12345,
-    api_hash:     "abc123".into(),
-    ..Default::default()
-}).await?;
-<span class="boring">}</span></code></pre>
-<p>The session is stored in a compact binary format at <code>session_path</code>. Created on first login; reloaded automatically on subsequent <code>connect()</code> calls.</p>
-<p><strong>Security:</strong> treat this file like a password — add <code>*.session</code> to <code>.gitignore</code> and <code>chmod 600</code>.</p>
-<hr>
-<h2 id="inmemorybackend"><a class="header" href="#inmemorybackend">InMemoryBackend</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config};
-use layer_client::session_backend::InMemoryBackend;
+</span>use layer_client::Client;
 
 let (client, _shutdown) = Client::builder()
-    .session(InMemoryBackend::new())
     .api_id(12345)
-    .api_hash("abc123")
+    .api_hash("your_api_hash")
+    .session("my.session")  // BinaryFileBackend at this path
     .connect()
     .await?;
 <span class="boring">}</span></code></pre>
-<p>Nothing is written to disk. Login is required on every run. Ideal for integration tests and short-lived scripts.</p>
+<p>Or construct directly:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::BinaryFileBackend;
+use std::sync::Arc;
+
+let backend = Arc::new(BinaryFileBackend::new("bot.session"));
+<span class="boring">}</span></code></pre>
 <hr>
-<h2 id="sqlitebackend"><a class="header" href="#sqlitebackend">SqliteBackend</a></h2>
+<h2 id="inmemorybackend"><a class="header" href="#inmemorybackend"><code>InMemoryBackend</code></a></h2>
+<p>Non-persistent — lost on process exit. Ideal for tests.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .in_memory()
+    .connect()
+    .await?;
+<span class="boring">}</span></code></pre>
+<p>Or construct directly:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::session_backend::InMemoryBackend;
+use std::sync::Arc;
+
+let backend = Arc::new(InMemoryBackend::new());
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="stringsessionbackend--portable-auth"><a class="header" href="#stringsessionbackend--portable-auth"><code>StringSessionBackend</code> — portable auth</a></h2>
+<p>Encodes the entire session (auth key + DC + peer cache) as a single base64 string. Store it in an environment variable, a database column, or a secret manager.</p>
+<h3 id="export"><a class="header" href="#export">Export</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let session_string = client.export_session_string().await?;
+println!("{session_string}"); // store this somewhere safe
+<span class="boring">}</span></code></pre>
+<h3 id="restore"><a class="header" href="#restore">Restore</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Via builder
+let session = std::env::var("TG_SESSION").unwrap_or_default();
+
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .session_string(session)
+    .connect()
+    .await?;
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Via Config shorthand
+let (client, _shutdown) = Client::connect(Config::with_string_session(session_string))
+    .await?;
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Construct backend directly
+use layer_client::session_backend::StringSessionBackend;
+use std::sync::Arc;
+
+let backend = Arc::new(StringSessionBackend::new(session_string));
+<span class="boring">}</span></code></pre>
+<p>Pass an <strong>empty string</strong> to start a fresh session with no stored data.</p>
+<hr>
+<h2 id="sqlitebackend--local-database"><a class="header" href="#sqlitebackend--local-database"><code>SqliteBackend</code> — local database</a></h2>
+<p>Requires feature flag:</p>
 <pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config};
+</span>use layer_client::SqliteBackend;
+use std::sync::Arc;
 
-let (client, _shutdown) = Client::connect(Config {
-    session_path: "session.db".into(),  // use a .db extension
-    api_id:       12345,
-    api_hash:     "abc123".into(),
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .session_backend(Arc::new(SqliteBackend::new("sessions.db")))
+    .connect()
+    .await?;
 <span class="boring">}</span></code></pre>
-<p>SQLite is more resilient against crash-corruption than the binary format. A good choice for any bot that runs continuously or handles many accounts.</p>
+<p>The file is created if it doesn’t exist.</p>
 <hr>
-<h2 id="libsqlbackend--new-in-045"><a class="header" href="#libsqlbackend--new-in-045">LibSqlBackend — New in 0.4.5</a></h2>
-<p>For <a href="https://github.com/tursodatabase/libsql">libsql</a> (the open-source Turso database engine):</p>
+<h2 id="libsqlbackend--libsql--turso"><a class="header" href="#libsqlbackend--libsql--turso"><code>LibSqlBackend</code> — libsql / Turso</a></h2>
+<p>Requires feature flag:</p>
 <pre><code class="language-toml">layer-client = { version = "0.4.5", features = ["libsql-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::session_backend::LibSqlBackend;
-use layer_client::{Client, Config};
+</span>use layer_client::LibSqlBackend;
+use std::sync::Arc;
 
-// Local embedded libsql file
-let backend = LibSqlBackend::open_local("session.libsql").await?;
+// Local embedded database
+let backend = LibSqlBackend::new("local.db");
 
-// OR: remote Turso cloud database
-let backend = LibSqlBackend::open_remote(
+// Remote Turso database
+let backend = LibSqlBackend::remote(
     "libsql://your-db.turso.io",
     "your-turso-auth-token",
-).await?;
+);
 
 let (client, _shutdown) = Client::builder()
-    .session(backend)
     .api_id(12345)
-    .api_hash("abc123")
+    .api_hash("your_api_hash")
+    .session_backend(Arc::new(backend))
     .connect()
     .await?;
 <span class="boring">}</span></code></pre>
-<p><code>LibSqlBackend</code> is a drop-in replacement for <code>SqliteBackend</code> but works with remote databases, making it ideal for serverless or horizontally-scaled deployments.</p>
 <hr>
-<h2 id="stringsessionbackend--new-in-045"><a class="header" href="#stringsessionbackend--new-in-045">StringSessionBackend — New in 0.4.5</a></h2>
-<p>Encodes the entire session as a portable base64 string. Store it in environment variables, a secrets manager, a database column, or anywhere else you can store a string.</p>
-<h3 id="export-an-existing-session"><a class="header" href="#export-an-existing-session">Export an existing session</a></h3>
+<h2 id="custom-backend"><a class="header" href="#custom-backend">Custom backend</a></h2>
+<p>Implement <code>SessionBackend</code> to use any storage — Redis, Postgres, S3, or anything else:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// After a successful login, export the session
-let session_string = client.export_session_string().await?;
-println!("{session_string}");
-// → "AQAAAAEDAADtE1lMHBT7...LrKO3y8=" (example)
-<span class="boring">}</span></code></pre>
-<p>Save this string securely (e.g. in a <code>SESSION</code> environment variable).</p>
-<h3 id="restore-from-string"><a class="header" href="#restore-from-string">Restore from string</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config};
-use layer_client::session_backend::StringSessionBackend;
+</span>use layer_client::session_backend::{SessionBackend, PersistedSession, DcEntry, UpdateStateChange};
+use std::io;
 
-let session_str = std::env::var("TG_SESSION")?;
+struct MyBackend {
+    // your fields (e.g. a DB pool)
+}
 
+impl SessionBackend for MyBackend {
+    fn save(&amp;self, session: &amp;PersistedSession) -&gt; io::Result&lt;()&gt; {
+        // Serialize and store session
+        let bytes = serde_json::to_vec(session)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        // e.g. write to Redis / Postgres
+        Ok(())
+    }
+
+    fn load(&amp;self) -&gt; io::Result&lt;Option&lt;PersistedSession&gt;&gt; {
+        // Load and deserialize
+        Ok(None)
+    }
+
+    fn delete(&amp;self) -&gt; io::Result&lt;()&gt; {
+        Ok(())
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "my-custom-backend"
+    }
+
+    // Optional: override granular methods for better performance
+    // Default impls call load() → mutate → save()
+
+    fn update_dc(&amp;self, entry: &amp;DcEntry) -&gt; io::Result&lt;()&gt; {
+        // UPDATE single DC row (e.g. SQL UPDATE)
+        todo!()
+    }
+
+    fn set_home_dc(&amp;self, dc_id: i32) -&gt; io::Result&lt;()&gt; {
+        // UPDATE home_dc column only
+        todo!()
+    }
+}
+
+// Use it
 let (client, _shutdown) = Client::builder()
-    .session(StringSessionBackend::new(&amp;session_str))
     .api_id(12345)
-    .api_hash("abc123")
+    .api_hash("your_api_hash")
+    .session_backend(Arc::new(MyBackend { /* ... */ }))
     .connect()
     .await?;
-
-// If the session is valid, is_authorized() returns true — no re-login needed
-assert!(client.is_authorized().await?);
 <span class="boring">}</span></code></pre>
-<h3 id="convenience-constructor"><a class="header" href="#convenience-constructor">Convenience constructor</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Equivalent to the above — shorthand for StringSessionBackend
-let session_str = std::env::var("TG_SESSION")?;
-let (client, _shutdown) = Client::with_string_session(
-    &amp;session_str,
-    12345,         // api_id
-    "abc123",      // api_hash
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="typical-workflow-for-ci--serverless"><a class="header" href="#typical-workflow-for-ci--serverless">Typical workflow for CI / serverless</a></h3>
-<pre><code class="language-bash"># One-time: generate session on your dev machine
-cargo run --bin login_helper
-# → prints: TG_SESSION=AQAAAAEDAADtE1lMHBT7...
-# Add TG_SESSION to your CI secrets
-</code></pre>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// In production / CI
-let (client, _shutdown) = Client::with_string_session(
-    &amp;std::env::var("TG_SESSION")?,
-    std::env::var("TG_API_ID")?.parse()?,
-    std::env::var("TG_API_HASH")?,
-).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="implementing-a-custom-backend"><a class="header" href="#implementing-a-custom-backend">Implementing a custom backend</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::session_backend::SessionBackend;
-
-pub struct MyRedisBackend {
-    key: String,
-    // ... your redis client
-}
-
-#[async_trait::async_trait]
-impl SessionBackend for MyRedisBackend {
-    async fn load(&amp;self) -&gt; Option&lt;Vec&lt;u8&gt;&gt; {
-        // read bytes from Redis
-    }
-
-    async fn save(&amp;self, data: &amp;[u8]) -&gt; Result&lt;(), Box&lt;dyn std::error::Error + Send + Sync&gt;&gt; {
-        // write bytes to Redis
-    }
-}
-<span class="boring">}</span></code></pre>
-<p>Then pass it via <code>ClientBuilder::session()</code>.</p>
-<hr>
-<h2 id="comparing-session-backends"><a class="header" href="#comparing-session-backends">Comparing session backends</a></h2>
+<h3 id="granular-sessionbackend-methods"><a class="header" href="#granular-sessionbackend-methods">Granular <code>SessionBackend</code> methods</a></h3>
+<p>High-performance backends can override these to avoid full load/save round-trips:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th></th><th style="text-align: center">File</th><th style="text-align: center">SQLite</th><th style="text-align: center">LibSQL</th><th style="text-align: center">String</th><th style="text-align: center">Memory</th></tr>
+<tr><th>Method</th><th>When called</th><th>Default behaviour</th></tr>
 </thead>
 <tbody>
-<tr><td>Survives restart</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td><td style="text-align: center">✅*</td><td style="text-align: center">❌</td></tr>
-<tr><td>Crash-safe</td><td style="text-align: center">⚠️</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td><td style="text-align: center">N/A</td><td style="text-align: center">N/A</td></tr>
-<tr><td>Remote storage</td><td style="text-align: center">❌</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td><td style="text-align: center">✅*</td><td style="text-align: center">❌</td></tr>
-<tr><td>Zero disk I/O</td><td style="text-align: center">❌</td><td style="text-align: center">❌</td><td style="text-align: center">❌</td><td style="text-align: center">✅</td><td style="text-align: center">✅</td></tr>
-<tr><td>Extra deps</td><td style="text-align: center">None</td><td style="text-align: center">rusqlite</td><td style="text-align: center">libsql</td><td style="text-align: center">None</td><td style="text-align: center">None</td></tr>
+<tr><td><code>save(session)</code></td><td>Any state change</td><td>Required</td></tr>
+<tr><td><code>load()</code></td><td>On connect, and by default impls</td><td>Required</td></tr>
+<tr><td><code>delete()</code></td><td>Session wipe</td><td>Required</td></tr>
+<tr><td><code>name()</code></td><td>Logging/debug</td><td>Required</td></tr>
+<tr><td><code>update_dc(entry)</code></td><td>After DH handshake on a new DC</td><td><code>load → mutate → save</code></td></tr>
+<tr><td><code>set_home_dc(dc_id)</code></td><td>After a MIGRATE redirect</td><td><code>load → mutate → save</code></td></tr>
+<tr><td><code>apply_update_state(change)</code></td><td>After update-sequence change</td><td><code>load → mutate → save</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>* — provided the caller re-saves the exported string after each connect.</p>
+<hr>
+<h2 id="using-clientbuilder-to-attach-a-backend"><a class="header" href="#using-clientbuilder-to-attach-a-backend">Using <code>ClientBuilder</code> to attach a backend</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use std::sync::Arc;
+use layer_client::{Client, session_backend::SessionBackend};
+
+async fn connect_with_backend(
+    backend: impl SessionBackend + 'static,
+    api_id: i32,
+    api_hash: &amp;str,
+) -&gt; anyhow::Result&lt;()&gt; {
+    let (client, _shutdown) = Client::builder()
+        .api_id(api_id)
+        .api_hash(api_hash)
+        .session_backend(Arc::new(backend))
+        .connect()
+        .await?;
+
+    // ...
+    Ok(())
+}
+<span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="sending-messages"><a class="header" href="#sending-messages">Sending Messages</a></h1>
 <h2 id="basic-send"><a class="header" href="#basic-send">Basic send</a></h2>
@@ -1386,12 +1435,191 @@ while let Some(update) = updates.next().await {
 }
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="inline-keyboards"><a class="header" href="#inline-keyboards">Inline Keyboards</a></h1>
-<p>Inline keyboards appear as button rows attached below messages. They trigger <code>Update::CallbackQuery</code> when pressed.</p>
-<h2 id="helper-functions-recommended-pattern"><a class="header" href="#helper-functions-recommended-pattern">Helper functions (recommended pattern)</a></h2>
+<h1 id="inline-keyboards--reply-markup"><a class="header" href="#inline-keyboards--reply-markup">Inline Keyboards &amp; Reply Markup</a></h1>
+<p><code>layer-client</code> ships with two high-level keyboard builders — <code>InlineKeyboard</code> and <code>ReplyKeyboard</code> — so you never have to construct raw TL types by hand.</p>
+<p>Both builders are in <code>layer_client::keyboard</code> and re-exported at the crate root:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::keyboard::{Button, InlineKeyboard, ReplyKeyboard};
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="inlinekeyboard--buttons-attached-to-a-message"><a class="header" href="#inlinekeyboard--buttons-attached-to-a-message"><code>InlineKeyboard</code> — buttons attached to a message</a></h2>
+<p>Inline keyboards appear below a message and trigger <code>Update::CallbackQuery</code> when tapped.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::keyboard::{Button, InlineKeyboard};
+use layer_client::InputMessage;
+
+let kb = InlineKeyboard::new()
+    .row([
+        Button::callback("✅ Yes", b"confirm:yes"),
+        Button::callback("❌ No",  b"confirm:no"),
+    ])
+    .row([
+        Button::url("📖 Docs", "https://docs.rs/layer-client"),
+    ]);
+
+client
+    .send_message_to_peer_ex(
+        peer.clone(),
+        &amp;InputMessage::text("Do you want to proceed?").keyboard(kb),
+    )
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="inlinekeyboard-methods"><a class="header" href="#inlinekeyboard-methods"><code>InlineKeyboard</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>InlineKeyboard::new()</code></td><td>Create an empty keyboard</td></tr>
+<tr><td><code>.row(buttons)</code></td><td>Append a row; accepts any <code>IntoIterator&lt;Item = Button&gt;</code></td></tr>
+<tr><td><code>.into_markup()</code></td><td>Convert to <code>tl::enums::ReplyMarkup</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>InlineKeyboard</code> implements <code>Into&lt;tl::enums::ReplyMarkup&gt;</code>, so you can also pass it directly to <code>InputMessage::reply_markup()</code>.</p>
+<hr>
+<h2 id="button--all-button-types"><a class="header" href="#button--all-button-types"><code>Button</code> — all button types</a></h2>
+<h3 id="callback-url-and-common-types"><a class="header" href="#callback-url-and-common-types">Callback, URL, and common types</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Sends data to your bot as Update::CallbackQuery (max 64 bytes)
+Button::callback("✅ Confirm", b"action:confirm")
+
+// Opens URL in a browser
+Button::url("🌐 Website", "https://example.com")
+
+// Copy text to clipboard (Telegram 10.3+)
+Button::copy_text("📋 Copy code", "PROMO2024")
+
+// Login-widget: authenticates user before opening URL
+Button::url_auth("🔐 Login", "https://example.com/auth", None, bot_input_user)
+
+// Opens bot inline mode in the current chat with query pre-filled
+Button::switch_inline("🔍 Search here", "default query")
+
+// Chat picker so user can choose which chat to use inline mode in
+Button::switch_elsewhere("📤 Share", "")
+
+// Telegram Mini App with full JS bridge
+Button::webview("🚀 Open App", "https://myapp.example.com")
+
+// Simple webview without JS bridge
+Button::simple_webview("ℹ️ Info", "https://info.example.com")
+
+// Plain text for reply keyboards
+Button::text("📸 Send photo")
+
+// Launch a Telegram game (bots only)
+Button::game("🎮 Play")
+
+// Payment buy button (bots only, used with invoice)
+Button::buy("💳 Pay $4.99")
+<span class="boring">}</span></code></pre>
+<h3 id="reply-keyboard-only-buttons"><a class="header" href="#reply-keyboard-only-buttons">Reply-keyboard-only buttons</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Shares user's phone number on tap
+Button::request_phone("📞 Share my number")
+
+// Shares user's location on tap
+Button::request_geo("📍 Share location")
+
+// Opens poll creation interface
+Button::request_poll("📊 Create poll")
+
+// Forces quiz mode in poll creator
+Button::request_quiz("🧠 Create quiz")
+<span class="boring">}</span></code></pre>
+<h3 id="escape-hatch"><a class="header" href="#escape-hatch">Escape hatch</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get the underlying tl::enums::KeyboardButton
+let raw = Button::callback("x", b"x").into_raw();
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="replykeyboard--replacement-keyboard"><a class="header" href="#replykeyboard--replacement-keyboard"><code>ReplyKeyboard</code> — replacement keyboard</a></h2>
+<p>A reply keyboard replaces the user’s text input keyboard until dismissed.
+The user’s tap arrives as a plain-text <code>Update::NewMessage</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::keyboard::{Button, ReplyKeyboard};
+
+let kb = ReplyKeyboard::new()
+    .row([
+        Button::text("📸 Photo"),
+        Button::text("📄 Document"),
+    ])
+    .row([Button::text("❌ Cancel")])
+    .resize()      // shrink to fit content (recommended)
+    .single_use(); // hide after one press
+
+client
+    .send_message_to_peer_ex(
+        peer.clone(),
+        &amp;InputMessage::text("Choose file type:").keyboard(kb),
+    )
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="replykeyboard-methods"><a class="header" href="#replykeyboard-methods"><code>ReplyKeyboard</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ReplyKeyboard::new()</code></td><td>Create an empty keyboard</td></tr>
+<tr><td><code>.row(buttons)</code></td><td>Append a row of buttons</td></tr>
+<tr><td><code>.resize()</code></td><td>Shrink keyboard to fit button count</td></tr>
+<tr><td><code>.single_use()</code></td><td>Dismiss after one tap</td></tr>
+<tr><td><code>.selective()</code></td><td>Show only to mentioned/replied users</td></tr>
+<tr><td><code>.into_markup()</code></td><td>Convert to <code>tl::enums::ReplyMarkup</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="remove-keyboard"><a class="header" href="#remove-keyboard">Remove keyboard</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_tl_types as tl;
+
+let remove = tl::enums::ReplyMarkup::ReplyKeyboardHide(
+    tl::types::ReplyKeyboardHide { selective: false }
+);
+client
+    .send_message_to_peer_ex(peer.clone(), &amp;InputMessage::text("Done.").reply_markup(remove))
+    .await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="answer-callback-queries"><a class="header" href="#answer-callback-queries">Answer callback queries</a></h2>
+<p>Always answer every <code>CallbackQuery</code> — Telegram shows a loading spinner until you do.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Update::CallbackQuery(cb) =&gt; {
+    let data = cb.data().unwrap_or(b"");
+    match data {
+        b"confirm:yes" =&gt; client.answer_callback_query(cb.query_id, Some("✅ Done!"), false).await?,
+        b"confirm:no"  =&gt; client.answer_callback_query(cb.query_id, Some("❌ Cancelled"), false).await?,
+        _              =&gt; client.answer_callback_query(cb.query_id, None, false).await?,
+    }
+}
+<span class="boring">}</span></code></pre>
+<p>Pass <code>alert: true</code> to show a popup alert instead of a toast:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>client.answer_callback_query(cb.query_id, Some("⛔ Access denied"), true).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="legacy-raw-tl-pattern-still-works"><a class="header" href="#legacy-raw-tl-pattern-still-works">Legacy raw TL pattern (still works)</a></h2>
+<p>If you prefer constructing TL types directly:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn inline_kb(rows: Vec&lt;Vec&lt;tl::enums::KeyboardButton&gt;&gt;) -&gt; tl::enums::ReplyMarkup {
+
+```rust
+use layer_tl_types as tl;
 
 fn inline_kb(rows: Vec&lt;Vec&lt;tl::enums::KeyboardButton&gt;&gt;) -&gt; tl::enums::ReplyMarkup {
     tl::enums::ReplyMarkup::ReplyInlineMarkup(tl::types::ReplyInlineMarkup {
@@ -1512,7 +1740,7 @@ client.send_message_to_peer_ex(peer, &amp;msg).await?;
 );
 <span class="boring">}</span></code></pre>
 <p>The user’s choices arrive as plain text <code>NewMessage</code> updates.</p>
-<h2 id="remove-keyboard"><a class="header" href="#remove-keyboard">Remove keyboard</a></h2>
+<h2 id="remove-keyboard-1"><a class="header" href="#remove-keyboard-1">Remove keyboard</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let remove = tl::enums::ReplyMarkup::ReplyKeyboardHide(
@@ -1799,58 +2027,104 @@ let msg = InputMessage::text(text).entities(entities);
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="reactions"><a class="header" href="#reactions">Reactions</a></h1>
-<p>Reactions are emoji responses attached to messages. They appear below messages and include a count of how many users chose each reaction.</p>
+<p>Reactions are emoji responses attached to messages. They appear below messages with per-emoji counts.</p>
+<p><code>layer-client</code> provides the <a href="https://docs.rs/layer-client/latest/layer_client/reactions/struct.InputReactions.html"><code>InputReactions</code></a> builder. It converts from <code>&amp;str</code> and <code>String</code> automatically, so simple cases need no import.</p>
+<hr>
 <h2 id="send-a-reaction"><a class="header" href="#send-a-reaction">Send a reaction</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::reactions::Reaction;
+</span>use layer_client::reactions::InputReactions;
 
-// Emoji reaction
-client.send_reaction(peer, message_id, Reaction::emoticon("👍")).await?;
+// Standard emoji — shorthand (no import needed, &amp;str converts automatically)
+client.send_reaction(peer.clone(), message_id, "👍").await?;
 
-// Custom emoji reaction (premium)
-client.send_reaction(peer, message_id, Reaction::custom_emoji(document_id)).await?;
+// Standard emoji — explicit builder
+client.send_reaction(peer.clone(), message_id, InputReactions::emoticon("🔥")).await?;
 
-// Remove all reactions from a message
-client.send_reaction(peer, message_id, Reaction::remove()).await?;
+// Custom (premium) emoji by document_id
+client.send_reaction(peer.clone(), message_id, InputReactions::custom_emoji(1234567890)).await?;
+
+// Remove all reactions from the message
+client.send_reaction(peer.clone(), message_id, InputReactions::remove()).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="big-reaction"><a class="header" href="#big-reaction">Big reaction</a></h2>
-<p>Send a “big” reaction (plays a full-screen animation):</p>
+<hr>
+<h2 id="modifiers"><a class="header" href="#modifiers">Modifiers</a></h2>
+<p>Chain modifiers after a constructor:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>client.send_reaction(
-    peer,
-    message_id,
-    Reaction::emoticon("🔥").big(),
+</span>// Big animated reaction (full-screen effect)
+client.send_reaction(peer.clone(), message_id,
+    InputReactions::emoticon("🔥").big()
+).await?;
+
+// Add to the user's recently-used reaction list
+client.send_reaction(peer.clone(), message_id,
+    InputReactions::emoticon("❤️").add_to_recent()
+).await?;
+
+// Both at once
+client.send_reaction(peer.clone(), message_id,
+    InputReactions::emoticon("🎉").big().add_to_recent()
 ).await?;
 <span class="boring">}</span></code></pre>
-<h2 id="add-to-recent"><a class="header" href="#add-to-recent">Add to recent</a></h2>
-<p>Keep the reaction in the user’s recently-used list:</p>
+<hr>
+<h2 id="multi-reaction-premium-users"><a class="header" href="#multi-reaction-premium-users">Multi-reaction (premium users)</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>client.send_reaction(
-    peer,
+</span>use layer_tl_types::{enums::Reaction, types};
+
+client.send_reaction(
+    peer.clone(),
     message_id,
-    Reaction::emoticon("❤️").add_to_recent(),
+    InputReactions::from(vec![
+        Reaction::Emoji(types::ReactionEmoji { emoticon: "👍".into() }),
+        Reaction::Emoji(types::ReactionEmoji { emoticon: "❤️".into() }),
+    ]),
 ).await?;
 <span class="boring">}</span></code></pre>
+<hr>
+<h2 id="inputreactions-api-reference"><a class="header" href="#inputreactions-api-reference"><code>InputReactions</code> API reference</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>InputReactions::emoticon("👍")</code></td><td>React with a standard Unicode emoji</td></tr>
+<tr><td><code>InputReactions::custom_emoji(doc_id)</code></td><td>React with a custom (premium) emoji</td></tr>
+<tr><td><code>InputReactions::remove()</code></td><td>Remove all reactions from the message</td></tr>
+<tr><td><code>InputReactions::from(vec![…])</code></td><td>Multi-reaction from a <code>Vec&lt;Reaction&gt;</code></td></tr>
+</tbody>
+</table>
+</div>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Modifier</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.big()</code></td><td>Play the full-screen large animation</td></tr>
+<tr><td><code>.add_to_recent()</code></td><td>Add to the user’s recent reactions list</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>InputReactions</code> also implements <code>From&lt;&amp;str&gt;</code> and <code>From&lt;String&gt;</code>, so you can pass a plain emoji string directly to <code>send_reaction</code>.</p>
+<hr>
 <h2 id="reading-reactions-from-a-message"><a class="header" href="#reading-reactions-from-a-message">Reading reactions from a message</a></h2>
-<p>When you receive a message, reactions are available via <code>msg.reactions()</code>:</p>
+<p>Reactions are embedded in <code>msg.raw</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::NewMessage(msg) =&gt; {
-    if let Some(reactions) = msg.reactions() {
-        // reactions is &amp;tl::enums::MessageReactions
-        if let tl::enums::MessageReactions::MessageReactions(r) = reactions {
+    if let tl::enums::Message::Message(m) = &amp;msg.raw {
+        if let Some(tl::enums::MessageReactions::MessageReactions(r)) = &amp;m.reactions {
             for result in &amp;r.results {
                 if let tl::enums::ReactionCount::ReactionCount(rc) = result {
-                    let count = rc.count;
                     match &amp;rc.reaction {
                         tl::enums::Reaction::Emoji(e) =&gt; {
-                            println!("{}: {}", e.emoticon, count);
+                            println!("{}: {} users", e.emoticon, rc.count);
                         }
                         tl::enums::Reaction::CustomEmoji(e) =&gt; {
-                            println!("custom emoji {}: {}", e.document_id, count);
+                            println!("custom {}: {} users", e.document_id, rc.count);
                         }
                         _ =&gt; {}
                     }
@@ -1860,41 +2134,27 @@ client.send_reaction(peer, message_id, Reaction::remove()).await?;
     }
 }
 <span class="boring">}</span></code></pre>
-<h2 id="reaction-builder-reference"><a class="header" href="#reaction-builder-reference">Reaction builder reference</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>Reaction::emoticon("👍")</code></td><td>Standard emoji reaction</td></tr>
-<tr><td><code>Reaction::custom_emoji(doc_id)</code></td><td>Custom emoji (Premium)</td></tr>
-<tr><td><code>Reaction::remove()</code></td><td>Remove all reactions</td></tr>
-<tr><td><code>.big()</code></td><td>Full-screen animation</td></tr>
-<tr><td><code>.add_to_recent()</code></td><td>Add to user’s recent list</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="raw-api-get-who-reacted"><a class="header" href="#raw-api-get-who-reacted">Raw API: get who reacted</a></h2>
-<p>To see which users chose a specific reaction on a message:</p>
+<hr>
+<h2 id="raw-api-who-reacted"><a class="header" href="#raw-api-who-reacted">Raw API: who reacted</a></h2>
+<p>To see which users chose a specific reaction:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_tl_types::{functions, enums, types};
 
 let result = client.invoke(&amp;functions::messages::GetMessageReactionsList {
-    peer:      peer_input,
-    id:        message_id,
-    reaction:  Some(enums::Reaction::Emoji(types::ReactionEmoji {
+    peer:     peer_input,
+    id:       message_id,
+    reaction: Some(enums::Reaction::Emoji(types::ReactionEmoji {
         emoticon: "👍".into(),
     })),
-    offset:    None,
-    limit:     50,
+    offset:   None,
+    limit:    50,
 }).await?;
 
 if let enums::messages::MessageReactionsList::MessageReactionsList(list) = result {
-    for reaction_with_peer in &amp;list.reactions {
-        if let enums::MessagePeerReaction::MessagePeerReaction(r) = reaction_with_peer {
-            println!("peer: {:?}", r.peer_id);
+    for r in &amp;list.reactions {
+        if let enums::MessagePeerReaction::MessagePeerReaction(rr) = r {
+            println!("peer: {:?}", rr.peer_id);
         }
     }
 }
@@ -3341,356 +3601,642 @@ let msg = InputMessage::text(text)
 client.send_message_to_peer_ex(channel_peer, &amp;msg).await?;
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="participants--members"><a class="header" href="#participants--members">Participants &amp; Members</a></h1>
-<p>Methods for fetching, banning, promoting, and managing chat members.</p>
-<h2 id="get-participants"><a class="header" href="#get-participants">Get participants</a></h2>
+<h1 id="peer-types--peerref"><a class="header" href="#peer-types--peerref">Peer Types &amp; PeerRef</a></h1>
+<p><code>layer-client</code> provides ergonomic high-level wrappers over the raw <code>tl::enums::User</code> and <code>tl::enums::Chat</code> types, plus <code>PeerRef</code> — a flexible peer argument accepted by every <code>Client</code> method.</p>
+<hr>
+<h2 id="peerref--flexible-peer-argument"><a class="header" href="#peerref--flexible-peer-argument"><code>PeerRef</code> — flexible peer argument</a></h2>
+<p>Every <code>Client</code> method that previously required a bare <code>tl::enums::Peer</code> now accepts <code>impl Into&lt;PeerRef&gt;</code>. That means you can pass:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Get up to 200 participants from a channel/supergroup
-let members = client.get_participants(
-    tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 123 }),
-    200,  // limit (0 = use default)
-).await?;
+</span>// @username string (with or without @)
+client.send_message_to_peer("@durov", "hi").await?;
+client.send_message_to_peer("durov",  "hi").await?;
 
-for member in members {
-    println!("{} ({:?})", member.user.first_name.as_deref().unwrap_or("?"), member.status);
-}
+// "me" / "self" — always resolves to the logged-in account
+client.send_message_to_peer("me", "Note to self").await?;
+
+// Positive i64 — Telegram user ID
+client.send_message_to_peer(12345678_i64, "hi").await?;
+
+// Negative i64 — Bot-API channel ID (-100… prefix)
+client.iter_messages(-1001234567890_i64);
+
+// Negative i64 — Bot-API basic-group ID (small negative)
+client.mark_as_read(-123456_i64).await?;
+
+// Already-resolved TL peer — zero overhead, no network call
+use layer_client::tl;
+let peer = tl::enums::Peer::User(tl::types::PeerUser { user_id: 123 });
+client.send_message_to_peer(peer, "hi").await?;
 <span class="boring">}</span></code></pre>
-<h3 id="participantstatus-variants"><a class="header" href="#participantstatus-variants">ParticipantStatus variants</a></h3>
+<h3 id="peerref-variants"><a class="header" href="#peerref-variants"><code>PeerRef</code> variants</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Variant</th><th>Meaning</th></tr>
+<tr><th>Variant</th><th>How resolved</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Member</code></td><td>Regular member</td></tr>
-<tr><td><code>Creator</code></td><td>The group/channel creator</td></tr>
-<tr><td><code>Admin</code></td><td>Has admin rights</td></tr>
-<tr><td><code>Restricted</code></td><td>Partially banned (some rights removed)</td></tr>
-<tr><td><code>Banned</code></td><td>Fully banned</td></tr>
-<tr><td><code>Left</code></td><td>Has left the group</td></tr>
+<tr><td><code>PeerRef::Username(s)</code></td><td><code>contacts.resolveUsername</code> RPC (cached after first call)</td></tr>
+<tr><td><code>PeerRef::Id(i64)</code></td><td>Decoded from Bot-API encoding — <strong>no network call</strong></td></tr>
+<tr><td><code>PeerRef::Peer(tl::enums::Peer)</code></td><td>Forwarded as-is — <strong>zero cost</strong></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="bot-api-id-encoding"><a class="header" href="#bot-api-id-encoding">Bot-API ID encoding</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Range</th><th>Maps to</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id &gt; 0</code></td><td>User (<code>PeerUser { user_id: id }</code>)</td></tr>
+<tr><td><code>-1_000_000_000_000 &lt; id &lt; 0</code></td><td>Basic group (<code>PeerChat { chat_id: -id }</code>)</td></tr>
+<tr><td><code>id ≤ -1_000_000_000_000</code></td><td>Channel (<code>channel_id = -id - 1_000_000_000_000</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="resolving-manually"><a class="header" href="#resolving-manually">Resolving manually</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::PeerRef;
+
+let peer_ref = PeerRef::from("@someuser");
+let peer: tl::enums::Peer = peer_ref.resolve(&amp;client).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="user--user-account-wrapper"><a class="header" href="#user--user-account-wrapper"><code>User</code> — user account wrapper</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::types::User;
+
+// Wrap from raw TL
+if let Some(user) = User::from_raw(raw_tl_user) {
+    println!("ID: {}", user.id());
+    println!("Name: {}", user.full_name());
+    println!("Username: {:?}", user.username());
+    println!("Is bot: {}", user.bot());
+    println!("Is premium: {}", user.premium());
+}
+<span class="boring">}</span></code></pre>
+<h3 id="user-accessor-methods"><a class="header" href="#user-accessor-methods"><code>User</code> accessor methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id()</code></td><td><code>i64</code></td><td>Telegram user ID</td></tr>
+<tr><td><code>access_hash()</code></td><td><code>Option&lt;i64&gt;</code></td><td>Access hash for API calls</td></tr>
+<tr><td><code>first_name()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>First name</td></tr>
+<tr><td><code>last_name()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Last name</td></tr>
+<tr><td><code>full_name()</code></td><td><code>String</code></td><td><code>"First [Last]"</code> combined</td></tr>
+<tr><td><code>username()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Primary username (without <code>@</code>)</td></tr>
+<tr><td><code>usernames()</code></td><td><code>Vec&lt;&amp;str&gt;</code></td><td>All active usernames</td></tr>
+<tr><td><code>phone()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Phone number (if visible)</td></tr>
+<tr><td><code>bot()</code></td><td><code>bool</code></td><td>Is a bot account</td></tr>
+<tr><td><code>verified()</code></td><td><code>bool</code></td><td>Is a verified account</td></tr>
+<tr><td><code>premium()</code></td><td><code>bool</code></td><td>Is a premium account</td></tr>
+<tr><td><code>deleted()</code></td><td><code>bool</code></td><td>Account has been deleted</td></tr>
+<tr><td><code>scam()</code></td><td><code>bool</code></td><td>Flagged as scam</td></tr>
+<tr><td><code>restricted()</code></td><td><code>bool</code></td><td>Account is restricted</td></tr>
+<tr><td><code>is_self()</code></td><td><code>bool</code></td><td>Is the currently logged-in user</td></tr>
+<tr><td><code>contact()</code></td><td><code>bool</code></td><td>In the logged-in user’s contacts</td></tr>
+<tr><td><code>mutual_contact()</code></td><td><code>bool</code></td><td>Mutual contact</td></tr>
+<tr><td><code>support()</code></td><td><code>bool</code></td><td>Telegram support staff</td></tr>
+<tr><td><code>lang_code()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>User’s client language code</td></tr>
+<tr><td><code>status()</code></td><td><code>Option&lt;&amp;tl::enums::UserStatus&gt;</code></td><td>Online/offline status</td></tr>
+<tr><td><code>photo()</code></td><td><code>Option&lt;&amp;tl::types::UserProfilePhoto&gt;</code></td><td>Profile photo</td></tr>
+<tr><td><code>bot_inline_placeholder()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Inline mode compose bar hint</td></tr>
+<tr><td><code>bot_inline_geo()</code></td><td><code>bool</code></td><td>Bot supports inline without location</td></tr>
+<tr><td><code>bot_supports_chats()</code></td><td><code>bool</code></td><td>Bot can be added to groups</td></tr>
+<tr><td><code>restriction_reason()</code></td><td><code>Vec&lt;&amp;tl::enums::RestrictionReason&gt;</code></td><td>Restriction reasons</td></tr>
+<tr><td><code>as_peer()</code></td><td><code>tl::enums::Peer</code></td><td>Convert to <code>Peer</code></td></tr>
+<tr><td><code>as_input_peer()</code></td><td><code>tl::enums::InputPeer</code></td><td>Convert to <code>InputPeer</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>User</code> implements <code>Display</code> as <code>"Full Name (@username)"</code> or <code>"Full Name [user_id]"</code>.</p>
+<hr>
+<h2 id="group--basic-group-wrapper"><a class="header" href="#group--basic-group-wrapper"><code>Group</code> — basic group wrapper</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::types::Group;
+
+if let Some(group) = Group::from_raw(raw_tl_chat) {
+    println!("ID: {}", group.id());
+    println!("Title: {}", group.title());
+    println!("Members: {}", group.participants_count());
+    println!("I am creator: {}", group.creator());
+}
+<span class="boring">}</span></code></pre>
+<h3 id="group-accessor-methods"><a class="header" href="#group-accessor-methods"><code>Group</code> accessor methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id()</code></td><td><code>i64</code></td><td>Group ID</td></tr>
+<tr><td><code>title()</code></td><td><code>&amp;str</code></td><td>Group name</td></tr>
+<tr><td><code>participants_count()</code></td><td><code>i32</code></td><td>Member count</td></tr>
+<tr><td><code>creator()</code></td><td><code>bool</code></td><td>Logged-in user is the creator</td></tr>
+<tr><td><code>migrated_to()</code></td><td><code>Option&lt;&amp;tl::enums::InputChannel&gt;</code></td><td>Points to supergroup after migration</td></tr>
+<tr><td><code>as_peer()</code></td><td><code>tl::enums::Peer</code></td><td>Convert to <code>Peer</code></td></tr>
+<tr><td><code>as_input_peer()</code></td><td><code>tl::enums::InputPeer</code></td><td>Convert to <code>InputPeer</code></td></tr>
 </tbody>
 </table>
 </div>
 <hr>
-<h2 id="kick-from-basic-group"><a class="header" href="#kick-from-basic-group">Kick from basic group</a></h2>
+<h2 id="channel--channel--supergroup-wrapper"><a class="header" href="#channel--channel--supergroup-wrapper"><code>Channel</code> — channel / supergroup wrapper</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Removes the user from a basic group (not a supergroup/channel)
-client.kick_participant(chat_id, user_id).await?;
-<span class="boring">}</span></code></pre>
-<p>For channels/supergroups, use <code>ban_participant</code> instead.</p>
-<hr>
-<h2 id="ban-from-channel"><a class="header" href="#ban-from-channel">Ban from channel</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Permanent ban (until_date = 0)
-client.ban_participant(
-    tl::enums::Peer::Channel(tl::types::PeerChannel { channel_id: 123 }),
-    user_id,
-    0,  // until_date: 0 = permanent
-).await?;
+</span>use layer_client::types::{Channel, ChannelKind};
 
-// Temporary ban — expires at unix timestamp
-let expires = chrono::Utc::now().timestamp() as i32 + 86400; // 24h
-client.ban_participant(peer, user_id, expires).await?;
+if let Some(channel) = Channel::from_raw(raw_tl_chat) {
+    println!("ID: {}", channel.id());
+    println!("Title: {}", channel.title());
+    println!("Username: {:?}", channel.username());
+    println!("Kind: {:?}", channel.kind());
+    println!("Members: {:?}", channel.participants_count());
+}
 <span class="boring">}</span></code></pre>
-<h3 id="what-ban_participant-does"><a class="header" href="#what-ban_participant-does">What ban_participant does</a></h3>
-<p>Sets <code>ChatBannedRights</code> with <code>view_messages: true</code>, which is the Telegram way of banning — it prevents the user from reading or sending any messages.</p>
-<p>For selective restrictions (e.g. no stickers, no media), use the raw API with <code>channels.editBanned</code>.</p>
-<hr>
-<h2 id="promote--demote-admin"><a class="header" href="#promote--demote-admin">Promote / demote admin</a></h2>
+<h3 id="channel-accessor-methods"><a class="header" href="#channel-accessor-methods"><code>Channel</code> accessor methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id()</code></td><td><code>i64</code></td><td>Channel ID</td></tr>
+<tr><td><code>access_hash()</code></td><td><code>Option&lt;i64&gt;</code></td><td>Access hash</td></tr>
+<tr><td><code>title()</code></td><td><code>&amp;str</code></td><td>Channel / supergroup name</td></tr>
+<tr><td><code>username()</code></td><td><code>Option&lt;&amp;str&gt;</code></td><td>Public username (without <code>@</code>)</td></tr>
+<tr><td><code>usernames()</code></td><td><code>Vec&lt;&amp;str&gt;</code></td><td>All active usernames</td></tr>
+<tr><td><code>megagroup()</code></td><td><code>bool</code></td><td>Is a supergroup (not a broadcast channel)</td></tr>
+<tr><td><code>broadcast()</code></td><td><code>bool</code></td><td>Is a broadcast channel</td></tr>
+<tr><td><code>gigagroup()</code></td><td><code>bool</code></td><td>Is a broadcast group (gigagroup)</td></tr>
+<tr><td><code>kind()</code></td><td><code>ChannelKind</code></td><td><code>Broadcast</code> / <code>Megagroup</code> / <code>Gigagroup</code></td></tr>
+<tr><td><code>verified()</code></td><td><code>bool</code></td><td>Verified account</td></tr>
+<tr><td><code>restricted()</code></td><td><code>bool</code></td><td>Is restricted</td></tr>
+<tr><td><code>signatures()</code></td><td><code>bool</code></td><td>Posts have author signatures</td></tr>
+<tr><td><code>participants_count()</code></td><td><code>Option&lt;i32&gt;</code></td><td>Approximate member count</td></tr>
+<tr><td><code>photo()</code></td><td><code>Option&lt;&amp;tl::types::ChatPhoto&gt;</code></td><td>Channel photo</td></tr>
+<tr><td><code>admin_rights()</code></td><td><code>Option&lt;&amp;tl::types::ChatAdminRights&gt;</code></td><td>Your admin rights</td></tr>
+<tr><td><code>restriction_reason()</code></td><td><code>Vec&lt;&amp;tl::enums::RestrictionReason&gt;</code></td><td>Restriction reasons</td></tr>
+<tr><td><code>as_peer()</code></td><td><code>tl::enums::Peer</code></td><td>Convert to <code>Peer</code></td></tr>
+<tr><td><code>as_input_peer()</code></td><td><code>tl::enums::InputPeer</code></td><td>Convert to <code>InputPeer</code> (requires hash)</td></tr>
+<tr><td><code>as_input_channel()</code></td><td><code>tl::enums::InputChannel</code></td><td>Convert to <code>InputChannel</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="channelkind-enum"><a class="header" href="#channelkind-enum"><code>ChannelKind</code> enum</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Grant admin rights
-client.promote_participant(channel_peer, user_id, true).await?;
+</span>use layer_client::types::ChannelKind;
 
-// Remove admin rights
-client.promote_participant(channel_peer, user_id, false).await?;
-<span class="boring">}</span></code></pre>
-<p>The default promotion grants: <code>change_info</code>, <code>post_messages</code>, <code>edit_messages</code>, <code>delete_messages</code>, <code>ban_users</code>, <code>invite_users</code>, <code>pin_messages</code>, <code>manage_call</code>.</p>
-<p>For custom rights, use <code>channels.editAdmin</code> via <code>client.invoke()</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_tl_types::{functions, types, enums};
-
-client.invoke(&amp;functions::channels::EditAdmin {
-    flags: 0,
-    channel: enums::InputChannel::InputChannel(types::InputChannel {
-        channel_id, access_hash,
-    }),
-    user_id: enums::InputUser::InputUser(types::InputUser {
-        user_id, access_hash: user_hash,
-    }),
-    admin_rights: enums::ChatAdminRights::ChatAdminRights(types::ChatAdminRights {
-        change_info:            true,
-        post_messages:          true,
-        edit_messages:          false,
-        delete_messages:        true,
-        ban_users:              true,
-        invite_users:           true,
-        pin_messages:           true,
-        add_admins:             false,  // can they add other admins?
-        anonymous:              false,
-        manage_call:            true,
-        other:                  false,
-        manage_topics:          false,
-        post_stories:           false,
-        edit_stories:           false,
-        delete_stories:         false,
-        manage_direct_messages: false,
-        manage_ranks:           false,   // Layer 223: custom rank management
-    }),
-    rank: Some("Moderator".into()),  // Layer 223: rank is now Option&lt;String&gt;
-}).await?;
+match channel.kind() {
+    ChannelKind::Broadcast  =&gt; { /* Posts only, no member replies */ }
+    ChannelKind::Megagroup  =&gt; { /* All members can post */ }
+    ChannelKind::Gigagroup  =&gt; { /* Large public broadcast group */ }
+}
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="get-profile-photos-1"><a class="header" href="#get-profile-photos-1">Get profile photos</a></h2>
+<h2 id="chat--unified-chat-enum"><a class="header" href="#chat--unified-chat-enum"><code>Chat</code> — unified chat enum</a></h2>
+<p><code>Chat</code> unifies <code>Group</code> and <code>Channel</code> into one enum with shared accessors:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let photos = client.get_profile_photos(peer, 10).await?;
+</span>use layer_client::types::Chat;
 
-for photo in &amp;photos {
-    if let tl::enums::Photo::Photo(p) = photo {
-        println!("Photo ID: {}", p.id);
+if let Some(chat) = Chat::from_raw(raw_tl_chat) {
+    println!("ID: {}", chat.id());
+    println!("Title: {}", chat.title());
+
+    match &amp;chat {
+        Chat::Group(g)   =&gt; println!("Basic group, {} members", g.participants_count()),
+        Chat::Channel(c) =&gt; println!("{:?} channel", c.kind()),
     }
 }
 <span class="boring">}</span></code></pre>
-<hr>
-<h2 id="send-a-reaction-1"><a class="header" href="#send-a-reaction-1">Send a reaction</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// React with 👍
-client.send_reaction(peer, message_id, "👍").await?;
-
-// Remove reaction
-client.send_reaction(peer, message_id, "").await?;
-
-// Custom emoji reaction (premium)
-// Use the raw API: messages.sendReaction with ReactionCustomEmoji
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="chatadminrights--layer-224-fields"><a class="header" href="#chatadminrights--layer-224-fields">ChatAdminRights — Layer 224 fields</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>types::ChatAdminRights {
-    change_info:            bool, // can change group info
-    post_messages:          bool, // can post in channels
-    edit_messages:          bool, // can edit any message
-    delete_messages:        bool, // can delete messages
-    ban_users:              bool, // can ban members
-    invite_users:           bool, // can invite members
-    pin_messages:           bool, // can pin messages
-    add_admins:             bool, // can promote admins
-    anonymous:              bool, // post as channel anonymously
-    manage_call:            bool, // can start/manage calls
-    other:                  bool, // other rights
-    manage_topics:          bool, // can manage forum topics
-    post_stories:           bool, // can post stories
-    edit_stories:           bool, // can edit stories
-    delete_stories:         bool, // can delete stories
-    manage_direct_messages: bool, // can manage DM links
-    manage_ranks:           bool, // ✨ NEW in Layer 223
-}
-<span class="boring">}</span></code></pre>
-<h2 id="chatbannedrights--layer-224-fields"><a class="header" href="#chatbannedrights--layer-224-fields">ChatBannedRights — Layer 224 fields</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>types::ChatBannedRights {
-    view_messages:    bool, // ban completely (can't read)
-    send_messages:    bool, // can't send text
-    send_media:       bool, // can't send media
-    send_stickers:    bool,
-    send_gifs:        bool,
-    send_games:       bool,
-    send_inline:      bool, // can't use inline bots
-    embed_links:      bool, // can't embed link previews
-    send_polls:       bool,
-    change_info:      bool, // can't change group info
-    invite_users:     bool, // can't invite others
-    pin_messages:     bool, // can't pin messages
-    manage_topics:    bool,
-    send_photos:      bool,
-    send_videos:      bool,
-    send_roundvideos: bool,
-    send_audios:      bool,
-    send_voices:      bool,
-    send_docs:        bool,
-    send_plain:       bool, // can't send plain text
-    edit_rank:        bool, // ✨ NEW in Layer 223
-    until_date:       i32,  // 0 = permanent
-}
-<span class="boring">}</span></code></pre>
+<h3 id="chat-methods"><a class="header" href="#chat-methods"><code>Chat</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Return type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id()</code></td><td><code>i64</code></td><td>ID regardless of variant</td></tr>
+<tr><td><code>title()</code></td><td><code>&amp;str</code></td><td>Name regardless of variant</td></tr>
+<tr><td><code>as_peer()</code></td><td><code>tl::enums::Peer</code></td><td><code>Peer</code> variant</td></tr>
+<tr><td><code>as_input_peer()</code></td><td><code>tl::enums::InputPeer</code></td><td><code>InputPeer</code> variant</td></tr>
+</tbody>
+</table>
+</div>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="admin--ban-rights"><a class="header" href="#admin--ban-rights">Admin &amp; Ban Rights</a></h1>
-<p><code>layer-client</code> provides typed builders for promoting administrators and restricting users.</p>
+<h1 id="participants--members"><a class="header" href="#participants--members">Participants &amp; Members</a></h1>
+<p>Methods for fetching, banning, kicking, promoting, and managing chat members. All methods accept <code>impl Into&lt;PeerRef&gt;</code> for the peer argument.</p>
 <hr>
-<h2 id="promoting-an-admin--adminrightsbuilder"><a class="header" href="#promoting-an-admin--adminrightsbuilder">Promoting an admin — AdminRightsBuilder</a></h2>
+<h2 id="fetch-participants"><a class="header" href="#fetch-participants">Fetch participants</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::Participant;
+
+// Fetch up to N participants at once
+let members: Vec&lt;Participant&gt; = client
+    .get_participants(peer.clone(), 200)
+    .await?;
+
+for p in &amp;members {
+    println!(
+        "{} — admin: {}, banned: {}",
+        p.user.first_name.as_deref().unwrap_or("?"),
+        p.is_admin(),
+        p.is_banned(),
+    );
+}
+<span class="boring">}</span></code></pre>
+<h3 id="paginated-iterator-large-groups"><a class="header" href="#paginated-iterator-large-groups">Paginated iterator (large groups)</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut iter = client.iter_participants(peer.clone());
+while let Some(p) = iter.next(&amp;client).await? {
+    println!("{}", p.user.first_name.as_deref().unwrap_or(""));
+}
+<span class="boring">}</span></code></pre>
+<h3 id="search-contacts-and-dialogs-by-name"><a class="header" href="#search-contacts-and-dialogs-by-name">Search contacts and dialogs by name</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Returns combined results from contacts, dialogs, and global
+let results: Vec&lt;tl::enums::Peer&gt; = client.search_peer("John").await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="participant-fields"><a class="header" href="#participant-fields"><code>Participant</code> fields</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>p.user          // tl::types::User — raw user data
+p.is_creator()  // bool — is the channel/group creator
+p.is_admin()    // bool — has any admin rights
+p.is_banned()   // bool — is banned/restricted
+p.is_member()   // bool — active member (not banned, not left)
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="kick-participant"><a class="header" href="#kick-participant">Kick participant</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Removes the user from a basic group
+// For channels/supergroups, use ban_participant instead
+client.kick_participant(peer.clone(), user_id).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="ban-participant--bannedrightsbuilder"><a class="header" href="#ban-participant--bannedrightsbuilder">Ban participant — <code>BannedRightsBuilder</code></a></h2>
+<p>Use the fluent <code>BannedRightsBuilder</code> for granular bans:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::BannedRightsBuilder;
+
+// Permanent full ban
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
+    .await?;
+
+// Partial restriction — no media, no stickers, expires in 24 h
+let expires = (std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
+
+client
+    .ban_participant(
+        peer.clone(),
+        user_id,
+        BannedRightsBuilder::new()
+            .send_media(true)
+            .send_stickers(true)
+            .send_gifs(true)
+            .until_date(expires),
+    )
+    .await?;
+
+// Unban — pass an empty builder to restore full permissions
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="bannedrightsbuilder-methods"><a class="header" href="#bannedrightsbuilder-methods"><code>BannedRightsBuilder</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>BannedRightsBuilder::new()</code></td><td>All permissions granted (empty ban = unban)</td></tr>
+<tr><td><code>BannedRightsBuilder::full_ban()</code></td><td>All rights revoked, permanent</td></tr>
+<tr><td><code>.view_messages(bool)</code></td><td>Prevent reading messages</td></tr>
+<tr><td><code>.send_messages(bool)</code></td><td>Prevent sending text</td></tr>
+<tr><td><code>.send_media(bool)</code></td><td>Prevent sending media</td></tr>
+<tr><td><code>.send_stickers(bool)</code></td><td>Prevent sending stickers</td></tr>
+<tr><td><code>.send_gifs(bool)</code></td><td>Prevent sending GIFs</td></tr>
+<tr><td><code>.send_games(bool)</code></td><td>Prevent sending games</td></tr>
+<tr><td><code>.send_inline(bool)</code></td><td>Prevent using inline bots</td></tr>
+<tr><td><code>.embed_links(bool)</code></td><td>Prevent embedding links</td></tr>
+<tr><td><code>.send_polls(bool)</code></td><td>Prevent sending polls</td></tr>
+<tr><td><code>.change_info(bool)</code></td><td>Prevent changing chat info</td></tr>
+<tr><td><code>.invite_users(bool)</code></td><td>Prevent inviting users</td></tr>
+<tr><td><code>.pin_messages(bool)</code></td><td>Prevent pinning messages</td></tr>
+<tr><td><code>.until_date(ts: i32)</code></td><td>Expiry Unix timestamp (<code>0</code> = permanent)</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="promote-admin--adminrightsbuilder"><a class="header" href="#promote-admin--adminrightsbuilder">Promote admin — <code>AdminRightsBuilder</code></a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::participants::AdminRightsBuilder;
 
-client.set_admin_rights(
-    peer,
-    user_id,
+// Promote with specific rights and a custom title
+client
+    .promote_participant(
+        peer.clone(),
+        user_id,
+        AdminRightsBuilder::new()
+            .post_messages(true)
+            .delete_messages(true)
+            .ban_users(true)
+            .invite_users(true)
+            .pin_messages(true)
+            .rank("Moderator"), // custom admin title (max 16 chars)
+    )
+    .await?;
+
+// Full admin (all standard rights except add_admins)
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
+    .await?;
+
+// Demote — pass an empty builder to remove all admin rights
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="adminrightsbuilder-methods"><a class="header" href="#adminrightsbuilder-methods"><code>AdminRightsBuilder</code> methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>AdminRightsBuilder::new()</code></td><td>No rights (use to demote)</td></tr>
+<tr><td><code>AdminRightsBuilder::full_admin()</code></td><td>All standard rights</td></tr>
+<tr><td><code>.change_info(bool)</code></td><td>Can change channel/group info</td></tr>
+<tr><td><code>.post_messages(bool)</code></td><td>Can post in channels</td></tr>
+<tr><td><code>.edit_messages(bool)</code></td><td>Can edit others’ messages</td></tr>
+<tr><td><code>.delete_messages(bool)</code></td><td>Can delete messages</td></tr>
+<tr><td><code>.ban_users(bool)</code></td><td>Can ban / restrict members</td></tr>
+<tr><td><code>.invite_users(bool)</code></td><td>Can add members</td></tr>
+<tr><td><code>.pin_messages(bool)</code></td><td>Can pin messages</td></tr>
+<tr><td><code>.add_admins(bool)</code></td><td>Can promote other admins (<strong>use carefully</strong>)</td></tr>
+<tr><td><code>.anonymous(bool)</code></td><td>Posts appear as channel name, not user</td></tr>
+<tr><td><code>.manage_call(bool)</code></td><td>Can manage voice/video chats</td></tr>
+<tr><td><code>.manage_topics(bool)</code></td><td>Can manage forum topics</td></tr>
+<tr><td><code>.rank(str)</code></td><td>Custom admin title shown beside name</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="get-participant-permissions"><a class="header" href="#get-participant-permissions">Get participant permissions</a></h2>
+<p>Check the effective permissions of a user in a channel or supergroup:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::ParticipantPermissions;
+
+let perms: ParticipantPermissions = client
+    .get_permissions(peer.clone(), user_id)
+    .await?;
+
+println!("Creator: {}", perms.is_creator());
+println!("Admin: {}",   perms.is_admin());
+println!("Banned: {}",  perms.is_banned());
+println!("Member: {}",  perms.is_member());
+println!("Can send: {}", perms.can_send_messages);
+println!("Can pin: {}",  perms.can_pin_messages);
+println!("Admin title: {:?}", perms.admin_rank);
+<span class="boring">}</span></code></pre>
+<h3 id="participantpermissions-fields--methods"><a class="header" href="#participantpermissions-fields--methods"><code>ParticipantPermissions</code> fields &amp; methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Symbol</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_creator()</code></td><td><code>bool</code></td><td>Is the channel/group creator</td></tr>
+<tr><td><code>is_admin()</code></td><td><code>bool</code></td><td>Has any admin rights</td></tr>
+<tr><td><code>is_banned()</code></td><td><code>bool</code></td><td>Is banned or restricted</td></tr>
+<tr><td><code>is_member()</code></td><td><code>bool</code></td><td>Active member (not banned, not left)</td></tr>
+<tr><td><code>can_send_messages</code></td><td><code>bool</code></td><td>Can send text messages</td></tr>
+<tr><td><code>can_send_media</code></td><td><code>bool</code></td><td>Can send media</td></tr>
+<tr><td><code>can_pin_messages</code></td><td><code>bool</code></td><td>Can pin messages</td></tr>
+<tr><td><code>can_add_admins</code></td><td><code>bool</code></td><td>Can promote admins</td></tr>
+<tr><td><code>admin_rank</code></td><td><code>Option&lt;String&gt;</code></td><td>Custom admin title</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="profile-photos"><a class="header" href="#profile-photos">Profile photos</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Fetch a page of profile photos (user_id, offset, limit)
+let photos = client.get_profile_photos(user_id, 0, 10).await?;
+
+// Lazy iterator across all pages
+let mut iter = client.iter_profile_photos(user_id);
+while let Some(photo) = iter.next(&amp;client).await? {
+    let bytes = client.download(&amp;photo).await?;
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="join-and-leave-chats"><a class="header" href="#join-and-leave-chats">Join and leave chats</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Join a public group or channel
+client.join_chat("@somegroup").await?;
+
+// Accept a private invite link
+client.accept_invite_link("https://t.me/joinchat/AbCdEfG").await?;
+
+// Parse invite hash from any link format
+let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
+
+// Leave / remove dialog
+client.delete_dialog(peer.clone()).await?;
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="admin--ban-rights"><a class="header" href="#admin--ban-rights">Admin &amp; Ban Rights</a></h1>
+<p><code>layer-client</code> provides two fluent builders for granular admin and ban rights — <code>AdminRightsBuilder</code> and <code>BannedRightsBuilder</code> — both in the <code>layer_client::participants</code> module.</p>
+<hr>
+<h2 id="bannedrightsbuilder--restrict-a-member"><a class="header" href="#bannedrightsbuilder--restrict-a-member"><code>BannedRightsBuilder</code> — restrict a member</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::BannedRightsBuilder;
+
+// ── Permanent full ban ────────────────────────────────────────────────────────
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
+    .await?;
+
+// ── Partial restriction (no media, expires in 24 h) ───────────────────────────
+let tomorrow = (std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
+
+client
+    .ban_participant(
+        peer.clone(), user_id,
+        BannedRightsBuilder::new()
+            .send_media(true)
+            .send_stickers(true)
+            .send_gifs(true)
+            .until_date(tomorrow),
+    )
+    .await?;
+
+// ── Unban ─────────────────────────────────────────────────────────────────────
+// Passing an empty builder restores full permissions
+client
+    .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="method-reference"><a class="header" href="#method-reference">Method reference</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>BannedRightsBuilder::new()</code></td><td>all <code>false</code></td><td>No restrictions (use to unban)</td></tr>
+<tr><td><code>BannedRightsBuilder::full_ban()</code></td><td>all <code>true</code>, <code>until_date = 0</code></td><td>Total permanent ban</td></tr>
+<tr><td><code>.view_messages(bool)</code></td><td><code>false</code></td><td>Block reading messages</td></tr>
+<tr><td><code>.send_messages(bool)</code></td><td><code>false</code></td><td>Block sending text</td></tr>
+<tr><td><code>.send_media(bool)</code></td><td><code>false</code></td><td>Block sending media</td></tr>
+<tr><td><code>.send_stickers(bool)</code></td><td><code>false</code></td><td>Block stickers</td></tr>
+<tr><td><code>.send_gifs(bool)</code></td><td><code>false</code></td><td>Block GIFs</td></tr>
+<tr><td><code>.send_games(bool)</code></td><td><code>false</code></td><td>Block games</td></tr>
+<tr><td><code>.send_inline(bool)</code></td><td><code>false</code></td><td>Block inline bots</td></tr>
+<tr><td><code>.embed_links(bool)</code></td><td><code>false</code></td><td>Block link embeds</td></tr>
+<tr><td><code>.send_polls(bool)</code></td><td><code>false</code></td><td>Block polls</td></tr>
+<tr><td><code>.change_info(bool)</code></td><td><code>false</code></td><td>Block changing chat info</td></tr>
+<tr><td><code>.invite_users(bool)</code></td><td><code>false</code></td><td>Block inviting users</td></tr>
+<tr><td><code>.pin_messages(bool)</code></td><td><code>false</code></td><td>Block pinning messages</td></tr>
+<tr><td><code>.until_date(ts: i32)</code></td><td><code>0</code></td><td>Expiry Unix timestamp (<code>0</code> = permanent)</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><strong>Note:</strong> Setting <code>view_messages: true</code> is a full ban — the member cannot read messages or remain in the group.</p>
+</blockquote>
+<hr>
+<h2 id="adminrightsbuilder--grant-admin-rights"><a class="header" href="#adminrightsbuilder--grant-admin-rights"><code>AdminRightsBuilder</code> — grant admin rights</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::AdminRightsBuilder;
+
+// ── Custom moderator ──────────────────────────────────────────────────────────
+client
+    .promote_participant(
+        peer.clone(), user_id,
+        AdminRightsBuilder::new()
+            .delete_messages(true)
+            .ban_users(true)
+            .invite_users(true)
+            .pin_messages(true)
+            .rank("Moderator"),  // shown next to name
+    )
+    .await?;
+
+// ── Full admin (all standard rights) ─────────────────────────────────────────
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
+    .await?;
+
+// ── Demote (remove all admin rights) ─────────────────────────────────────────
+client
+    .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="method-reference-1"><a class="header" href="#method-reference-1">Method reference</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>AdminRightsBuilder::new()</code></td><td>all <code>false</code></td><td>No rights (use to demote)</td></tr>
+<tr><td><code>AdminRightsBuilder::full_admin()</code></td><td>standard set</td><td>All rights except <code>add_admins</code></td></tr>
+<tr><td><code>.change_info(bool)</code></td><td><code>false</code></td><td>Can edit channel/group info &amp; photo</td></tr>
+<tr><td><code>.post_messages(bool)</code></td><td><code>false</code></td><td>Can post in broadcast channels</td></tr>
+<tr><td><code>.edit_messages(bool)</code></td><td><code>false</code></td><td>Can edit other users’ messages</td></tr>
+<tr><td><code>.delete_messages(bool)</code></td><td><code>false</code></td><td>Can delete any message</td></tr>
+<tr><td><code>.ban_users(bool)</code></td><td><code>false</code></td><td>Can restrict / ban members</td></tr>
+<tr><td><code>.invite_users(bool)</code></td><td><code>false</code></td><td>Can add new members</td></tr>
+<tr><td><code>.pin_messages(bool)</code></td><td><code>false</code></td><td>Can pin messages</td></tr>
+<tr><td><code>.add_admins(bool)</code></td><td><code>false</code></td><td>Can promote others to admin ⚠️</td></tr>
+<tr><td><code>.anonymous(bool)</code></td><td><code>false</code></td><td>Posts appear as channel name</td></tr>
+<tr><td><code>.manage_call(bool)</code></td><td><code>false</code></td><td>Can start/manage voice chats</td></tr>
+<tr><td><code>.manage_topics(bool)</code></td><td><code>false</code></td><td>Can create/edit/delete forum topics</td></tr>
+<tr><td><code>.rank(str)</code></td><td><code>None</code></td><td>Custom admin title (max 16 chars)</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><code>.add_admins(true)</code> grants significant trust — admins with this right can promote others to full admin level.</p>
+</blockquote>
+<hr>
+<h2 id="participantpermissions--read-effective-rights"><a class="header" href="#participantpermissions--read-effective-rights"><code>ParticipantPermissions</code> — read effective rights</a></h2>
+<p>To inspect the actual current permissions of a user in a channel:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::participants::ParticipantPermissions;
+
+let perms: ParticipantPermissions = client
+    .get_permissions(peer.clone(), user_id)
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="fields--methods"><a class="header" href="#fields--methods">Fields &amp; methods</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Symbol</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is_creator()</code></td><td><code>bool</code></td><td>Is the creator</td></tr>
+<tr><td><code>is_admin()</code></td><td><code>bool</code></td><td>Has any admin rights</td></tr>
+<tr><td><code>is_banned()</code></td><td><code>bool</code></td><td>Is banned or restricted</td></tr>
+<tr><td><code>is_member()</code></td><td><code>bool</code></td><td>Active member (<code>!is_banned &amp;&amp; !is_left</code>)</td></tr>
+<tr><td><code>can_send_messages</code></td><td><code>bool</code></td><td>Can send text</td></tr>
+<tr><td><code>can_send_media</code></td><td><code>bool</code></td><td>Can send media</td></tr>
+<tr><td><code>can_pin_messages</code></td><td><code>bool</code></td><td>Can pin messages</td></tr>
+<tr><td><code>can_add_admins</code></td><td><code>bool</code></td><td>Can promote others</td></tr>
+<tr><td><code>admin_rank</code></td><td><code>Option&lt;String&gt;</code></td><td>Custom admin title</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="quick-patterns"><a class="header" href="#quick-patterns">Quick patterns</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Temporarily mute — no messages for 1 hour
+let in_1h = (chrono::Utc::now().timestamp() + 3600) as i32;
+client.ban_participant(peer.clone(), uid,
+    BannedRightsBuilder::new().send_messages(true).until_date(in_1h)
+).await?;
+
+// Promote to channel editor
+client.promote_participant(peer.clone(), uid,
     AdminRightsBuilder::new()
         .post_messages(true)
         .edit_messages(true)
         .delete_messages(true)
-        .invite_users(true)
-        .pin_messages(true)
-        .rank("Editor"),  // optional custom title
 ).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="all-adminrightsbuilder-methods"><a class="header" href="#all-adminrightsbuilder-methods">All AdminRightsBuilder methods</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>.change_info(v)</code></td><td>false</td><td>Edit channel title, description, photo</td></tr>
-<tr><td><code>.post_messages(v)</code></td><td>false</td><td>Post in the channel</td></tr>
-<tr><td><code>.edit_messages(v)</code></td><td>false</td><td>Edit any message</td></tr>
-<tr><td><code>.delete_messages(v)</code></td><td>false</td><td>Delete any message</td></tr>
-<tr><td><code>.ban_users(v)</code></td><td>false</td><td>Restrict other members</td></tr>
-<tr><td><code>.invite_users(v)</code></td><td>false</td><td>Add members</td></tr>
-<tr><td><code>.pin_messages(v)</code></td><td>false</td><td>Pin and unpin messages</td></tr>
-<tr><td><code>.add_admins(v)</code></td><td>false</td><td>Promote other admins (requires self to have this right)</td></tr>
-<tr><td><code>.anonymous(v)</code></td><td>false</td><td>Post as the channel (anonymous)</td></tr>
-<tr><td><code>.manage_call(v)</code></td><td>false</td><td>Start/manage video chats</td></tr>
-<tr><td><code>.manage_topics(v)</code></td><td>false</td><td>Create/edit/delete forum topics</td></tr>
-<tr><td><code>.rank(r)</code></td><td>—</td><td>Custom admin title shown in the member list</td></tr>
-<tr><td><code>AdminRightsBuilder::full_admin()</code></td><td>—</td><td>All rights enabled</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="full-admin-shorthand"><a class="header" href="#full-admin-shorthand">Full admin shorthand</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.set_admin_rights(
-    peer,
-    user_id,
-    AdminRightsBuilder::full_admin(),
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="remove-admin-rights"><a class="header" href="#remove-admin-rights">Remove admin rights</a></h3>
-<p>Pass an empty builder to revoke all rights:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.set_admin_rights(
-    peer,
-    user_id,
-    AdminRightsBuilder::new(),  // all false = remove admin
-).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="restricting-a-member--banrightsbuilder"><a class="header" href="#restricting-a-member--banrightsbuilder">Restricting a member — BanRightsBuilder</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_client::participants::BanRightsBuilder;
 
-// Mute a user (disable text, stickers, GIFs, inline)
-client.set_banned_rights(
-    peer,
-    user_id,
-    BanRightsBuilder::new()
-        .send_messages(false)
-        .send_stickers(false)
-        .send_gifs(false)
-        .send_inline(false),
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="all-banrightsbuilder-methods"><a class="header" href="#all-banrightsbuilder-methods">All BanRightsBuilder methods</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>.view_messages(v)</code></td><td>true</td><td>Can see the chat at all</td></tr>
-<tr><td><code>.send_messages(v)</code></td><td>true</td><td>Can send text messages</td></tr>
-<tr><td><code>.send_media(v)</code></td><td>true</td><td>Can send photos, videos, etc.</td></tr>
-<tr><td><code>.send_stickers(v)</code></td><td>true</td><td>Can send stickers</td></tr>
-<tr><td><code>.send_gifs(v)</code></td><td>true</td><td>Can send GIFs</td></tr>
-<tr><td><code>.send_games(v)</code></td><td>true</td><td>Can send games</td></tr>
-<tr><td><code>.send_inline(v)</code></td><td>true</td><td>Can use inline bots</td></tr>
-<tr><td><code>.embed_links(v)</code></td><td>true</td><td>Can include link previews</td></tr>
-<tr><td><code>.send_polls(v)</code></td><td>true</td><td>Can create polls</td></tr>
-<tr><td><code>.change_info(v)</code></td><td>true</td><td>Can edit group info</td></tr>
-<tr><td><code>.invite_users(v)</code></td><td>true</td><td>Can add members</td></tr>
-<tr><td><code>.pin_messages(v)</code></td><td>true</td><td>Can pin messages</td></tr>
-<tr><td><code>.until_date(ts)</code></td><td>0 (permanent)</td><td>Restriction expires at this unix timestamp</td></tr>
-<tr><td><code>BanRightsBuilder::full_ban()</code></td><td>—</td><td>All rights false (full kick/ban)</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="temporary-restriction-mute-for-24-hours"><a class="header" href="#temporary-restriction-mute-for-24-hours">Temporary restriction (mute for 24 hours)</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let expires = chrono::Utc::now().timestamp() as i32 + 86_400; // 24h
-
-client.set_banned_rights(
-    peer,
-    user_id,
-    BanRightsBuilder::new()
-        .send_messages(false)
-        .send_media(false)
-        .until_date(expires),
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="full-ban-kick--block-from-re-joining"><a class="header" href="#full-ban-kick--block-from-re-joining">Full ban (kick + block from re-joining)</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.set_banned_rights(
-    peer,
-    user_id,
-    BanRightsBuilder::full_ban(),
-).await?;
-<span class="boring">}</span></code></pre>
-<h3 id="lift-all-restrictions-unban"><a class="header" href="#lift-all-restrictions-unban">Lift all restrictions (unban)</a></h3>
-<p>Pass a builder with all defaults (everything true, no until_date):</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.set_banned_rights(
-    peer,
-    user_id,
-    BanRightsBuilder::new(),  // all true = no restrictions
-).await?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="check-effective-permissions"><a class="header" href="#check-effective-permissions">Check effective permissions</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let perms = client.get_permissions(peer, user_id).await?;
-println!("can send messages: {}", perms.can_send_messages());
-println!("is admin: {}", perms.is_admin());
-println!("is creator: {}", perms.is_creator());
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="kick-from-basic-group-1"><a class="header" href="#kick-from-basic-group-1">Kick from basic group</a></h2>
-<p>For legacy basic groups (not supergroups/channels), use the kick method:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.kick_participant(chat_id, user_id).await?;
-<span class="boring">}</span></code></pre>
-<p>This removes the user from the group. They can be added back by any member.</p>
-<hr>
-<h2 id="participant-status"><a class="header" href="#participant-status">Participant status</a></h2>
-<p><code>get_participants</code> returns <code>Participant</code> structs with a <code>status</code> field:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let members = client.get_participants(peer, 0).await?;
-
-for member in members {
-    match member.status {
-        ParticipantStatus::Creator  =&gt; println!("{} is the creator", member.user.first_name.as_deref().unwrap_or("?")),
-        ParticipantStatus::Admin    =&gt; println!("{} is an admin", member.user.first_name.as_deref().unwrap_or("?")),
-        ParticipantStatus::Member   =&gt; {}
-        ParticipantStatus::Banned   =&gt; println!("{} is banned", member.user.first_name.as_deref().unwrap_or("?")),
-        ParticipantStatus::Restricted =&gt; println!("{} is restricted", member.user.first_name.as_deref().unwrap_or("?")),
-        ParticipantStatus::Left     =&gt; println!("{} has left", member.user.first_name.as_deref().unwrap_or("?")),
-    }
+// Check before acting
+let perms = client.get_permissions(peer.clone(), uid).await?;
+if !perms.is_admin() &amp;&amp; !perms.is_banned() {
+    client.ban_participant(peer.clone(), uid, BannedRightsBuilder::full_ban()).await?;
 }
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -3823,79 +4369,79 @@ client.clear_mentions(peer).await?;
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="search-1"><a class="header" href="#search-1">Search</a></h1>
-<p><code>layer-client</code> provides two search builders: <code>SearchBuilder</code> for searching within a single peer, and <code>GlobalSearchBuilder</code> for searching across all dialogs at once.</p>
-<h2 id="searchbuilder--per-peer-search"><a class="header" href="#searchbuilder--per-peer-search">SearchBuilder — per-peer search</a></h2>
+<p><code>layer-client</code> provides two fluent search builders:</p>
+<ul>
+<li><strong><code>SearchBuilder</code></strong> — search within a single peer (<code>client.search()</code>)</li>
+<li><strong><code>GlobalSearchBuilder</code></strong> — search across all dialogs (<code>client.search_global_builder()</code>)</li>
+</ul>
+<p>Both builders return <code>Vec&lt;IncomingMessage&gt;</code> from <code>.fetch(&amp;client).await?</code>.</p>
+<hr>
+<h2 id="searchbuilder--in-chat-search"><a class="header" href="#searchbuilder--in-chat-search"><code>SearchBuilder</code> — in-chat search</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let results = client
-    .search("@somechannel", "rust async")
-    .limit(20)
-    .fetch()
+</span>use layer_tl_types::enums::MessagesFilter;
+
+let results = client
+    .search(peer.clone(), "rust async")  // peer: impl Into&lt;PeerRef&gt;
+    .limit(50)
+    .fetch(&amp;client)
     .await?;
 
-for msg in results {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("[{}] {}", m.id, m.message);
-    }
+for msg in &amp;results {
+    println!("[{}] {}", msg.id, msg.message);
 }
 <span class="boring">}</span></code></pre>
-<h3 id="all-builder-methods"><a class="header" href="#all-builder-methods">All builder methods</a></h3>
+<p><code>client.search(peer, query)</code> accepts any <code>impl Into&lt;PeerRef&gt;</code> — a <code>&amp;str</code> username, a <code>tl::enums::Peer</code>, or a numeric <code>i64</code> ID.</p>
+<h3 id="all-searchbuilder-methods"><a class="header" href="#all-searchbuilder-methods">All <code>SearchBuilder</code> methods</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Method</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>.limit(n)</code></td><td>20</td><td>Maximum number of results</td></tr>
-<tr><td><code>.min_date(ts)</code></td><td>—</td><td>Only messages after this unix timestamp</td></tr>
-<tr><td><code>.max_date(ts)</code></td><td>—</td><td>Only messages before this unix timestamp</td></tr>
-<tr><td><code>.offset_id(id)</code></td><td>0</td><td>Start from this message ID (for pagination)</td></tr>
-<tr><td><code>.add_offset(n)</code></td><td>0</td><td>Skip this many results from the start</td></tr>
-<tr><td><code>.max_id(id)</code></td><td>0</td><td>Upper bound message ID</td></tr>
-<tr><td><code>.min_id(id)</code></td><td>0</td><td>Lower bound message ID</td></tr>
-<tr><td><code>.from_peer(peer)</code></td><td>—</td><td>Only messages from this sender</td></tr>
-<tr><td><code>.top_msg_id(id)</code></td><td>—</td><td>Restrict to a specific forum topic</td></tr>
-<tr><td><code>.filter(f)</code></td><td>Empty</td><td>Filter by media type (see below)</td></tr>
-<tr><td><code>.fetch()</code></td><td>—</td><td>Execute and return <code>Vec&lt;tl::enums::Message&gt;</code></td></tr>
+<tr><td><code>.limit(n: i32)</code></td><td><code>100</code></td><td>Maximum results to return</td></tr>
+<tr><td><code>.min_date(ts: i32)</code></td><td><code>0</code></td><td>Only messages at or after this Unix timestamp</td></tr>
+<tr><td><code>.max_date(ts: i32)</code></td><td><code>0</code></td><td>Only messages at or before this Unix timestamp</td></tr>
+<tr><td><code>.offset_id(id: i32)</code></td><td><code>0</code></td><td>Start from this message ID (pagination)</td></tr>
+<tr><td><code>.add_offset(n: i32)</code></td><td><code>0</code></td><td>Additional offset for fine pagination</td></tr>
+<tr><td><code>.max_id(id: i32)</code></td><td><code>0</code></td><td>Only messages with ID ≤ <code>max_id</code></td></tr>
+<tr><td><code>.min_id(id: i32)</code></td><td><code>0</code></td><td>Only messages with ID ≥ <code>min_id</code></td></tr>
+<tr><td><code>.filter(f: MessagesFilter)</code></td><td><code>Empty</code></td><td>Filter by media type</td></tr>
+<tr><td><code>.sent_by_self()</code></td><td>—</td><td>Only messages sent by the logged-in user</td></tr>
+<tr><td><code>.from_peer(peer: InputPeer)</code></td><td><code>None</code></td><td>Only messages from this specific sender</td></tr>
+<tr><td><code>.top_msg_id(id: i32)</code></td><td><code>None</code></td><td>Restrict search to a forum topic thread</td></tr>
+<tr><td><code>.fetch(&amp;client)</code></td><td>—</td><td>Execute — returns <code>Vec&lt;IncomingMessage&gt;</code></td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="date-range-example"><a class="header" href="#date-range-example">Date range example</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use chrono::{Utc, Duration};
-
-let one_week_ago = (Utc::now() - Duration::days(7)).timestamp() as i32;
-
-let results = client
-    .search("@mychannel", "error")
-    .min_date(one_week_ago)
-    .limit(50)
-    .fetch()
-    .await?;
-<span class="boring">}</span></code></pre>
 <h3 id="filter-by-media-type"><a class="header" href="#filter-by-media-type">Filter by media type</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_tl_types::{enums, types};
+</span>use layer_tl_types::enums::MessagesFilter;
 
-// Only photo messages
+// Photos only
 let photos = client
-    .search("@channel", "")
-    .filter(enums::MessagesFilter::InputMessagesFilterPhotos)
+    .search(peer.clone(), "")
+    .filter(MessagesFilter::InputMessagesFilterPhotos)
     .limit(30)
-    .fetch()
+    .fetch(&amp;client)
     .await?;
 
-// Only documents
+// Documents only
 let docs = client
-    .search("@channel", "report")
-    .filter(enums::MessagesFilter::InputMessagesFilterDocument)
-    .limit(30)
-    .fetch()
+    .search(peer.clone(), "report")
+    .filter(MessagesFilter::InputMessagesFilterDocument)
+    .fetch(&amp;client)
+    .await?;
+
+// Voice messages
+let voices = client
+    .search(peer.clone(), "")
+    .filter(MessagesFilter::InputMessagesFilterVoice)
+    .fetch(&amp;client)
     .await?;
 <span class="boring">}</span></code></pre>
-<h3 id="common-messagesfilter-values"><a class="header" href="#common-messagesfilter-values">Common MessagesFilter values</a></h3>
+<h3 id="common-messagesfilter-values"><a class="header" href="#common-messagesfilter-values">Common <code>MessagesFilter</code> values</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -3905,227 +4451,353 @@ let docs = client
 <tr><td><code>InputMessagesFilterEmpty</code></td><td>All messages (default)</td></tr>
 <tr><td><code>InputMessagesFilterPhotos</code></td><td>Photos</td></tr>
 <tr><td><code>InputMessagesFilterVideo</code></td><td>Videos</td></tr>
-<tr><td><code>InputMessagesFilterDocument</code></td><td>Documents</td></tr>
+<tr><td><code>InputMessagesFilterDocument</code></td><td>Documents / files</td></tr>
 <tr><td><code>InputMessagesFilterAudio</code></td><td>Audio files</td></tr>
 <tr><td><code>InputMessagesFilterVoice</code></td><td>Voice messages</td></tr>
-<tr><td><code>InputMessagesFilterUrl</code></td><td>Messages containing URLs</td></tr>
-<tr><td><code>InputMessagesFilterMyMentions</code></td><td>Messages where you were mentioned</td></tr>
+<tr><td><code>InputMessagesFilterRoundVideo</code></td><td>Video notes (round videos)</td></tr>
+<tr><td><code>InputMessagesFilterUrl</code></td><td>Messages with URLs</td></tr>
+<tr><td><code>InputMessagesFilterMyMentions</code></td><td>Messages where you were @mentioned</td></tr>
 <tr><td><code>InputMessagesFilterPinned</code></td><td>Pinned messages</td></tr>
+<tr><td><code>InputMessagesFilterGeo</code></td><td>Messages with location</td></tr>
 </tbody>
 </table>
 </div>
+<h3 id="date-range-search"><a class="header" href="#date-range-search">Date-range search</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Messages from the last 7 days
+let week_ago = (std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .unwrap()
+    .as_secs() - 7 * 86400) as i32;
+
+let results = client
+    .search(peer.clone(), "error")
+    .min_date(week_ago)
+    .limit(100)
+    .fetch(&amp;client)
+    .await?;
+<span class="boring">}</span></code></pre>
 <h3 id="search-from-a-specific-sender"><a class="header" href="#search-from-a-specific-sender">Search from a specific sender</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let sender = client.resolve_to_input_peer("@alice").await?;
+</span>// Messages sent by yourself
+let mine = client
+    .search(peer.clone(), "")
+    .sent_by_self()
+    .fetch(&amp;client)
+    .await?;
 
-let results = client
-    .search("@groupchat", "hello")
-    .from_peer(sender)
-    .fetch()
+// Messages from a specific InputPeer
+let alice_peer = tl::enums::InputPeer::User(tl::types::InputPeerUser {
+    user_id: alice_id,
+    access_hash: alice_hash,
+});
+
+let from_alice = client
+    .search(peer.clone(), "hello")
+    .from_peer(alice_peer)
+    .fetch(&amp;client)
+    .await?;
+<span class="boring">}</span></code></pre>
+<h3 id="forum-topic-search"><a class="header" href="#forum-topic-search">Forum topic search</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let results = client
+    .search(supergroup_peer.clone(), "query")
+    .top_msg_id(topic_msg_id)
+    .fetch(&amp;client)
     .await?;
 <span class="boring">}</span></code></pre>
 <h3 id="pagination-1"><a class="header" href="#pagination-1">Pagination</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut offset_id = 0;
-let page_size = 50;
 
 loop {
     let page = client
-        .search("@channel", "query")
+        .search(peer.clone(), "keyword")
         .offset_id(offset_id)
-        .limit(page_size)
-        .fetch()
+        .limit(50)
+        .fetch(&amp;client)
         .await?;
 
-    if page.is_empty() {
-        break;
-    }
+    if page.is_empty() { break; }
 
     for msg in &amp;page {
-        // process…
+        println!("[{}] {}", msg.id, msg.message);
     }
 
-    // Get the lowest message ID for the next page
-    offset_id = page.iter()
-        .filter_map(|m| if let tl::enums::Message::Message(m) = m { Some(m.id) } else { None })
-        .min()
-        .unwrap_or(0);
+    // Move the cursor to the oldest message in this page
+    offset_id = page.iter().map(|m| m.id).min().unwrap_or(0);
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="globalsearchbuilder--search-everywhere"><a class="header" href="#globalsearchbuilder--search-everywhere">GlobalSearchBuilder — search everywhere</a></h2>
+<h2 id="globalsearchbuilder--search-all-chats"><a class="header" href="#globalsearchbuilder--search-all-chats"><code>GlobalSearchBuilder</code> — search all chats</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let results = client
-    .search_global_builder("layer rust")
-    .limit(10)
-    .fetch()
+    .search_global_builder("rust async")
+    .limit(30)
+    .fetch(&amp;client)
     .await?;
 
-for msg in results {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("[peer {:?}] [{}] {}", m.peer_id, m.id, m.message);
-    }
+for msg in &amp;results {
+    println!("[{:?}] [{}] {}", msg.peer_id, msg.id, msg.message);
 }
 <span class="boring">}</span></code></pre>
-<h3 id="all-global-builder-methods"><a class="header" href="#all-global-builder-methods">All global builder methods</a></h3>
+<h3 id="all-globalsearchbuilder-methods"><a class="header" href="#all-globalsearchbuilder-methods">All <code>GlobalSearchBuilder</code> methods</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Method</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>.limit(n)</code></td><td>20</td><td>Maximum number of results</td></tr>
-<tr><td><code>.min_date(ts)</code></td><td>—</td><td>Only messages after this timestamp</td></tr>
-<tr><td><code>.max_date(ts)</code></td><td>—</td><td>Only messages before this timestamp</td></tr>
-<tr><td><code>.offset_rate(r)</code></td><td>0</td><td>Pagination: rate value from last result</td></tr>
-<tr><td><code>.offset_id(id)</code></td><td>0</td><td>Pagination: message ID from last result</td></tr>
-<tr><td><code>.folder_id(id)</code></td><td>—</td><td>Restrict to a specific folder</td></tr>
-<tr><td><code>.broadcasts_only(v)</code></td><td>false</td><td>Only search channels</td></tr>
-<tr><td><code>.groups_only(v)</code></td><td>false</td><td>Only search groups</td></tr>
-<tr><td><code>.users_only(v)</code></td><td>false</td><td>Only search private chats</td></tr>
-<tr><td><code>.filter(f)</code></td><td>Empty</td><td>Filter by media type</td></tr>
-<tr><td><code>.fetch()</code></td><td>—</td><td>Execute and return results</td></tr>
+<tr><td><code>.limit(n: i32)</code></td><td><code>100</code></td><td>Maximum results</td></tr>
+<tr><td><code>.min_date(ts: i32)</code></td><td><code>0</code></td><td>Only messages at or after this timestamp</td></tr>
+<tr><td><code>.max_date(ts: i32)</code></td><td><code>0</code></td><td>Only messages at or before this timestamp</td></tr>
+<tr><td><code>.offset_rate(r: i32)</code></td><td><code>0</code></td><td>Pagination: rate from last response</td></tr>
+<tr><td><code>.offset_id(id: i32)</code></td><td><code>0</code></td><td>Pagination: message ID from last response</td></tr>
+<tr><td><code>.folder_id(id: i32)</code></td><td><code>None</code></td><td>Restrict to a specific dialog folder</td></tr>
+<tr><td><code>.broadcasts_only(v: bool)</code></td><td><code>false</code></td><td>Only search channels</td></tr>
+<tr><td><code>.groups_only(v: bool)</code></td><td><code>false</code></td><td>Only search groups / supergroups</td></tr>
+<tr><td><code>.users_only(v: bool)</code></td><td><code>false</code></td><td>Only search private chats / bots</td></tr>
+<tr><td><code>.filter(f: MessagesFilter)</code></td><td><code>Empty</code></td><td>Filter by media type</td></tr>
+<tr><td><code>.fetch(&amp;client)</code></td><td>—</td><td>Execute — returns <code>Vec&lt;IncomingMessage&gt;</code></td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="filter-by-dialog-type"><a class="header" href="#filter-by-dialog-type">Filter by dialog type</a></h3>
+<h3 id="filter-by-chat-type"><a class="header" href="#filter-by-chat-type">Filter by chat type</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Search only in channels
-let results = client
+</span>// Channels only
+let channel_results = client
     .search_global_builder("announcement")
     .broadcasts_only(true)
     .limit(20)
-    .fetch()
+    .fetch(&amp;client)
     .await?;
 
-// Search only in groups
-let results = client
+// Groups / supergroups only
+let group_results = client
     .search_global_builder("discussion")
     .groups_only(true)
-    .fetch()
+    .fetch(&amp;client)
+    .await?;
+
+// Private chats and bots only
+let dm_results = client
+    .search_global_builder("invoice")
+    .users_only(true)
+    .fetch(&amp;client)
     .await?;
 <span class="boring">}</span></code></pre>
-<h3 id="convenience-one-liner"><a class="header" href="#convenience-one-liner">Convenience one-liner</a></h3>
-<p>For a quick global search without the builder:</p>
+<h3 id="combined-filters"><a class="header" href="#combined-filters">Combined filters</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let results = client.search_global("rust async", 10).await?;
+</span>// Photo messages from channels, last 30 days
+let cutoff = (chrono::Utc::now().timestamp() - 30 * 86400) as i32;
+
+let photos = client
+    .search_global_builder("")
+    .broadcasts_only(true)
+    .filter(MessagesFilter::InputMessagesFilterPhotos)
+    .min_date(cutoff)
+    .limit(50)
+    .fetch(&amp;client)
+    .await?;
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="simple-per-peer-search-no-builder"><a class="header" href="#simple-per-peer-search-no-builder">Simple per-peer search (no builder)</a></h2>
-<p>For basic cases without date filters:</p>
+<h2 id="simple-one-liner-methods-no-builder"><a class="header" href="#simple-one-liner-methods-no-builder">Simple one-liner methods (no builder)</a></h2>
+<p>For quick lookups that don’t need date/filter options:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let results = client.search_messages(peer, "query", 20).await?;
+</span>// Per-chat search — returns Vec&lt;IncomingMessage&gt;
+let results = client.search_messages(peer.clone(), "query", 20).await?;
+
+// Global search — returns Vec&lt;IncomingMessage&gt;
+let results = client.search_global("layer rust", 10).await?;
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="typing-guard"><a class="header" href="#typing-guard">Typing Guard</a></h1>
-<p><code>TypingGuard</code> is a RAII wrapper that keeps a “typing…” or “uploading…” indicator alive for the duration of an operation and automatically cancels it on drop.</p>
-<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic usage</a></h2>
+<p><code>TypingGuard</code> is a RAII wrapper that keeps a “typing…” or “uploading…” indicator alive for the duration of an operation and <strong>automatically cancels it when dropped</strong>. You never need to call <code>SetTyping</code> with <code>CancelAction</code> by hand.</p>
+<p>The guard re-sends the action every <strong>4 seconds</strong> (Telegram drops indicators after ~5 s) until the guard is dropped or <code>.cancel()</code> is called.</p>
+<hr>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<p><code>TypingGuard</code> is re-exported from <code>layer_client</code> — no extra import needed beyond <code>use layer_client::TypingGuard;</code>.</p>
+<hr>
+<h2 id="convenience-methods-on-client"><a class="header" href="#convenience-methods-on-client">Convenience methods on <code>Client</code></a></h2>
+<p>These are the recommended entry points:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::{Client, TypingGuard};
+
+// "typing…"
+let _typing = client.typing(peer.clone()).await?;
+
+// "uploading document…"
+let _typing = client.uploading_document(peer.clone()).await?;
+
+// "recording video…"
+let _typing = client.recording_video(peer.clone()).await?;
+
+// typing inside a forum topic (top_msg_id)
+let _typing = client.typing_in_topic(peer.clone(), topic_id).await?;
+<span class="boring">}</span></code></pre>
+<p>The guard auto-cancels when it goes out of scope.</p>
+<hr>
+<h2 id="using-typingguardstart-directly"><a class="header" href="#using-typingguardstart-directly">Using <code>TypingGuard::start</code> directly</a></h2>
+<p>For any <code>SendMessageAction</code> variant — including ones that don’t have a convenience method:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::TypingGuard;
+use layer_tl_types as tl;
 
-async fn process_message(client: &amp;Client, peer: tl::enums::Peer) {
-    // Start "typing…" — cancelled automatically when guard drops
-    let _guard = TypingGuard::typing(client, peer).await;
-
-    // Do your slow work here
-    let response = compute_heavy_reply().await;
-
-    // _guard drops here → typing indicator cancelled automatically
-    client.send_message_to_peer(peer, &amp;response).await.ok();
-}
-<span class="boring">}</span></code></pre>
-<h2 id="action-types"><a class="header" href="#action-types">Action types</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use layer_tl_types::{enums, types};
-
-// Typing a text message
-let _guard = TypingGuard::typing(client, peer).await;
-
-// Uploading a photo
-let _guard = TypingGuard::upload_photo(client, peer).await;
-
-// Uploading a document / file
-let _guard = TypingGuard::upload_document(client, peer).await;
-
-// Recording a voice message
-let _guard = TypingGuard::record_audio(client, peer).await;
-
-// Recording a video note
-let _guard = TypingGuard::record_round(client, peer).await;
-
-// Choose a sticker
-let _guard = TypingGuard::choose_sticker(client, peer).await;
-
-// Custom action (raw TL type)
-let _guard = TypingGuard::custom(
+// Record audio / voice message
+let _guard = TypingGuard::start(
     client,
-    peer,
-    enums::SendMessageAction::SendMessageTypingAction,
-).await;
-<span class="boring">}</span></code></pre>
-<h2 id="forum-topic-typing-top_msg_id"><a class="header" href="#forum-topic-typing-top_msg_id">Forum topic typing (top_msg_id)</a></h2>
-<p>For forum supergroups, pass the topic’s <code>top_msg_id</code> to restrict the indicator to that topic:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>client.send_chat_action(
-    peer,
-    enums::SendMessageAction::SendMessageTypingAction,
-    Some(topic_msg_id),  // top_msg_id
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageRecordAudioAction,
+).await?;
+
+// Upload photo
+let _guard = TypingGuard::start(
+    client,
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageUploadPhotoAction(
+        tl::types::SendMessageUploadPhotoAction { progress: 0 },
+    ),
+).await?;
+
+// Choose sticker
+let _guard = TypingGuard::start(
+    client,
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageChooseStickerAction,
 ).await?;
 <span class="boring">}</span></code></pre>
-<p><code>TypingGuard</code> sends this on an interval (default 5 seconds) so the indicator doesn’t expire while you’re working.</p>
-<h2 id="manual-send_chat_action"><a class="header" href="#manual-send_chat_action">Manual send_chat_action</a></h2>
-<p>Without <code>TypingGuard</code>, you can fire a one-shot indicator:</p>
+<hr>
+<h2 id="typingguardstart_ex--forum-topics--custom-delay"><a class="header" href="#typingguardstart_ex--forum-topics--custom-delay"><code>TypingGuard::start_ex</code> — forum topics + custom delay</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>client.send_chat_action(
-    peer,
+</span>use std::time::Duration;
+
+let _guard = TypingGuard::start_ex(
+    client,
+    peer,                   // tl::enums::Peer (already resolved)
     tl::enums::SendMessageAction::SendMessageTypingAction,
-    None,  // no topic
+    Some(topic_msg_id),     // top_msg_id — None for normal chats
+    Duration::from_secs(4), // repeat delay (≤ 4 s recommended)
 ).await?;
 <span class="boring">}</span></code></pre>
-<p>The indicator automatically expires after ~5 seconds on Telegram’s end. <code>TypingGuard</code> keeps refreshing it on an interval.</p>
-<h2 id="how-typingguard-works"><a class="header" href="#how-typingguard-works">How TypingGuard works</a></h2>
-<p>On creation, <code>TypingGuard</code>:</p>
-<ol>
-<li>Sends the action immediately</li>
-<li>Spawns a background task that re-sends the action every ~4.5 seconds</li>
-</ol>
-<p>On drop, it cancels the background task and optionally sends a <code>SendMessageCancelAction</code> to clear the indicator immediately.</p>
-<h2 id="example-file-upload-with-progress-indicator"><a class="header" href="#example-file-upload-with-progress-indicator">Example: file upload with progress indicator</a></h2>
+<hr>
+<h2 id="manual-cancel"><a class="header" href="#manual-cancel">Manual <code>.cancel()</code></a></h2>
+<p>Call <code>.cancel()</code> to stop the indicator immediately without waiting for the guard to drop:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>async fn send_file_with_progress(
+</span>let mut guard = client.typing(peer.clone()).await?;
+
+do_some_work().await;
+
+guard.cancel(); // indicator stops here
+
+// guard still lives, but the task is already stopped
+send_reply(client, peer).await?;
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="one-shot-send_chat_action-no-guard"><a class="header" href="#one-shot-send_chat_action-no-guard">One-shot <code>send_chat_action</code> (no guard)</a></h2>
+<p>If you don’t need the automatic renewal, fire a single action:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>client.send_chat_action(
+    peer.clone(),
+    tl::enums::SendMessageAction::SendMessageTypingAction,
+    None, // top_msg_id — Some(id) for forum topics
+).await?;
+<span class="boring">}</span></code></pre>
+<p>Telegram shows the indicator for ~5 seconds and then removes it automatically.</p>
+<hr>
+<h2 id="complete-example--long-task-with-typing"><a class="header" href="#complete-example--long-task-with-typing">Complete example — long task with typing</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::{Client, InvocationError};
+use layer_tl_types as tl;
+
+async fn handle_command(
     client: &amp;Client,
     peer: tl::enums::Peer,
-    path: &amp;str,
-) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-    // Show "uploading document…" while uploading
-    let _guard = TypingGuard::upload_document(client, peer.clone()).await;
+) -&gt; Result&lt;(), InvocationError&gt; {
+    // Indicator starts immediately, renewed every 4 s
+    let _typing = client.typing(peer.clone()).await?;
 
-    let uploaded = client.upload_file(path).await?;
+    // Simulate a slow operation
+    let result = compute_answer().await;
 
-    // Guard drops here, cancelling the indicator
-    drop(_guard);
-
-    // Now send the file — no typing indicator
-    client.send_file(peer, uploaded.as_document_media(), None).await?;
+    // _typing drops here → indicator cancelled
+    client
+        .send_message_to_peer(peer, &amp;result)
+        .await?;
 
     Ok(())
 }
+
+async fn compute_answer() -&gt; String {
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    "Here is your answer!".into()
+}
 <span class="boring">}</span></code></pre>
+<hr>
+<h2 id="example--upload-with-uploading-document-indicator"><a class="header" href="#example--upload-with-uploading-document-indicator">Example — upload with “uploading document…” indicator</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>async fn send_document(
+    client: &amp;Client,
+    peer: tl::enums::Peer,
+    bytes: Vec&lt;u8&gt;,
+    filename: &amp;str,
+) -&gt; Result&lt;(), InvocationError&gt; {
+    // Show "uploading document…" while the upload runs
+    let _guard = client.uploading_document(peer.clone()).await?;
+
+    let uploaded = client.upload_file(filename, &amp;bytes).await?;
+
+    drop(_guard); // cancel the indicator before sending
+
+    client.send_file(peer, uploaded, false).await?;
+    Ok(())
+}
+<span class="boring">}</span></code></pre>
+<hr>
+<h2 id="how-it-works-internally"><a class="header" href="#how-it-works-internally">How it works internally</a></h2>
+<ol>
+<li><code>start()</code> calls <code>send_chat_action_ex(peer, action, topic_id)</code> immediately.</li>
+<li>A <code>tokio::spawn</code> loop wakes every <code>repeat_delay</code> (default 4 s) and re-sends the action.</li>
+<li>A <code>tokio::sync::Notify</code> signals the loop to stop when the guard is dropped or <code>.cancel()</code> is called.</li>
+<li>On loop exit, <code>SendMessageCancelAction</code> is sent to immediately clear the indicator.</li>
+</ol>
+<hr>
+<h2 id="api-reference"><a class="header" href="#api-reference">API reference</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Symbol</th><th>Kind</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>TypingGuard</code></td><td>struct</td><td>RAII guard; drop to cancel</td></tr>
+<tr><td><code>TypingGuard::start(client, peer, action)</code></td><td><code>async fn</code></td><td>Start any <code>SendMessageAction</code></td></tr>
+<tr><td><code>TypingGuard::start_ex(client, peer, action, topic_id, delay)</code></td><td><code>async fn</code></td><td>Full control — topic support + custom repeat delay</td></tr>
+<tr><td><code>guard.cancel()</code></td><td><code>fn</code></td><td>Stop the indicator immediately (guard stays alive)</td></tr>
+<tr><td><code>client.typing(peer)</code></td><td><code>async fn</code></td><td>Shorthand for <code>TypingAction</code></td></tr>
+<tr><td><code>client.uploading_document(peer)</code></td><td><code>async fn</code></td><td>Shorthand for <code>UploadDocumentAction</code></td></tr>
+<tr><td><code>client.recording_video(peer)</code></td><td><code>async fn</code></td><td>Shorthand for <code>RecordVideoAction</code></td></tr>
+<tr><td><code>client.typing_in_topic(peer, topic_id)</code></td><td><code>async fn</code></td><td>Typing inside a forum topic thread</td></tr>
+</tbody>
+</table>
+</div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="raw-api-access"><a class="header" href="#raw-api-access">Raw API Access</a></h1>
 <p>Every Telegram API method is available as a typed struct in <code>layer_tl_types::functions</code>. Use <code>client.invoke()</code> to call any of them directly with full compile-time type safety.</p>
-<h2 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic usage</a></h2>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic usage</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_tl_types::functions;
@@ -5012,6 +5684,19 @@ async fn my_handler(client: &amp;Client) -&gt; Result&lt;(), MyError&gt; {
 </tbody>
 </table>
 </div>
+<p>The following are <strong>always available</strong> without any feature flag:</p>
+<ul>
+<li><code>InlineKeyboard</code>, <code>ReplyKeyboard</code>, <code>Button</code> — keyboard builders</li>
+<li><code>InputReactions</code> — reaction builder</li>
+<li><code>TypingGuard</code> — RAII typing indicator</li>
+<li><code>SearchBuilder</code>, <code>GlobalSearchBuilder</code> — fluent search</li>
+<li><code>PeerRef</code> — flexible peer argument</li>
+<li><code>User</code>, <code>Group</code>, <code>Channel</code>, <code>Chat</code> — ergonomic type wrappers</li>
+<li><code>Socks5Config</code> — SOCKS5 proxy config</li>
+<li><code>BannedRightsBuilder</code>, <code>AdminRightsBuilder</code>, <code>ParticipantPermissions</code></li>
+<li><code>StringSessionBackend</code>, <code>InMemoryBackend</code>, <code>BinaryFileBackend</code></li>
+<li><code>ClientBuilder</code> — fluent connection builder</li>
+</ul>
 <pre><code class="language-toml"># SQLite session only
 layer-client = { version = "0.4.5", features = ["sqlite-session"] }
 
