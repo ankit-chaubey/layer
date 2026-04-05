@@ -215,11 +215,14 @@ impl EncryptedSession {
     /// Encrypt a pre-built `msg_container` body (the container itself is
     /// a non-content-related message with an even seqno).
     ///
-    /// Returns `encrypted_wire_bytes`.
-    /// Used for G-07 (message container batching).
-    pub fn pack_container(&mut self, container_body: &[u8]) -> Vec<u8> {
-        let (wire, _msg_id) = self.pack_body_with_msg_id(container_body, false);
-        wire
+    /// Returns `(encrypted_wire_bytes, container_msg_id)`.
+    /// The container_msg_id is needed so callers can map it back to inner
+    /// requests when a bad_msg_notification or bad_server_salt arrives for
+    /// the container rather than the individual inner message.
+    ///
+    /// grammers reference: `MsgIdPair { msg_id, container_msg_id }`
+    pub fn pack_container(&mut self, container_body: &[u8]) -> (Vec<u8>, i64) {
+        self.pack_body_with_msg_id(container_body, false)
     }
 
     // ── Original pack methods (unchanged) ────────────────────────────────────

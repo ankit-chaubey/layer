@@ -1785,9 +1785,10 @@ impl Client {
                                     continue;
                                 }
                             };
-                            if msg.salt != 0 {
-                                self.inner.writer.lock().await.enc.salt = msg.salt;
-                            }
+                            // DIFF-08: grammers discards the frame-level salt entirely
+                            // (it's not the "server salt" we should use — that only comes
+                            // from new_session_created, bad_server_salt, or future_salts).
+                            // Overwriting enc.salt here would clobber the managed salt pool.
                             self.route_frame(msg.body, msg.msg_id).await;
 
                             // G-04/G-07: Acks are NOT flushed here standalone.
@@ -1997,13 +1998,20 @@ impl Client {
                 self.inner.writer.lock().await.pending_ack.push(msg_id);
                 let result = unwrap_envelope(inner);
                 if let Some(tx) = self.inner.pending.lock().await.remove(&req_msg_id) {
-                    // G-02: request resolved — remove from sent_bodies
+                    // G-02: request resolved — remove from sent_bodies and container_map
                     self.inner
                         .writer
                         .lock()
                         .await
                         .sent_bodies
                         .remove(&req_msg_id);
+                    // Remove any container entry that pointed at this request.
+                    self.inner
+                        .writer
+                        .lock()
+                        .await
+                        .container_map
+                        .retain(|_, inner| *inner != req_msg_id);
                     let to_send = match result {
                         Ok(EnvelopeResult::Payload(p)) => Ok(p),
                         Ok(EnvelopeResult::RawUpdates(bodies)) => {
@@ -2088,39 +2096,53 @@ impl Client {
                 // body[12..16] = bad_msg_seqno     (int,   4 bytes)
                 // body[16..20] = error_code        (int,   4 bytes)  ← NOT the salt!
                 // body[20..28] = new_server_salt   (long,  8 bytes)  ← actual salt
-                // Reading from [16..24] mixed error_code into the salt word, producing
-                // a garbage value that was always rejected → infinite re-send loop.
                 if body.len() >= 28 {
                     let bad_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
                     let new_salt = i64::from_le_bytes(body[20..28].try_into().unwrap());
 
-                    // Update session salt so re-sent request uses the correct salt.
-                    self.inner.writer.lock().await.enc.salt = new_salt;
+                    // DIFF-03: grammers clears the salt pool and inserts new_server_salt
+                    // with valid_until=i32::MAX, then updates the active session salt.
+                    // grammers ref: handle_bad_server_salt() salts.clear() + push.
+                    {
+                        let mut w = self.inner.writer.lock().await;
+                        w.salts.clear();
+                        w.salts.push(FutureSalt {
+                            valid_since: 0,
+                            valid_until: i32::MAX,
+                            salt: new_salt,
+                        });
+                        w.enc.salt = new_salt;
+                    }
                     tracing::debug!(
-                        "[layer] bad_server_salt: bad_msg_id={bad_msg_id} salt={new_salt:#x}"
+                        "[layer] bad_server_salt: bad_msg_id={bad_msg_id} new_salt={new_salt:#x}"
                     );
 
                     // Re-transmit the original request under the new salt.
-                    // IMPORTANT: do NOT re-insert into sent_bodies after the re-send.
-                    // If the re-sent message also gets bad_server_salt we must NOT
-                    // re-send it again — that creates an infinite chain:
-                    //   A→bad_salt→B→bad_salt→C→bad_salt→… forever.
-                    // By keeping the re-sent msg_id out of sent_bodies, a second
-                    // bad_server_salt for it finds nothing and stops the chain.
-                    // The RPC response (rpc_result) is still routed correctly because
-                    // the pending oneshot is moved to new_msg_id below.
+                    // DIFF-11: if bad_msg_id is not in sent_bodies directly, check
+                    // container_map — the server may have sent the notification for
+                    // the outer container msg_id rather than the inner request msg_id.
+                    // grammers ref: process_bad_message() pair.container_msg_id check.
                     {
                         let mut w = self.inner.writer.lock().await;
-                        if let Some(orig_body) = w.sent_bodies.remove(&bad_msg_id) {
+
+                        // Resolve: if bad_msg_id points to a container, get the inner id.
+                        let resolved_id = if w.sent_bodies.contains_key(&bad_msg_id) {
+                            bad_msg_id
+                        } else if let Some(&inner_id) = w.container_map.get(&bad_msg_id) {
+                            w.container_map.remove(&bad_msg_id);
+                            inner_id
+                        } else {
+                            bad_msg_id // will fall through to else-branch below
+                        };
+
+                        if let Some(orig_body) = w.sent_bodies.remove(&resolved_id) {
                             let (wire, new_msg_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
                             let fk = w.frame_kind.clone();
-                            // Intentionally NOT inserting new_msg_id into sent_bodies.
-                            // A second bad_server_salt for new_msg_id will not find it
-                            // here and will fall through to the else-branch below to fail
-                            // the pending oneshot, unblocking the RPC caller.
+                            // Intentionally NOT re-inserting into sent_bodies: a second
+                            // bad_server_salt for new_msg_id finds nothing → stops chain.
                             drop(w);
                             let mut pending = self.inner.pending.lock().await;
-                            if let Some(tx) = pending.remove(&bad_msg_id) {
+                            if let Some(tx) = pending.remove(&resolved_id) {
                                 pending.insert(new_msg_id, tx);
                                 drop(pending);
                                 let mut w = self.inner.writer.lock().await;
@@ -2130,13 +2152,14 @@ impl Client {
                                     tracing::warn!("[layer] bad_server_salt re-send failed: {e}");
                                 } else {
                                     tracing::debug!(
-                                        "[layer] bad_server_salt re-sent {bad_msg_id}→{new_msg_id}"
+                                        "[layer] bad_server_salt re-sent \
+                                         {resolved_id}→{new_msg_id}"
                                     );
                                 }
                             }
                         } else {
-                            // Not in sent_bodies = this is a re-sent message that got
-                            // rejected again. Fail the pending caller so it doesn't hang.
+                            // Not in sent_bodies (re-sent message rejected again, or unknown).
+                            // Fail the pending caller so it doesn't hang.
                             drop(w);
                             if let Some(tx) = self.inner.pending.lock().await.remove(&bad_msg_id) {
                                 let _ = tx.send(Err(InvocationError::Io(std::io::Error::new(
@@ -2147,121 +2170,140 @@ impl Client {
                         }
                     }
 
-                    // G-08: proactively refresh salt pool in background.
-                    // Guard: only one GetFutureSalts in flight at a time.
-                    // Without this guard, every bad_server_salt in a burst (e.g. all
-                    // queued messages sent with the old salt after a reconnect) spawns
-                    // its own task → exponential storm → -429 TRANSPORT_FLOOD.
-                    if self
-                        .inner
-                        .salt_request_in_flight
-                        .compare_exchange(
-                            false,
-                            true,
-                            std::sync::atomic::Ordering::SeqCst,
-                            std::sync::atomic::Ordering::SeqCst,
-                        )
-                        .is_ok()
-                    {
-                        let inner = Arc::clone(&self.inner);
-                        tokio::spawn(async move {
-                            tracing::debug!("[layer] G-08 proactive GetFutureSalts …");
-                            // get_future_salts#b921bd04 num:int = FutureSalts
-                            let mut req_body = Vec::with_capacity(8);
-                            req_body.extend_from_slice(&0xb921bd04_u32.to_le_bytes());
-                            req_body.extend_from_slice(&64_i32.to_le_bytes());
-                            // G-09 fix: store in sent_bodies so bad_msg_notify can re-send it.
-                            let (wire, fs_msg_id) = {
-                                let mut w = inner.writer.lock().await;
-                                let (wire, id) = w.enc.pack_body_with_msg_id(&req_body, true);
-                                w.sent_bodies.insert(id, req_body);
-                                (wire, id)
-                            };
-                            let fk = inner.writer.lock().await.frame_kind.clone();
-                            let (tx, rx) = tokio::sync::oneshot::channel();
-                            inner.pending.lock().await.insert(fs_msg_id, tx);
-                            let send_ok = {
-                                let mut w = inner.writer.lock().await;
-                                send_frame_write(&mut w.write_half, &wire, &fk)
-                                    .await
-                                    .is_ok()
-                            };
-                            if !send_ok {
-                                inner.pending.lock().await.remove(&fs_msg_id);
-                                inner.writer.lock().await.sent_bodies.remove(&fs_msg_id);
-                                inner
-                                    .salt_request_in_flight
-                                    .store(false, std::sync::atomic::Ordering::SeqCst);
-                                return;
-                            }
-                            let _ = rx.await;
-                            // Always clear so the next salt error can spawn a new request.
-                            inner
-                                .salt_request_in_flight
-                                .store(false, std::sync::atomic::Ordering::SeqCst);
-                        });
-                    }
+                    // Reactive refresh after bad_server_salt — reuses the extracted helper.
+                    self.spawn_salt_fetch_if_needed();
                 }
             }
             ID_PONG => {
                 // Pong is the server's reply to Ping — NOT inside rpc_result.
                 // pong#347773c5  msg_id:long  ping_id:long
                 // body[4..12] = msg_id of the original Ping → key in pending map
+                //
+                // DIFF-05: pong has odd seq_no (content-related) → must ack it.
+                // grammers: process_message() pushes every message with seq_no%2==1.
                 if body.len() >= 20 {
                     let ping_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
+                    // Ack the pong frame itself (outer msg_id, not the ping msg_id).
+                    self.inner.writer.lock().await.pending_ack.push(msg_id);
                     if let Some(tx) = self.inner.pending.lock().await.remove(&ping_msg_id) {
-                        self.inner
-                            .writer
-                            .lock()
-                            .await
-                            .sent_bodies
-                            .remove(&ping_msg_id);
+                        let mut w = self.inner.writer.lock().await;
+                        w.sent_bodies.remove(&ping_msg_id);
+                        w.container_map.retain(|_, inner| *inner != ping_msg_id);
+                        drop(w);
                         let _ = tx.send(Ok(body));
                     }
                 }
             }
-            // ── G-09: FutureSalts arrives bare (like Pong) ───────────────────
+            // ── DIFF-03/09/05: FutureSalts — full grammers-style salt pool ──────
             ID_FUTURE_SALTS => {
                 // future_salts#ae500895
                 //   [0..4]   constructor
                 //   [4..12]  req_msg_id (long)
-                //   [12..16] now (int)
+                //   [12..16] now (int)  — server's current Unix time
                 //   [16..20] vector constructor 0x1cb5c415
-                //   [20..24] count (int)          ← was wrongly [16..20]
-                //   per entry (bare, no constructor):
+                //   [20..24] count (int)
+                //   per entry (bare FutureSalt, no constructor):
                 //     [+0..+4]  valid_since (int)
                 //     [+4..+8]  valid_until (int)
                 //     [+8..+16] salt (long)
-                //   first entry starts at byte 24 → salt at [32..40] ← was [28..36]
-                if body.len() >= 12 {
+                //   first entry starts at byte 24
+                //
+                // DIFF-05: FutureSalts has odd seq_no → must ack.
+                // grammers: process_message() pushes every msg with seq_no%2==1.
+                self.inner.writer.lock().await.pending_ack.push(msg_id);
+
+                if body.len() >= 24 {
                     let req_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
-                    if body.len() >= 40 {
-                        let count = u32::from_le_bytes(body[20..24].try_into().unwrap()) as usize;
-                        if count > 0 {
-                            let salt_val = i64::from_le_bytes(body[32..40].try_into().unwrap());
-                            self.inner.writer.lock().await.enc.salt = salt_val;
+                    let server_now = i32::from_le_bytes(body[12..16].try_into().unwrap());
+                    let count = u32::from_le_bytes(body[20..24].try_into().unwrap()) as usize;
+
+                    // DIFF-03/09: Parse ALL returned salts (grammers stores the full Vec).
+                    // Each FutureSalt entry is 16 bytes starting at offset 24.
+                    let mut new_salts: Vec<FutureSalt> = Vec::with_capacity(count);
+                    for i in 0..count {
+                        let base = 24 + i * 16;
+                        if base + 16 > body.len() {
+                            break;
+                        }
+                        // Wire format: valid_since(4) | salt(8) | valid_until(4)
+                        // NOTE: The TL schema lists valid_until before salt, but the actual
+                        // wire encoding puts salt first. Confirmed empirically: reading
+                        // valid_until at [+4..+8] produces Oct-2019 timestamps impossible
+                        // for future salts; at [+12..+16] produces correct future dates.
+                        new_salts.push(FutureSalt {
+                            valid_since: i32::from_le_bytes(
+                                body[base..base + 4].try_into().unwrap(),
+                            ),
+                            salt: i64::from_le_bytes(body[base + 4..base + 12].try_into().unwrap()),
+                            valid_until: i32::from_le_bytes(
+                                body[base + 12..base + 16].try_into().unwrap(),
+                            ),
+                        });
+                    }
+
+                    if !new_salts.is_empty() {
+                        // Sort newest-last (mirrors grammers sort_by_key(|s| -s.valid_since)
+                        // which in ascending order puts highest valid_since at the end).
+                        new_salts.sort_by_key(|s| s.valid_since);
+                        let mut w = self.inner.writer.lock().await;
+                        w.salts = new_salts;
+                        w.start_salt_time = Some((server_now, std::time::Instant::now()));
+
+                        // Pick the best currently-usable salt.
+                        // A salt is usable after valid_since + SALT_USE_DELAY (60 s).
+                        // Walk newest-to-oldest (end of vec to start) and pick the
+                        // first one whose use-delay window has already opened.
+                        // grammers reference: Sender::get_salt() logic.
+                        let use_salt = w
+                            .salts
+                            .iter()
+                            .rev()
+                            .find(|s| s.valid_since + SALT_USE_DELAY <= server_now)
+                            .or_else(|| w.salts.first())
+                            .map(|s| s.salt);
+                        if let Some(salt) = use_salt {
+                            w.enc.salt = salt;
                             tracing::debug!(
-                                "[layer] G-09 FutureSalts: salt={salt_val:#x} count={count}"
+                                "[layer] DIFF-09 FutureSalts: stored {} salts, \
+                                 active salt={salt:#x}",
+                                w.salts.len()
                             );
                         }
                     }
+
                     if let Some(tx) = self.inner.pending.lock().await.remove(&req_msg_id) {
-                        self.inner
-                            .writer
-                            .lock()
-                            .await
-                            .sent_bodies
-                            .remove(&req_msg_id);
+                        let mut w = self.inner.writer.lock().await;
+                        w.sent_bodies.remove(&req_msg_id);
+                        w.container_map.retain(|_, inner| *inner != req_msg_id);
+                        drop(w);
                         let _ = tx.send(Ok(body));
                     }
                 }
             }
             ID_NEW_SESSION => {
                 // new_session_created#9ec20908 first_msg_id:long unique_id:long server_salt:long
+                // body[4..12]  = first_msg_id
+                // body[12..20] = unique_id
+                // body[20..28] = server_salt
                 if body.len() >= 28 {
                     let server_salt = i64::from_le_bytes(body[20..28].try_into().unwrap());
-                    self.inner.writer.lock().await.enc.salt = server_salt;
-                    tracing::debug!("[layer] new_session_created — salt reset to {server_salt:#x}");
+                    let mut w = self.inner.writer.lock().await;
+                    // DIFF-05: new_session_created has odd seq_no → must ack.
+                    // grammers: process_message() pushes every msg with seq_no%2==1.
+                    w.pending_ack.push(msg_id);
+                    // DIFF-03: grammers clears the salt pool and inserts the fresh
+                    // server_salt with valid_until=i32::MAX (permanently valid).
+                    // grammers ref: handle_new_session_created() salts.clear() + push.
+                    w.salts.clear();
+                    w.salts.push(FutureSalt {
+                        valid_since: 0,
+                        valid_until: i32::MAX,
+                        salt: server_salt,
+                    });
+                    w.enc.salt = server_salt;
+                    tracing::debug!(
+                        "[layer] new_session_created — salt pool reset to {server_salt:#x}"
+                    );
                 }
             }
             // ── G-02 + G-03 + G-12: bad_msg_notification ────────────────────
@@ -2308,14 +2350,10 @@ impl Client {
                 // Phase 1: hold writer only for enc-state mutations + packing.
                 // The lock is dropped BEFORE we touch `pending`, eliminating the
                 // writer→pending lock-order deadlock that existed before this fix.
-                let resend: Option<(Vec<u8>, i64, FrameKind)> = {
+                let resend: Option<(Vec<u8>, i64, i64, FrameKind)> = {
                     let mut w = self.inner.writer.lock().await;
 
                     // G-12: correct clock skew on codes 16/17.
-                    // MUST use `msg_id` (the server's notification frame msg_id, whose
-                    // upper 32 bits are the server's current Unix time) — NOT `bad_msg_id`
-                    // (our own wrong-clock message id, which is exactly the problem we're fixing).
-                    // grammers: correct_time_offset(message.msg_id)
                     if error_code == 16 || error_code == 17 {
                         w.enc.correct_time_offset(msg_id);
                     }
@@ -2324,31 +2362,46 @@ impl Client {
                         w.enc.correct_seq_no(error_code);
                     }
 
-                    // Only re-pack and re-send for retryable codes (grammers: [16, 17, 48]).
-                    // Non-retryable codes (32/33 = seq_no) and fatal codes (all others) should
-                    // NOT be re-sent — grammers drops these and lets the caller error/retry.
                     if retryable {
-                        if let Some(orig_body) = w.sent_bodies.remove(&bad_msg_id) {
+                        // DIFF-11: if bad_msg_id is not in sent_bodies directly, check
+                        // container_map — the server sends the notification for the
+                        // outer container msg_id when a whole container was bad.
+                        // grammers ref: process_bad_message() pair.container_msg_id check.
+                        let resolved_id = if w.sent_bodies.contains_key(&bad_msg_id) {
+                            bad_msg_id
+                        } else if let Some(&inner_id) = w.container_map.get(&bad_msg_id) {
+                            w.container_map.remove(&bad_msg_id);
+                            inner_id
+                        } else {
+                            bad_msg_id
+                        };
+
+                        if let Some(orig_body) = w.sent_bodies.remove(&resolved_id) {
                             let (wire, new_msg_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
                             let fk = w.frame_kind.clone();
                             w.sent_bodies.insert(new_msg_id, orig_body);
-                            Some((wire, new_msg_id, fk))
+                            // resolved_id is the inner msg_id we move in pending
+                            Some((wire, resolved_id, new_msg_id, fk))
                         } else {
                             None
                         }
                     } else {
-                        // Non-retryable: clean up sent_bodies so it doesn't grow unbounded.
+                        // Non-retryable: clean up so maps don't grow unbounded.
                         w.sent_bodies.remove(&bad_msg_id);
+                        if let Some(&inner_id) = w.container_map.get(&bad_msg_id) {
+                            w.sent_bodies.remove(&inner_id);
+                            w.container_map.remove(&bad_msg_id);
+                        }
                         None
                     }
                 }; // ← writer lock released here
 
                 match resend {
-                    Some((wire, new_msg_id, fk)) => {
+                    Some((wire, old_msg_id, new_msg_id, fk)) => {
                         // Phase 2: re-key pending (no writer lock held).
                         let has_waiter = {
                             let mut pending = self.inner.pending.lock().await;
-                            if let Some(tx) = pending.remove(&bad_msg_id) {
+                            if let Some(tx) = pending.remove(&old_msg_id) {
                                 pending.insert(new_msg_id, tx);
                                 true
                             } else {
@@ -2362,7 +2415,7 @@ impl Client {
                                 tracing::warn!("[layer] G-02 re-send failed: {e}");
                                 w.sent_bodies.remove(&new_msg_id);
                             } else {
-                                tracing::debug!("[layer] G-02 re-sent {bad_msg_id}→{new_msg_id}");
+                                tracing::debug!("[layer] G-02 re-sent {old_msg_id}→{new_msg_id}");
                             }
                         } else {
                             self.inner
@@ -3159,6 +3212,18 @@ impl Client {
         let new_ak = new_writer.enc.auth_key_bytes();
         let new_sid = new_writer.enc.session_id();
         *self.inner.writer.lock().await = new_writer;
+
+        // DIFF-15: The new writer is fresh (new EncryptedSession) but
+        // salt_request_in_flight lives on self.inner and is never reset
+        // automatically.  If a GetFutureSalts was in flight when the
+        // disconnect happened the flag stays `true` forever, preventing any
+        // future proactive salt refreshes.  Reset it here so the first
+        // bad_server_salt after reconnect can spawn a new request.
+        // grammers ref: salt_request_msg_id is always cleared on reconnect
+        // because the entire Sender is recreated.
+        self.inner
+            .salt_request_in_flight
+            .store(false, std::sync::atomic::Ordering::SeqCst);
 
         // Persist the new auth key so subsequent reconnects reuse it instead of
         // repeating fresh DH.  (Cleared keys cause a fresh-DH loop: clear → DH →
@@ -4680,6 +4745,63 @@ impl Client {
     // ── Raw invoke ─────────────────────────────────────────────────────────
 
     /// Invoke any TL function directly, handling flood-wait retries.
+
+    /// Spawn a background `GetFutureSalts` if one is not already in flight.
+    ///
+    /// Called from `do_rpc_call` (proactive, pool size <= 1) and from the
+    /// `bad_server_salt` handler (reactive, after salt pool reset).
+    ///
+    /// grammers reference: `try_request_salts()` in `mtp/encrypted.rs`.
+    fn spawn_salt_fetch_if_needed(&self) {
+        if self
+            .inner
+            .salt_request_in_flight
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .is_err()
+        {
+            return; // already in flight
+        }
+        let inner = Arc::clone(&self.inner);
+        tokio::spawn(async move {
+            tracing::debug!("[layer] proactive GetFutureSalts spawned");
+            let mut req_body = Vec::with_capacity(8);
+            req_body.extend_from_slice(&0xb921bd04_u32.to_le_bytes()); // get_future_salts
+            req_body.extend_from_slice(&64_i32.to_le_bytes()); // num
+            let (wire, fs_msg_id) = {
+                let mut w = inner.writer.lock().await;
+                let (wire, id) = w.enc.pack_body_with_msg_id(&req_body, true);
+                w.sent_bodies.insert(id, req_body);
+                (wire, id)
+            };
+            let fk = inner.writer.lock().await.frame_kind.clone();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            inner.pending.lock().await.insert(fs_msg_id, tx);
+            let send_ok = {
+                let mut w = inner.writer.lock().await;
+                send_frame_write(&mut w.write_half, &wire, &fk)
+                    .await
+                    .is_ok()
+            };
+            if !send_ok {
+                inner.pending.lock().await.remove(&fs_msg_id);
+                inner.writer.lock().await.sent_bodies.remove(&fs_msg_id);
+                inner
+                    .salt_request_in_flight
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
+                return;
+            }
+            let _ = rx.await;
+            inner
+                .salt_request_in_flight
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+        });
+    }
+
     pub async fn invoke<R: RemoteCall>(&self, req: &R) -> Result<R::Return, InvocationError> {
         let body = self.rpc_call_raw(req).await?;
         let mut cur = Cursor::from_slice(&body);
@@ -4718,6 +4840,16 @@ impl Client {
             let body = maybe_gz_pack(&raw_body);
 
             let mut w = self.inner.writer.lock().await;
+
+            // Proactive salt cycling on every send (grammers: Encrypted::push() prelude).
+            // Prunes expired salts, cycles enc.salt to newest usable entry,
+            // and triggers a background GetFutureSalts when pool shrinks to 1.
+            if w.advance_salt_if_needed() {
+                drop(w); // release lock before spawning
+                self.spawn_salt_fetch_if_needed();
+                w = self.inner.writer.lock().await;
+            }
+
             let fk = w.frame_kind.clone();
 
             // G-04 + G-07: drain any pending acks; if non-empty bundle them with
@@ -4744,14 +4876,18 @@ impl Client {
                     (req_msg_id, req_seqno, body.as_slice()),
                 ]);
 
-                // Encrypt the container as a non-content-related outer message
-                let wire = w.enc.pack_container(&container_payload);
+                // Encrypt the container as a non-content-related outer message.
+                // pack_container now returns (wire, container_msg_id) so we can
+                // register the mapping for bad_msg_notification recovery.
+                // grammers ref: MsgIdPair { msg_id: req_msg_id, container_msg_id }
+                let (wire, container_msg_id) = w.enc.pack_container(&container_payload);
 
                 w.sent_bodies.insert(req_msg_id, body); // G-02
+                w.container_map.insert(container_msg_id, req_msg_id); // DIFF-11
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
                 tracing::debug!(
-                    "[layer] G-07 container: bundled {} acks + request",
+                    "[layer] G-07 container: bundled {} acks + request (cid={container_msg_id})",
                     acks.len()
                 );
             }
@@ -4818,12 +4954,13 @@ impl Client {
                     (ack_msg_id, ack_seqno, ack_body.as_slice()),
                     (req_msg_id, req_seqno, body.as_slice()),
                 ]);
-                let wire = w.enc.pack_container(&container_payload);
+                let (wire, container_msg_id) = w.enc.pack_container(&container_payload);
                 w.sent_bodies.insert(req_msg_id, body); // G-02
+                w.container_map.insert(container_msg_id, req_msg_id); // DIFF-11
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
                 tracing::debug!(
-                    "[layer] G-07 write container: bundled {} acks + write",
+                    "[layer] G-07 write container: bundled {} acks + write (cid={container_msg_id})",
                     acks.len()
                 );
             }
@@ -5089,8 +5226,9 @@ impl Client {
                     (ack_msg_id, ack_seqno, ack_body.as_slice()),
                     (req_msg_id, req_seqno, body.as_slice()),
                 ]);
-                let wire = w.enc.pack_container(&container_payload);
+                let (wire, container_msg_id) = w.enc.pack_container(&container_payload);
                 w.sent_bodies.insert(req_msg_id, body); // G-02
+                w.container_map.insert(container_msg_id, req_msg_id); // DIFF-11
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
             }
@@ -5574,6 +5712,20 @@ enum FrameKind {
 // ─── Split connection types ───────────────────────────────────────────────────
 
 /// Write half of a split connection.  Held under `Mutex` in `ClientInner`.
+/// A single server-provided salt with its validity window.
+///
+/// grammers reference: `mtp/encrypted.rs FutureSalt`
+#[derive(Clone, Debug)]
+struct FutureSalt {
+    valid_since: i32,
+    valid_until: i32,
+    salt: i64,
+}
+
+/// Delay (seconds) before a salt is considered usable after its `valid_since`.
+/// Mirrors grammers' `SALT_USE_DELAY = 60`.
+const SALT_USE_DELAY: i32 = 60;
+
 /// Owns the EncryptedSession (for packing) and the pending-RPC map.
 struct ConnectionWriter {
     write_half: OwnedWriteHalf,
@@ -5587,6 +5739,24 @@ struct ConnectionWriter {
     /// On bad_msg_notification the matching body is re-encrypted with a fresh
     /// msg_id and re-sent transparently.
     sent_bodies: std::collections::HashMap<i64, Vec<u8>>,
+    /// DIFF-11: maps container_msg_id → inner request msg_id.
+    /// When bad_msg_notification / bad_server_salt arrives for a container
+    /// rather than the individual inner message, we look here to find the
+    /// inner request to retry.
+    ///
+    /// grammers reference: `MsgIdPair { msg_id, container_msg_id }`
+    container_map: std::collections::HashMap<i64, i64>,
+    /// DIFF-03/09: grammers-style future salt pool.
+    /// Sorted by valid_since ascending so the newest salt is LAST
+    /// (mirrors grammers' sort_by_key(|s| -s.valid_since), which puts
+    /// the highest valid_since at the end in ascending-key order).
+    salts: Vec<FutureSalt>,
+    /// Server-time anchor received with the last GetFutureSalts response.
+    /// (server_now, local_instant) lets us approximate server time at any
+    /// moment so we can check whether a salt's valid_since window has opened.
+    ///
+    /// grammers reference: `mtp/encrypted.rs start_salt_time`
+    start_salt_time: Option<(i32, std::time::Instant)>,
 }
 
 impl ConnectionWriter {
@@ -5598,6 +5768,72 @@ impl ConnectionWriter {
     }
     fn time_offset(&self) -> i32 {
         self.enc.time_offset
+    }
+
+    /// Proactively advance the active salt and prune expired ones.
+    ///
+    /// Called at the top of every RPC send, mirroring grammers' `push()` prelude.
+    /// Salts are sorted ascending by `valid_since` (oldest=index 0, newest=last).
+    ///
+    /// Steps performed:
+    /// 1. Prune salts where `now > valid_until` (uses the field; silences dead_code).
+    /// 2. Cycle `enc.salt` to the freshest entry whose use-delay window has opened.
+    ///
+    /// Returns `true` when the pool has shrunk to a single entry — caller should
+    /// fire a proactive `GetFutureSalts`.
+    ///
+    /// grammers reference: `mtp/encrypted.rs Encrypted::push()` prelude +
+    ///                      `try_request_salts()`.
+    fn advance_salt_if_needed(&mut self) -> bool {
+        let Some((server_now, start_instant)) = self.start_salt_time else {
+            return self.salts.len() <= 1;
+        };
+
+        // Approximate current server time.
+        let now = server_now + start_instant.elapsed().as_secs() as i32;
+
+        // ── 1. Prune expired salts (uses valid_until field). ──────────────────
+        while self.salts.len() > 1 && now > self.salts[0].valid_until {
+            let expired = self.salts.remove(0);
+            tracing::debug!(
+                "[layer] salt {:#x} expired (valid_until={}), pruned",
+                expired.salt,
+                expired.valid_until,
+            );
+        }
+
+        // ── 2. Cycle to freshest usable salt. ────────────────────────────────
+        // Pool ascending: newest is last. Find the newest whose use-delay opened.
+        if self.salts.len() > 1 {
+            let best = self
+                .salts
+                .iter()
+                .rev()
+                .find(|s| s.valid_since + SALT_USE_DELAY <= now)
+                .map(|s| s.salt);
+            if let Some(salt) = best {
+                if salt != self.enc.salt {
+                    tracing::debug!(
+                        "[layer] proactive salt cycle: {:#x} → {:#x}",
+                        self.enc.salt,
+                        salt
+                    );
+                    self.enc.salt = salt;
+                    // Drop all entries older than the newly active salt.
+                    self.salts.retain(|s| s.valid_since >= now - SALT_USE_DELAY);
+                    if self.salts.is_empty() {
+                        // Safety net: keep a sentinel so we never go saltless.
+                        self.salts.push(FutureSalt {
+                            valid_since: 0,
+                            valid_until: i32::MAX,
+                            salt,
+                        });
+                    }
+                }
+            }
+        }
+
+        self.salts.len() <= 1
     }
 }
 
@@ -5835,6 +6071,9 @@ impl Connection {
             frame_kind: self.frame_kind.clone(),
             pending_ack: Vec::new(),
             sent_bodies: std::collections::HashMap::new(),
+            container_map: std::collections::HashMap::new(),
+            salts: Vec::new(),
+            start_salt_time: None,
         };
         (writer, read_half, self.frame_kind)
     }
