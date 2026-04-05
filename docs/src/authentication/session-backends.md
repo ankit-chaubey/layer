@@ -259,3 +259,42 @@ async fn connect_with_backend(
     Ok(())
 }
 ```
+
+---
+
+## Additional backend methods
+
+### `StringSessionBackend::current()`
+
+Reads the current serialised session string at any time:
+
+```rust
+use layer_client::session_backend::StringSessionBackend;
+
+let backend = StringSessionBackend::new("");
+// ... after connecting and authenticating ...
+let s = backend.current(); // base64 session string
+```
+
+### `BinaryFileBackend::path()`
+
+```rust
+use layer_client::session_backend::BinaryFileBackend;
+
+let backend = BinaryFileBackend::new("bot.session");
+println!("Saving to: {}", backend.path().display());
+```
+
+### `InMemoryBackend::snapshot()`
+
+Take a point-in-time snapshot of the in-memory session (useful in tests):
+
+```rust
+use layer_client::session_backend::InMemoryBackend;
+
+let backend = InMemoryBackend::new();
+// ... after auth ...
+if let Some(session) = backend.snapshot() {
+    // inspect or serialize session data
+}
+```

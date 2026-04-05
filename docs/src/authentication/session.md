@@ -7,12 +7,11 @@ A session stores your auth key, DC address, and peer access-hash cache. Without 
 ```rust
 use layer_client::{Client, Config};
 
-let (client, _shutdown) = Client::connect(Config {
-    session_path: "my.session".into(),
-    api_id:       12345,
-    api_hash:     "abc123".into(),
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+        .api_id(12345)
+        .api_hash("abc123")
+        .session("my.session")
+        .connect().await?.await?;
 ```
 
 After login, save to disk:
@@ -52,7 +51,6 @@ layer-client = { version = "0.4.6", features = ["sqlite-session"] }
 
 ```rust
 let (client, _shutdown) = Client::connect(Config {
-    session_path: "session.db".into(),
     ..Default::default()
 }).await?;
 ```
@@ -120,12 +118,10 @@ Each `Client::connect` loads one session. For multiple accounts, use multiple fi
 
 ```rust
 let (client_a, _) = Client::connect(Config {
-    session_path: "account_a.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
 
 let (client_b, _) = Client::connect(Config {
-    session_path: "account_b.session".into(),
     api_id, api_hash: api_hash.clone(), ..Default::default()
 }).await?;
 ```

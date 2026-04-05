@@ -231,24 +231,26 @@ layer-client = { version = "0.4.6", features = ["html5ever"] }
 This is the least code you need to have a working, update-receiving Telegram bot running with layer.
 
 ```rust
-use layer_client::{Client, Config, update::Update};
+use layer_client::{Client, update::Update};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let (client, _shutdown) = Client::connect(Config {
-        session_path: "bot.session".into(),
-        api_id:   std::env::var("API_ID")?.parse()?,
-        api_hash: std::env::var("API_HASH")?,
-        ..Default::default()
-    }).await?;
+    let (client, _shutdown) = Client::builder()
+        .api_id(std::env::var("API_ID")?.parse()?)
+        .api_hash(std::env::var("API_HASH")?)
+        .session("bot.session")
+        .connect()
+        .await?;
 
     client.bot_sign_in(&std::env::var("BOT_TOKEN")?).await?;
     client.save_session().await?;
 
     let mut stream = client.stream_updates();
     while let Some(Update::NewMessage(msg)) = stream.next().await {
-        if let (false, Some(text), Some(peer)) = (msg.outgoing(), msg.text(), msg.peer_id()) {
-            client.send_message_to_peer(peer.clone(), &format!("Echo: {text}")).await?;
+        if !msg.outgoing() {
+            if let Some(peer) = msg.peer_id() {
+                client.send_message_to_peer(peer.clone(), &format!("Echo: {}", msg.text().unwrap_or(""))).await?;
+            }
         }
     }
     Ok(())
@@ -266,18 +268,17 @@ No trait objects, no callbacks, no `dyn Handler`. Just an async loop and pattern
 ## 👤 Quick Start — User Account
 
 ```rust
-use layer_client::{Client, Config, SignInError};
+use layer_client::{Client, SignInError};
 use std::io::{self, BufRead};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (client, _shutdown) = Client::connect(Config {
-        session_path: "my.session".into(),
-        api_id:       12345,
-        api_hash:     "your_api_hash".into(),
-        ..Default::default()
-    })
-    .await?;
+    let (client, _shutdown) = Client::builder()
+        .api_id(12345)
+        .api_hash("your_api_hash")
+        .session("my.session")
+        .connect()
+        .await?;
 
     if !client.is_authorized().await? {
         let phone = "+1234567890";
@@ -322,17 +323,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 🤖 Quick Start — Bot
 
 ```rust
-use layer_client::{Client, Config, update::Update};
+use layer_client::{Client, update::Update};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (client, _shutdown) = Client::connect(Config {
-        session_path: "bot.session".into(),
-        api_id:       12345,
-        api_hash:     "your_api_hash".into(),
-        ..Default::default()
-    })
-    .await?;
+    let (client, _shutdown) = Client::builder()
+        .api_id(12345)
+        .api_hash("your_api_hash")
+        .session("bot.session")
+        .connect()
+        .await?;
 
     if !client.is_authorized().await? {
         client.bot_sign_in("1234567890:ABCdef...").await?;
@@ -446,7 +446,7 @@ let (client, _shutdown) = Client::builder()
     .api_id(12345)
     .api_hash("your_api_hash")
     .session("proxy.session")
-    .socks5("127.0.0.1", 1080)
+    .socks5(Socks5Config::new("127.0.0.1:1080"))
     .connect()
     .await?;
 ```
@@ -583,15 +583,15 @@ client.send_to_self("Reminder: buy milk 🥛").await?;
 
 ```rust
 use layer_client::{InputMessage, parsers::parse_markdown};
-use layer_client::keyboard::InlineKeyboard;
+use layer_client::keyboard::{Button, InlineKeyboard};
 
 let (text, entities) = parse_markdown("**Bold** and `code`");
 
 let kb = InlineKeyboard::new()
-    .row()
-    .callback("✅ Confirm", b"confirm")
-    .url("🔗 Docs", "https://docs.rs/layer-client")
-    .build();
+    .row([
+        Button::callback("✅ Confirm", b"confirm"),
+        Button::url("🔗 Docs", "https://docs.rs/layer-client"),
+    ]);
 
 client
     .send_message_to_peer_ex(
@@ -751,16 +751,17 @@ let bytes = client.download(&photo).await?;
 ### Inline keyboards
 
 ```rust
-use layer_client::keyboard::InlineKeyboard;
+use layer_client::keyboard::{Button, InlineKeyboard};
 
 let kb = InlineKeyboard::new()
-    .row()
-        .callback("👍 Like",    b"like")
-        .callback("👎 Dislike", b"dislike")
-    .row()
-        .url("🔗 Open docs", "https://docs.rs/layer-client")
-        .switch_inline("🔍 Search", "query")
-    .build();
+    .row([
+        Button::callback("👍 Like",    b"like"),
+        Button::callback("👎 Dislike", b"dislike"),
+    ])
+    .row([
+        Button::url("🔗 Open docs", "https://docs.rs/layer-client"),
+        Button::switch_inline("🔍 Search", "query"),
+    ]);
 
 client
     .send_message_to_peer_ex(peer.clone(), &InputMessage::text("Vote!").keyboard(kb))
@@ -775,14 +776,10 @@ Available button types: `callback`, `url`, `url_auth`, `switch_inline`, `switch_
 use layer_client::keyboard::ReplyKeyboard;
 
 let kb = ReplyKeyboard::new()
-    .row()
-        .text("📸 Photo")
-        .text("📄 Document")
-    .row()
-        .text("❌ Cancel")
-    .resize(true)
-    .single_use(true)
-    .build();
+    .row([Button::text("📸 Photo"), Button::text("📄 Document")])
+    .row([Button::text("❌ Cancel")])
+    .resize()
+    .single_use();
 
 client
     .send_message_to_peer_ex(peer.clone(), &InputMessage::text("Choose:").keyboard(kb))
@@ -986,7 +983,7 @@ let results = client.search_peer(peer.clone(), "John").await?;
 ### Ban, kick, promote
 
 ```rust
-use layer_client::participants::{BanRights, AdminRightsBuilder};
+use layer_client::participants::{BannedRightsBuilder, AdminRightsBuilder};
 
 // Kick (ban + immediate unban)
 client.kick_participant(peer.clone(), user_id).await?;
@@ -996,10 +993,10 @@ client
     .ban_participant(
         peer.clone(),
         user_id,
-        BanRights::new()
-            .no_messages(true)
-            .no_media(true)
-            .until(expiry_unix_timestamp),
+        BannedRightsBuilder::new()
+            .send_messages(true)
+            .send_media(true)
+            .until_date(expiry_unix_timestamp as i32),
     )
     .await?;
 
@@ -1305,7 +1302,7 @@ let (client, _) = Client::builder()
     .api_id(12345)
     .api_hash("your_api_hash")
     .session("proxy.session")
-    .socks5("127.0.0.1", 1080)
+    .socks5(Socks5Config::new("127.0.0.1:1080"))
     .connect()
     .await?;
 

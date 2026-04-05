@@ -288,11 +288,11 @@ Full-featured send with the <a href="./input-message.md"><code>InputMessage</cod
 </div>
 <div class="api-card-body">
 Send a reaction to a message. Build reactions using the <code>Reaction</code> helper:
-<pre><code>use layer_client::reactions::Reaction;
+<pre><code>use layer_client::reactions::InputReactions;
 
-client.send_reaction(peer, msg_id, Reaction::emoticon("👍")).await?;
-client.send_reaction(peer, msg_id, Reaction::remove()).await?; // remove all
-client.send_reaction(peer, msg_id, Reaction::emoticon("🔥").big()).await?;</code></pre>
+client.send_reaction(peer, msg_id, InputReactions::emoticon("👍")).await?;
+client.send_reaction(peer, msg_id, InputReactions::remove()).await?; // remove all
+client.send_reaction(peer, msg_id, InputReactions::emoticon("🔥").big()).await?;</code></pre>
 See <a href="../messaging/reactions.md">Reactions</a> for the full guide.
 </div>
 </div>

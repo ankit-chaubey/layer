@@ -238,3 +238,67 @@ let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
 // Leave / remove dialog
 client.delete_dialog(peer.clone()).await?;
 ```
+
+---
+
+## `ParticipantStatus` enum
+
+```rust
+use layer_client::participants::ParticipantStatus;
+
+for p in &members {
+    match p.status {
+        ParticipantStatus::Member     => println!("Regular member"),
+        ParticipantStatus::Creator    => println!("Creator"),
+        ParticipantStatus::Admin      => println!("Admin"),
+        ParticipantStatus::Restricted => println!("Restricted"),
+        ParticipantStatus::Banned     => println!("Banned"),
+        ParticipantStatus::Left       => println!("Left"),
+    }
+}
+```
+
+---
+
+## `ProfilePhotoIter` — extended methods
+
+```rust
+let mut iter = client.iter_profile_photos(user_id);
+
+// Total photo count (available after first fetch)
+if let Some(total) = iter.total_count() {
+    println!("{total} profile photos");
+}
+
+// Collect all photos at once
+let all_photos = iter.collect().await?;
+```
+
+| Method | Description |
+|---|---|
+| `iter.next()` | `async → Option<tl::enums::Photo>` |
+| `iter.collect()` | `async → Vec<tl::enums::Photo>` — all photos |
+| `iter.total_count()` | `Option<i32>` — total count after first fetch |
+
+---
+
+## Low-level rights setters
+
+For advanced use cases, `set_banned_rights` and `set_admin_rights` give direct access to the TL layer:
+
+```rust
+// Set banned rights directly (channel/supergroup only)
+client.set_banned_rights(
+    peer.clone(),
+    user_input_peer,
+    BannedRightsBuilder::new().send_media(true),
+).await?;
+
+// Set admin rights directly
+client.set_admin_rights(
+    peer.clone(),
+    user_input_peer,
+    AdminRightsBuilder::new().delete_messages(true),
+    Some("Moderator".into()),  // optional custom rank
+).await?;
+```

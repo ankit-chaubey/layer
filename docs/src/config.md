@@ -13,7 +13,7 @@ let (client, _shutdown) = Client::connect(Config {
     api_hash: "your_api_hash".into(),
 
     // Session (default: BinaryFileBackend("session.session"))
-    session_path: "my.session".into(),
+    
 
     // DC override (default: DC2)
     dc_addr: None,
@@ -49,11 +49,11 @@ Your Telegram app's hex hash string from [my.telegram.org](https://my.telegram.o
 api_hash: "deadbeef01234567...".into(),
 ```
 
-### `session_path`
+### `session_backend`
 Path to the binary session file. Default: `"session.session"`.
 
 ```rust
-session_path: "/data/myapp/auth.session".into(),
+
 ```
 
 ### `dc_addr`
@@ -105,7 +105,7 @@ socks5: Some(Socks5Config {
 Config {
     api_id:        0,
     api_hash:      String::new(),
-    session_path:  "session.session".into(),
+    
     dc_addr:       None,
     transport:     TransportKind::Abridged,
     retry_policy:  Arc::new(AutoSleep::default()),

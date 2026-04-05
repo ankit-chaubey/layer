@@ -1,125 +1,140 @@
 # Inline Mode
 
-Inline mode lets users type `@yourbot query` in any chat — the bot responds with a list of results the user can tap to send.
+Inline mode lets users type `@yourbot query` in any chat and receive results. Layer supports both sides: **receiving queries** (bot) and **sending queries** (user account).
 
-## Enable inline mode
+---
 
-In [@BotFather](https://t.me/BotFather):
-1. Send `/mybots` → select your bot
-2. **Bot Settings** → **Inline Mode** → **Turn on**
+## Receiving inline queries (bot side)
 
-## Handling inline queries
+### Via update stream
 
 ```rust
 Update::InlineQuery(iq) => {
-    let query  = iq.query().to_string();
-    let qid    = iq.query_id;
+    let query    = iq.query();    // &str — what the user typed
+    let query_id = iq.query_id;  // i64 — must be passed to answer_inline_query
 
-    let results = build_results(&query);
+    let results = vec![
+        tl::enums::InputBotInlineResult::InputBotInlineResult(
+            tl::types::InputBotInlineResult {
+                id:    "1".into(),
+                r#type: "article".into(),
+                title: Some("Result title".into()),
+                description: Some(query.to_string()),
+                url: None, thumb: None, content: None,
+                send_message: tl::enums::InputBotInlineMessage::Text(
+                    tl::types::InputBotInlineMessageText {
+                        no_webpage: false, invert_media: false,
+                        message: query.to_string(),
+                        entities: None, reply_markup: None,
+                    },
+                ),
+            },
+        ),
+    ];
 
-    client.answer_inline_query(
-        qid,
-        results,
-        300,   // cache_time in seconds
-        false, // is_personal (true = don't share cache across users)
-        None,  // next_offset (for pagination)
-    ).await?;
+    // cache_time: seconds, is_personal: false, next_offset: None
+    client.answer_inline_query(query_id, results, 30, false, None).await?;
 }
 ```
 
-## Building results
+### Via `InlineQueryIter`
 
-### Article result (text message)
+For a more structured approach, use the dedicated iterator:
 
 ```rust
-fn article(id: &str, title: &str, description: &str, text: &str)
-    -> tl::enums::InputBotInlineResult
-{
-    tl::enums::InputBotInlineResult::InputBotInlineResult(
-        tl::types::InputBotInlineResult {
-            id:          id.into(),
-            r#type:      "article".into(),
-            title:       Some(title.into()),
-            description: Some(description.into()),
-            url:         None,
-            thumb:       None,
-            content:     None,
-            send_message: tl::enums::InputBotInlineMessage::Text(
-                tl::types::InputBotInlineMessageText {
-                    no_webpage:   false,
-                    invert_media: false,
-                    message:      text.into(),
-                    entities:     None,
-                    reply_markup: None,
-                }
-            ),
-        }
-    )
+use layer_client::inline_iter::InlineQueryIter;
+
+let mut iter = client.iter_inline_queries();
+while let Some(iq) = iter.next().await {
+    println!("Query: {}", iq.query());
+    // answer it...
 }
 ```
 
-### Multiple results for a query
+`InlineQueryIter` is backed by the update stream — it filters and yields only `InlineQuery` updates.
+
+---
+
+## `InlineQuery` fields
 
 ```rust
-fn build_results(q: &str) -> Vec<tl::enums::InputBotInlineResult> {
-    if q.is_empty() {
-        // Default suggestions when query is blank
-        return vec![
-            article("time", "🕐 Current Time",
-                &chrono::Utc::now().format("%H:%M UTC").to_string(),
-                &chrono::Utc::now().to_rfc2822()),
-            article("help", "📖 Help", "See all commands", "/help"),
-        ];
-    }
-
-    vec![
-        article("u", &format!("UPPER: {}", q.to_uppercase()),
-            "Uppercase version", &q.to_uppercase()),
-        article("l", &format!("lower: {}", q.to_lowercase()),
-            "Lowercase version", &q.to_lowercase()),
-        article("r", &format!("Reversed"),
-            "Reversed text", &q.chars().rev().collect::<String>()),
-        article("c", "📊 Character count",
-            &format!("{} chars, {} words", q.len(), q.split_whitespace().count()),
-            &format!("{} characters • {} words • {} lines",
-                q.chars().count(), q.split_whitespace().count(), q.lines().count())),
-    ]
-}
+iq.query()       // &str — the search text
+iq.query_id      // i64
+iq.user_id       // i64 — who sent the query
+iq.offset        // String — pagination offset
 ```
 
-## InlineQuery fields
+---
 
-| Field / Method | Type | Description |
-|---|---|---|
-| `iq.query()` | `&str` | The text the user typed |
-| `iq.query_id` | `i64` | Unique ID for this query |
-| `iq.offset()` | `&str` | Pagination offset |
-| `iq.peer_type` | varies | Type of chat where query was issued |
+## Receiving inline sends (bot side)
 
-## InlineSend — when a result is chosen
+When a user selects a result from your bot's inline mode, you get `Update::InlineSend`:
 
 ```rust
 Update::InlineSend(is) => {
-    // Fired when the user picks one of your results
-    println!("Result chosen: {}", is.id());
-    // Use this for logging, stats, or post-send actions
+    // is.result_id  — which result was chosen
+    // is.user_id    — who chose it
+    // is.query      — the original query
 }
 ```
 
-## Pagination
-
-For large result sets, implement pagination using `next_offset`:
+`InlineSend` also has `edit_message()` for editing the sent inline message:
 
 ```rust
-let page: usize = iq.offset().parse().unwrap_or(0);
-let items = get_items_page(page, 10);
-let next  = if items.len() == 10 { Some(format!("{}", page + 1)) } else { None };
+is.edit_message(&client, updated_msg).await?;
+```
 
+---
+
+## Sending inline queries (user account side)
+
+A **user account** can invoke another bot's inline mode with `client.inline_query()` and iterate the results:
+
+```rust
+use layer_client::inline_iter::InlineResultIter;
+
+let mut iter = client
+    .inline_query("@gif", "cute cats")
+    .peer(input_peer_for_target_chat)
+    .await?;
+
+while let Some(result) = iter.next().await? {
+    println!("Result: {:?} — {:?}", result.id(), result.title());
+
+    // Send the first result to a chat
+    result.send(target_peer.clone()).await?;
+    break;
+}
+```
+
+### `InlineResult` methods
+
+| Method | Return | Description |
+|---|---|---|
+| `result.id()` | `&str` | Result ID string |
+| `result.title()` | `Option<&str>` | Display title |
+| `result.description()` | `Option<&str>` | Display description |
+| `result.raw` | `tl::enums::BotInlineResult` | Raw TL object |
+| `result.send(peer)` | `async → ()` | Send this result to a chat |
+
+### `InlineResultIter` methods
+
+| Method | Description |
+|---|---|
+| `client.inline_query(bot, query)` | Create builder, returns `InlineResultIter` |
+| `iter.peer(input_peer)` | Set the chat context (required by some bots) |
+| `iter.next()` | `async → Option<InlineResult>` — fetch next result |
+
+---
+
+## `answer_inline_query` parameters
+
+```rust
 client.answer_inline_query(
-    iq.query_id,
-    items,
-    60,
-    false,
-    next.as_deref(),
+    query_id,   // i64 — from InlineQuery
+    results,    // Vec<InputBotInlineResult>
+    30,         // cache_time: i32 — seconds to cache results
+    false,      // is_personal: bool — different results per user?
+    None,       // next_offset: Option<String> — for pagination
 ).await?;
 ```

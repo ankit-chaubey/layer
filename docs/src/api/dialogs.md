@@ -1,76 +1,91 @@
-# Dialogs & Message History
-
-## List dialogs (conversations)
-
-```rust
-// Fetch the 50 most recent dialogs
-let dialogs = client.get_dialogs(50).await?;
-
-for dialog in &dialogs {
-    println!(
-        "[{}] {} unread — top msg {}",
-        dialog.title(),
-        dialog.unread_count(),
-        dialog.top_message(),
-    );
-}
-```
-
-### Dialog fields
-
-| Method | Returns | Description |
-|---|---|---|
-| `dialog.title()` | `String` | Name of the chat/channel/user |
-| `dialog.peer()` | `Option<&Peer>` | The peer identifier |
-| `dialog.unread_count()` | `i32` | Number of unread messages |
-| `dialog.top_message()` | `i32` | ID of the last message |
+# Dialogs & History
 
 ---
 
-## Paginating dialogs (all)
+## Fetch dialogs
 
-For iterating **all** dialogs beyond the first page:
+```rust
+// Fetch up to N dialogs (returns the most recent first)
+let dialogs = client.get_dialogs(50).await?;
+
+for d in &dialogs {
+    println!("{} — {} unread — top msg: {}",
+        d.title(), d.unread_count(), d.top_message());
+}
+```
+
+### `Dialog` accessors
+
+| Method | Return | Description |
+|---|---|---|
+| `d.title()` | `String` | Chat name |
+| `d.peer()` | `Option<&tl::enums::Peer>` | The peer for this dialog |
+| `d.unread_count()` | `i32` | Unread message count |
+| `d.top_message()` | `i32` | ID of the latest message |
+
+---
+
+## `DialogIter` — lazy paginated iterator
 
 ```rust
 let mut iter = client.iter_dialogs();
 
+// Total count (available after first page is fetched)
+if let Some(total) = iter.total() {
+    println!("Total dialogs: {total}");
+}
+
 while let Some(dialog) = iter.next(&client).await? {
-    println!("{} — {} unread", dialog.title(), dialog.unread_count());
+    println!("{}", dialog.title());
 }
 ```
 
-The iterator automatically requests more pages from Telegram as needed.
+| Method | Description |
+|---|---|
+| `client.iter_dialogs()` | Create iterator |
+| `iter.total()` | `Option<i32>` — total count after first fetch |
+| `iter.next(&client)` | `async → Option<Dialog>` |
 
 ---
 
-## Paginating messages
+## `MessageIter` — lazy message history
 
 ```rust
-let peer = client.resolve_peer("@somechannel").await?;
-let mut iter = client.iter_messages(peer);
+let mut iter = client.iter_messages(peer.clone());
 
-let mut count = 0;
+// Total count of messages in this chat
+if let Some(total) = iter.total() {
+    println!("Total messages: {total}");
+}
+
 while let Some(msg) = iter.next(&client).await? {
-    println!("[{}] {}", msg.id(), msg.text().unwrap_or("(media)"));
-    count += 1;
-    if count >= 500 { break; }
+    println!("[{}] {}", msg.id, msg.message);
 }
 ```
 
+| Method | Description |
+|---|---|
+| `client.iter_messages(peer)` | Create iterator (newest first) |
+| `iter.total()` | `Option<i32>` — total message count after first fetch |
+| `iter.next(&client)` | `async → Option<tl::types::Message>` |
+
 ---
 
-## Get message history (basic)
+## Fetch messages directly
 
 ```rust
-// Newest 50 messages
-let messages = client.get_messages(peer, 50, 0).await?;
+// Latest N messages from a peer
+let messages = client.get_messages(peer.clone(), 20).await?;
 
-// Next page: pass the last message's ID as offset
-let last_id = messages.last()
-    .and_then(|m| if let tl::enums::Message::Message(m) = m { Some(m.id) } else { None })
-    .unwrap_or(0);
+// Specific message IDs
+let messages = client.get_messages_by_id(peer.clone(), &[100, 101, 102]).await?;
+// Returns Vec<Option<tl::enums::Message>> — None if not found
 
-let older = client.get_messages(peer, 50, last_id).await?;
+// Pinned message
+let pinned = client.get_pinned_message(peer.clone()).await?;
+
+// The message a given message replies to
+let parent = client.get_reply_to_message(peer.clone(), msg_id).await?;
 ```
 
 ---
@@ -78,63 +93,33 @@ let older = client.get_messages(peer, 50, last_id).await?;
 ## Scheduled messages
 
 ```rust
-// Fetch messages scheduled to be sent
-let scheduled = client.get_scheduled_messages(peer).await?;
+// List all scheduled messages
+let scheduled = client.get_scheduled_messages(peer.clone()).await?;
 
-for msg in &scheduled {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("Scheduled: {} at {}", m.message, m.date);
-    }
-}
-
-// Delete a scheduled message
-client.delete_scheduled_messages(peer, vec![msg_id]).await?;
+// Cancel a scheduled message
+client.delete_scheduled_messages(peer.clone(), &[scheduled_id]).await?;
 ```
 
 ---
 
-## Search within a chat
+## Dialog management
 
 ```rust
-let results = client.search_messages(
-    peer,
-    "error log",  // search query
-    20,           // limit
-).await?;
+// Mark all messages as read
+client.mark_as_read(peer.clone()).await?;
 
-for msg in &results {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("[{}] {}", m.id, m.message);
-    }
-}
-```
+// Clear @mention badges
+client.clear_mentions(peer.clone()).await?;
 
-## Global search
+// Leave and remove from dialog list
+client.delete_dialog(peer.clone()).await?;
 
-```rust
-let results = client.search_global("layer rust telegram", 10).await?;
-```
+// Join a public group/channel
+client.join_chat("@somegroup").await?;
 
----
+// Accept a private invite link
+client.accept_invite_link("https://t.me/joinchat/AbCdEfG").await?;
 
-## Mark as read / unread management
-
-```rust
-// Mark all messages in a chat as read
-client.mark_as_read(peer).await?;
-
-// Clear all @mentions in a group
-client.clear_mentions(peer).await?;
-```
-
----
-
-## Get pinned message
-
-```rust
-if let Some(msg) = client.get_pinned_message(peer).await? {
-    if let tl::enums::Message::Message(m) = msg {
-        println!("Pinned: {}", m.message);
-    }
-}
+// Parse invite hash from any link format
+let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
 ```
