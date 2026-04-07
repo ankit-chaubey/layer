@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Session Backends - layer — Async Telegram MTProto in Rust</title>
+        <title>Session Backends - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,7 +182,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="session-backends"><a class="header" href="#session-backends">Session Backends</a></h1>
-<p>Layer ships five session backends out of the box. They all implement the <code>SessionBackend</code> trait and are <strong>hot-swappable</strong> — switch by changing one line.</p>
+<p>Layer ships five session backends out of the box. They all implement the <code>SessionBackend</code> trait and are <strong>hot-swappable</strong>: switch by changing one line.</p>
 <hr>
 <h2 id="built-in-backends"><a class="header" href="#built-in-backends">Built-in backends</a></h2>
 <div class="table-wrapper">
@@ -223,7 +223,7 @@ let backend = Arc::new(BinaryFileBackend::new("bot.session"));
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="inmemorybackend"><a class="header" href="#inmemorybackend"><code>InMemoryBackend</code></a></h2>
-<p>Non-persistent — lost on process exit. Ideal for tests.</p>
+<p>Non-persistent: lost on process exit. Ideal for tests.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let (client, _shutdown) = Client::builder()
@@ -242,7 +242,7 @@ use std::sync::Arc;
 let backend = Arc::new(InMemoryBackend::new());
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="stringsessionbackend--portable-auth"><a class="header" href="#stringsessionbackend--portable-auth"><code>StringSessionBackend</code> — portable auth</a></h2>
+<h2 id="stringsessionbackend-portable-auth"><a class="header" href="#stringsessionbackend-portable-auth"><code>StringSessionBackend</code>: portable auth</a></h2>
 <p>Encodes the entire session (auth key + DC + peer cache) as a single base64 string. Store it in an environment variable, a database column, or a secret manager.</p>
 <h3 id="export"><a class="header" href="#export">Export</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -279,9 +279,9 @@ let backend = Arc::new(StringSessionBackend::new(session_string));
 <span class="boring">}</span></code></pre>
 <p>Pass an <strong>empty string</strong> to start a fresh session with no stored data.</p>
 <hr>
-<h2 id="sqlitebackend--local-database"><a class="header" href="#sqlitebackend--local-database"><code>SqliteBackend</code> — local database</a></h2>
+<h2 id="sqlitebackend-local-database"><a class="header" href="#sqlitebackend-local-database"><code>SqliteBackend</code>: local database</a></h2>
 <p>Requires feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.6", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.7", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -297,9 +297,9 @@ let (client, _shutdown) = Client::builder()
 <span class="boring">}</span></code></pre>
 <p>The file is created if it doesn’t exist.</p>
 <hr>
-<h2 id="libsqlbackend--libsql--turso"><a class="header" href="#libsqlbackend--libsql--turso"><code>LibSqlBackend</code> — libsql / Turso</a></h2>
+<h2 id="libsqlbackend-libsql--turso"><a class="header" href="#libsqlbackend-libsql--turso"><code>LibSqlBackend</code>: libsql / Turso</a></h2>
 <p>Requires feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.6", features = ["libsql-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.7", features = ["libsql-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -324,7 +324,7 @@ let (client, _shutdown) = Client::builder()
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="custom-backend"><a class="header" href="#custom-backend">Custom backend</a></h2>
-<p>Implement <code>SessionBackend</code> to use any storage — Redis, Postgres, S3, or anything else:</p>
+<p>Implement <code>SessionBackend</code> to use any storage: Redis, Postgres, S3, or anything else:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::session_backend::{SessionBackend, PersistedSession, DcEntry, UpdateStateChange};

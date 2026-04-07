@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Typing Guard - layer — Async Telegram MTProto in Rust</title>
+        <title>Typing Guard - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -186,7 +186,7 @@
 <p>The guard re-sends the action every <strong>4 seconds</strong> (Telegram drops indicators after ~5 s) until the guard is dropped or <code>.cancel()</code> is called.</p>
 <hr>
 <h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
-<p><code>TypingGuard</code> is re-exported from <code>layer_client</code> — no extra import needed beyond <code>use layer_client::TypingGuard;</code>.</p>
+<p><code>TypingGuard</code> is re-exported from <code>layer_client</code>: no extra import needed beyond <code>use layer_client::TypingGuard;</code>.</p>
 <hr>
 <h2 id="convenience-methods-on-client"><a class="header" href="#convenience-methods-on-client">Convenience methods on <code>Client</code></a></h2>
 <p>These are the recommended entry points:</p>
@@ -209,7 +209,7 @@ let _typing = client.typing_in_topic(peer.clone(), topic_id).await?;
 <p>The guard auto-cancels when it goes out of scope.</p>
 <hr>
 <h2 id="using-typingguardstart-directly"><a class="header" href="#using-typingguardstart-directly">Using <code>TypingGuard::start</code> directly</a></h2>
-<p>For any <code>SendMessageAction</code> variant — including ones that don’t have a convenience method:</p>
+<p>For any <code>SendMessageAction</code> variant: including ones that don’t have a convenience method:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::TypingGuard;
@@ -239,7 +239,7 @@ let _guard = TypingGuard::start(
 ).await?;
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="typingguardstart_ex--forum-topics--custom-delay"><a class="header" href="#typingguardstart_ex--forum-topics--custom-delay"><code>TypingGuard::start_ex</code> — forum topics + custom delay</a></h2>
+<h2 id="typingguardstart_ex-forum-topics--custom-delay"><a class="header" href="#typingguardstart_ex-forum-topics--custom-delay"><code>TypingGuard::start_ex</code>: forum topics + custom delay</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use std::time::Duration;
@@ -248,7 +248,7 @@ let _guard = TypingGuard::start_ex(
     client,
     peer,                   // tl::enums::Peer (already resolved)
     tl::enums::SendMessageAction::SendMessageTypingAction,
-    Some(topic_msg_id),     // top_msg_id — None for normal chats
+    Some(topic_msg_id),     // top_msg_id: None for normal chats
     Duration::from_secs(4), // repeat delay (≤ 4 s recommended)
 ).await?;
 <span class="boring">}</span></code></pre>
@@ -274,12 +274,12 @@ send_reply(client, peer).await?;
 </span>client.send_chat_action(
     peer.clone(),
     tl::enums::SendMessageAction::SendMessageTypingAction,
-    None, // top_msg_id — Some(id) for forum topics
+    None, // top_msg_id: Some(id) for forum topics
 ).await?;
 <span class="boring">}</span></code></pre>
 <p>Telegram shows the indicator for ~5 seconds and then removes it automatically.</p>
 <hr>
-<h2 id="complete-example--long-task-with-typing"><a class="header" href="#complete-example--long-task-with-typing">Complete example — long task with typing</a></h2>
+<h2 id="complete-example-long-task-with-typing"><a class="header" href="#complete-example-long-task-with-typing">Complete example: long task with typing</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::{Client, InvocationError};
@@ -309,7 +309,7 @@ async fn compute_answer() -&gt; String {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="example--upload-with-uploading-document-indicator"><a class="header" href="#example--upload-with-uploading-document-indicator">Example — upload with “uploading document…” indicator</a></h2>
+<h2 id="example-upload-with-uploading-document-indicator"><a class="header" href="#example-upload-with-uploading-document-indicator">Example: upload with “uploading document…” indicator</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>async fn send_document(
@@ -347,7 +347,7 @@ async fn compute_answer() -&gt; String {
 <tbody>
 <tr><td><code>TypingGuard</code></td><td>struct</td><td>RAII guard; drop to cancel</td></tr>
 <tr><td><code>TypingGuard::start(client, peer, action)</code></td><td><code>async fn</code></td><td>Start any <code>SendMessageAction</code></td></tr>
-<tr><td><code>TypingGuard::start_ex(client, peer, action, topic_id, delay)</code></td><td><code>async fn</code></td><td>Full control — topic support + custom repeat delay</td></tr>
+<tr><td><code>TypingGuard::start_ex(client, peer, action, topic_id, delay)</code></td><td><code>async fn</code></td><td>Full control: topic support + custom repeat delay</td></tr>
 <tr><td><code>guard.cancel()</code></td><td><code>fn</code></td><td>Stop the indicator immediately (guard stays alive)</td></tr>
 <tr><td><code>client.typing(peer)</code></td><td><code>async fn</code></td><td>Shorthand for <code>TypingAction</code></td></tr>
 <tr><td><code>client.uploading_document(peer)</code></td><td><code>async fn</code></td><td>Shorthand for <code>UploadDocumentAction</code></td></tr>

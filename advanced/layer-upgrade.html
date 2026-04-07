@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Upgrading TL Layer - layer — Async Telegram MTProto in Rust</title>
+        <title>Upgrading TL Layer - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -185,7 +185,7 @@
 <p>The Telegram API evolves continuously. Each new <strong>layer</strong> adds constructors, modifies existing types, and deprecates old ones. Upgrading <code>layer</code> is designed to be a one-file operation.</p>
 <h2 id="how-the-system-works"><a class="header" href="#how-the-system-works">How the system works</a></h2>
 <p><code>layer-tl-types</code> is fully <strong>auto-generated at build time</strong>:</p>
-<pre><code>tl/api.tl          (source of truth — the only file you replace)
+<pre><code>tl/api.tl          (source of truth: the only file you replace)
     │
     ▼
 build.rs           (reads api.tl, invokes layer-tl-gen)
@@ -198,7 +198,7 @@ $OUT_DIR/
   generated_functions.rs  ← pub mod functions { ... }
 </code></pre>
 <p>The <code>LAYER</code> constant is extracted from the <code>// LAYER N</code> comment on the first line of <code>api.tl</code>. Everything else flows from there.</p>
-<h2 id="step-1--replace-apitl"><a class="header" href="#step-1--replace-apitl">Step 1 — Replace api.tl</a></h2>
+<h2 id="step-1-replace-apitl"><a class="header" href="#step-1-replace-apitl">Step 1: Replace api.tl</a></h2>
 <pre><code class="language-bash"># Get the new schema from Telegram's official sources
 # (TDLib repository, core.telegram.org, or unofficial mirrors)
 
@@ -207,7 +207,7 @@ cp new-layer-224.tl layer-tl-types/tl/api.tl
 <p>Make sure the first line of the file is:</p>
 <pre><code>// LAYER 224
 </code></pre>
-<h2 id="step-2--build"><a class="header" href="#step-2--build">Step 2 — Build</a></h2>
+<h2 id="step-2-build"><a class="header" href="#step-2-build">Step 2: Build</a></h2>
 <pre><code class="language-bash">cargo build 2&gt;&amp;1 | head -40
 </code></pre>
 <p>The build script automatically:</p>
@@ -217,7 +217,7 @@ cp new-layer-224.tl layer-tl-types/tl/api.tl
 <li>Patches <code>pub const LAYER: i32 = 224;</code> into <code>generated_common.rs</code></li>
 </ul>
 <p>If there are no breaking type changes in <code>layer-client</code>, it compiles cleanly.</p>
-<h2 id="step-3--fix-compile-errors"><a class="header" href="#step-3--fix-compile-errors">Step 3 — Fix compile errors</a></h2>
+<h2 id="step-3-fix-compile-errors"><a class="header" href="#step-3-fix-compile-errors">Step 3: Fix compile errors</a></h2>
 <p>New layers commonly add fields to existing structs. These show up as errors like:</p>
 <pre><code>error[E0063]: missing field `my_new_field` in initializer of `types::SomeStruct`
 </code></pre>
@@ -244,9 +244,9 @@ Update::NewVariant(_) =&gt; { /* handle or ignore */ }
 // OR add to the catch-all:
 _ =&gt; {}
 <span class="boring">}</span></code></pre>
-<h2 id="step-4--bump-version-and-publish"><a class="header" href="#step-4--bump-version-and-publish">Step 4 — Bump version and publish</a></h2>
+<h2 id="step-4-bump-version-and-publish"><a class="header" href="#step-4-bump-version-and-publish">Step 4: Bump version and publish</a></h2>
 <pre><code class="language-bash"># In Cargo.toml workspace section
-version = "0.4.6"
+version = "0.4.7"
 </code></pre>
 <p>Then publish in dependency order (see <a href="../installation.html">Publishing</a>).</p>
 <h2 id="what-propagates-automatically"><a class="header" href="#what-propagates-automatically">What propagates automatically</a></h2>
@@ -260,7 +260,7 @@ version = "0.4.6"
 <tr><td><code>tl::LAYER</code> constant</td><td><code>layer-tl-types/src/lib.rs</code></td><td>build.rs patches it</td></tr>
 <tr><td><code>invokeWithLayer</code> call</td><td><code>layer-client/src/lib.rs:1847</code></td><td>reads <code>tl::LAYER</code></td></tr>
 <tr><td><code>/about</code> bot command</td><td><code>layer-bot/src/main.rs:333</code></td><td>reads <code>tl::LAYER</code> at runtime</td></tr>
-<tr><td>Badge in README</td><td>Manual — update once</td><td>String replace</td></tr>
+<tr><td>Badge in README</td><td>Manual: update once</td><td>String replace</td></tr>
 </tbody>
 </table>
 </div>

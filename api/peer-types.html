@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Peer Types &amp; PeerRef - layer — Async Telegram MTProto in Rust</title>
+        <title>Peer Types &amp; PeerRef - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,9 +182,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="peer-types--peerref"><a class="header" href="#peer-types--peerref">Peer Types &amp; PeerRef</a></h1>
-<p><code>layer-client</code> provides ergonomic high-level wrappers over the raw <code>tl::enums::User</code> and <code>tl::enums::Chat</code> types, plus <code>PeerRef</code> — a flexible peer argument accepted by every <code>Client</code> method.</p>
+<p><code>layer-client</code> provides typed wrappers over the raw <code>tl::enums::User</code> and <code>tl::enums::Chat</code> types, plus <code>PeerRef</code>: a flexible peer argument accepted by every <code>Client</code> method.</p>
 <hr>
-<h2 id="peerref--flexible-peer-argument"><a class="header" href="#peerref--flexible-peer-argument"><code>PeerRef</code> — flexible peer argument</a></h2>
+<h2 id="peerref-flexible-peer-argument"><a class="header" href="#peerref-flexible-peer-argument"><code>PeerRef</code>: flexible peer argument</a></h2>
 <p>Every <code>Client</code> method that previously required a bare <code>tl::enums::Peer</code> now accepts <code>impl Into&lt;PeerRef&gt;</code>. That means you can pass:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -192,19 +192,19 @@
 client.send_message_to_peer("@durov", "hi").await?;
 client.send_message_to_peer("durov",  "hi").await?;
 
-// "me" / "self" — always resolves to the logged-in account
+// "me" / "self": always resolves to the logged-in account
 client.send_message_to_peer("me", "Note to self").await?;
 
-// Positive i64 — Telegram user ID
+// Positive i64: Telegram user ID
 client.send_message_to_peer(12345678_i64, "hi").await?;
 
-// Negative i64 — Bot-API channel ID (-100… prefix)
+// Negative i64: Bot-API channel ID (-100… prefix)
 client.iter_messages(-1001234567890_i64);
 
-// Negative i64 — Bot-API basic-group ID (small negative)
+// Negative i64: Bot-API basic-group ID (small negative)
 client.mark_as_read(-123456_i64).await?;
 
-// Already-resolved TL peer — zero overhead, no network call
+// Already-resolved TL peer: zero overhead, no network call
 use layer_client::tl;
 let peer = tl::enums::Peer::User(tl::types::PeerUser { user_id: 123 });
 client.send_message_to_peer(peer, "hi").await?;
@@ -217,8 +217,8 @@ client.send_message_to_peer(peer, "hi").await?;
 </thead>
 <tbody>
 <tr><td><code>PeerRef::Username(s)</code></td><td><code>contacts.resolveUsername</code> RPC (cached after first call)</td></tr>
-<tr><td><code>PeerRef::Id(i64)</code></td><td>Decoded from Bot-API encoding — <strong>no network call</strong></td></tr>
-<tr><td><code>PeerRef::Peer(tl::enums::Peer)</code></td><td>Forwarded as-is — <strong>zero cost</strong></td></tr>
+<tr><td><code>PeerRef::Id(i64)</code></td><td>Decoded from Bot-API encoding: <strong>no network call</strong></td></tr>
+<tr><td><code>PeerRef::Peer(tl::enums::Peer)</code></td><td>Forwarded as-is: <strong>zero cost</strong></td></tr>
 </tbody>
 </table>
 </div>
@@ -244,7 +244,7 @@ let peer_ref = PeerRef::from("@someuser");
 let peer: tl::enums::Peer = peer_ref.resolve(&amp;client).await?;
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="user--user-account-wrapper"><a class="header" href="#user--user-account-wrapper"><code>User</code> — user account wrapper</a></h2>
+<h2 id="user-user-account-wrapper"><a class="header" href="#user-user-account-wrapper"><code>User</code>: user account wrapper</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::types::User;
@@ -297,7 +297,7 @@ if let Some(user) = User::from_raw(raw_tl_user) {
 </div>
 <p><code>User</code> implements <code>Display</code> as <code>"Full Name (@username)"</code> or <code>"Full Name [user_id]"</code>.</p>
 <hr>
-<h2 id="group--basic-group-wrapper"><a class="header" href="#group--basic-group-wrapper"><code>Group</code> — basic group wrapper</a></h2>
+<h2 id="group-basic-group-wrapper"><a class="header" href="#group-basic-group-wrapper"><code>Group</code>: basic group wrapper</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::types::Group;
@@ -327,7 +327,7 @@ if let Some(group) = Group::from_raw(raw_tl_chat) {
 </table>
 </div>
 <hr>
-<h2 id="channel--channel--supergroup-wrapper"><a class="header" href="#channel--channel--supergroup-wrapper"><code>Channel</code> — channel / supergroup wrapper</a></h2>
+<h2 id="channel-channel--supergroup-wrapper"><a class="header" href="#channel-channel--supergroup-wrapper"><code>Channel</code>: channel / supergroup wrapper</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::types::{Channel, ChannelKind};
@@ -381,7 +381,7 @@ match channel.kind() {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="chat--unified-chat-enum"><a class="header" href="#chat--unified-chat-enum"><code>Chat</code> — unified chat enum</a></h2>
+<h2 id="chat-unified-chat-enum"><a class="header" href="#chat-unified-chat-enum"><code>Chat</code>: unified chat enum</a></h2>
 <p><code>Chat</code> unifies <code>Group</code> and <code>Channel</code> into one enum with shared accessors:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {

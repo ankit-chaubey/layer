@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Inline Keyboards - layer — Async Telegram MTProto in Rust</title>
+        <title>Inline Keyboards - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,14 +182,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="inline-keyboards--reply-markup"><a class="header" href="#inline-keyboards--reply-markup">Inline Keyboards &amp; Reply Markup</a></h1>
-<p><code>layer-client</code> ships with two high-level keyboard builders — <code>InlineKeyboard</code> and <code>ReplyKeyboard</code> — so you never have to construct raw TL types by hand.</p>
+<p><code>layer-client</code> ships with two high-level keyboard builders: <code>InlineKeyboard</code> and <code>ReplyKeyboard</code>: so you never have to construct raw TL types by hand.</p>
 <p>Both builders are in <code>layer_client::keyboard</code> and re-exported at the crate root:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::keyboard::{Button, InlineKeyboard, ReplyKeyboard};
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="inlinekeyboard--buttons-attached-to-a-message"><a class="header" href="#inlinekeyboard--buttons-attached-to-a-message"><code>InlineKeyboard</code> — buttons attached to a message</a></h2>
+<h2 id="inlinekeyboard-buttons-attached-to-a-message"><a class="header" href="#inlinekeyboard-buttons-attached-to-a-message"><code>InlineKeyboard</code>: buttons attached to a message</a></h2>
 <p>Inline keyboards appear below a message and trigger <code>Update::CallbackQuery</code> when tapped.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -227,7 +227,7 @@ client
 </div>
 <p><code>InlineKeyboard</code> implements <code>Into&lt;tl::enums::ReplyMarkup&gt;</code>, so you can also pass it directly to <code>InputMessage::reply_markup()</code>.</p>
 <hr>
-<h2 id="button--all-button-types"><a class="header" href="#button--all-button-types"><code>Button</code> — all button types</a></h2>
+<h2 id="button-all-button-types"><a class="header" href="#button-all-button-types"><code>Button</code>: all button types</a></h2>
 <h3 id="callback-url-and-common-types"><a class="header" href="#callback-url-and-common-types">Callback, URL, and common types</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -286,7 +286,7 @@ Button::request_quiz("🧠 Create quiz")
 let raw = Button::callback("x", b"x").into_raw();
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="replykeyboard--replacement-keyboard"><a class="header" href="#replykeyboard--replacement-keyboard"><code>ReplyKeyboard</code> — replacement keyboard</a></h2>
+<h2 id="replykeyboard-replacement-keyboard"><a class="header" href="#replykeyboard-replacement-keyboard"><code>ReplyKeyboard</code>: replacement keyboard</a></h2>
 <p>A reply keyboard replaces the user’s text input keyboard until dismissed.
 The user’s tap arrives as a plain-text <code>Update::NewMessage</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -340,7 +340,7 @@ client
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="answer-callback-queries"><a class="header" href="#answer-callback-queries">Answer callback queries</a></h2>
-<p>Always answer every <code>CallbackQuery</code> — Telegram shows a loading spinner until you do.</p>
+<p>Always answer every <code>CallbackQuery</code>: Telegram shows a loading spinner until you do.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::CallbackQuery(cb) =&gt; {
@@ -498,13 +498,13 @@ let msg = InputMessage::text("Keyboard removed.").reply_markup(remove);
 <p>Telegram limits callback button data to <strong>64 bytes</strong>. Use compact, parseable formats:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Good — structured, compact
+</span>// Good: structured, compact
 "vote:yes"
 "page:3"
 "item:42:delete"
 "menu:settings:notifications"
 
-// Bad — verbose
+// Bad: verbose
 "user_clicked_the_settings_button"
 <span class="boring">}</span></code></pre>
 

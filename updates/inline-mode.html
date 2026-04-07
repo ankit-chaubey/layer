@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Inline Mode - layer — Async Telegram MTProto in Rust</title>
+        <title>Inline Mode - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -189,8 +189,8 @@
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::InlineQuery(iq) =&gt; {
-    let query    = iq.query();    // &amp;str — what the user typed
-    let query_id = iq.query_id;  // i64 — must be passed to answer_inline_query
+    let query    = iq.query();    // &amp;str: what the user typed
+    let query_id = iq.query_id;  // i64: must be passed to answer_inline_query
 
     let results = vec![
         tl::enums::InputBotInlineResult::InputBotInlineResult(
@@ -227,15 +227,15 @@ while let Some(iq) = iter.next().await {
     // answer it...
 }
 <span class="boring">}</span></code></pre>
-<p><code>InlineQueryIter</code> is backed by the update stream — it filters and yields only <code>InlineQuery</code> updates.</p>
+<p><code>InlineQueryIter</code> is backed by the update stream: it filters and yields only <code>InlineQuery</code> updates.</p>
 <hr>
 <h2 id="inlinequery-fields"><a class="header" href="#inlinequery-fields"><code>InlineQuery</code> fields</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>iq.query()       // &amp;str — the search text
+</span>iq.query()       // &amp;str: the search text
 iq.query_id      // i64
-iq.user_id       // i64 — who sent the query
-iq.offset        // String — pagination offset
+iq.user_id       // i64: who sent the query
+iq.offset        // String: pagination offset
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="receiving-inline-sends-bot-side"><a class="header" href="#receiving-inline-sends-bot-side">Receiving inline sends (bot side)</a></h2>
@@ -243,9 +243,9 @@ iq.offset        // String — pagination offset
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::InlineSend(is) =&gt; {
-    // is.result_id  — which result was chosen
-    // is.user_id    — who chose it
-    // is.query      — the original query
+    // is.result_id : which result was chosen
+    // is.user_id   : who chose it
+    // is.query     : the original query
 }
 <span class="boring">}</span></code></pre>
 <p><code>InlineSend</code> also has <code>edit_message()</code> for editing the sent inline message:</p>
@@ -266,7 +266,7 @@ let mut iter = client
     .await?;
 
 while let Some(result) = iter.next().await? {
-    println!("Result: {:?} — {:?}", result.id(), result.title());
+    println!("Result: {:?}: {:?}", result.id(), result.title());
 
     // Send the first result to a chat
     result.send(target_peer.clone()).await?;
@@ -297,7 +297,7 @@ while let Some(result) = iter.next().await? {
 <tbody>
 <tr><td><code>client.inline_query(bot, query)</code></td><td>Create builder, returns <code>InlineResultIter</code></td></tr>
 <tr><td><code>iter.peer(input_peer)</code></td><td>Set the chat context (required by some bots)</td></tr>
-<tr><td><code>iter.next()</code></td><td><code>async → Option&lt;InlineResult&gt;</code> — fetch next result</td></tr>
+<tr><td><code>iter.next()</code></td><td><code>async → Option&lt;InlineResult&gt;</code>: fetch next result</td></tr>
 </tbody>
 </table>
 </div>
@@ -306,11 +306,11 @@ while let Some(result) = iter.next().await? {
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>client.answer_inline_query(
-    query_id,   // i64 — from InlineQuery
+    query_id,   // i64: from InlineQuery
     results,    // Vec&lt;InputBotInlineResult&gt;
-    30,         // cache_time: i32 — seconds to cache results
-    false,      // is_personal: bool — different results per user?
-    None,       // next_offset: Option&lt;String&gt; — for pagination
+    30,         // cache_time: i32: seconds to cache results
+    false,      // is_personal: bool: different results per user?
+    None,       // next_offset: Option&lt;String&gt;: for pagination
 ).await?;
 <span class="boring">}</span></code></pre>
 

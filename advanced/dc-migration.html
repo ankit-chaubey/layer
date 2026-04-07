@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>DC Migration - layer — Async Telegram MTProto in Rust</title>
+        <title>DC Migration - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -190,10 +190,9 @@
 <li>You log in with a phone number registered on DC1</li>
 <li>Telegram returns <code>PHONE_MIGRATE_1</code></li>
 <li><code>layer-client</code> reconnects to DC1, re-performs the DH handshake, and retries your request</li>
-<li>Your code sees a successful response — the migration is invisible</li>
+<li>Your code sees a successful response: the migration is invisible</li>
 </ol>
 <p>The correct DC is then saved in the session file for future connections.</p>
-<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange used on each DC connection" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 <p><em>Each new DC connection performs a full DH key exchange to establish a fresh auth key for that DC.</em></p>
 <h2 id="overriding-the-initial-dc"><a class="header" href="#overriding-the-initial-dc">Overriding the initial DC</a></h2>
 <p>By default, <code>layer-client</code> starts on DC2. If you know your account is on a different DC, you can set the initial address:</p>

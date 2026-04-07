@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Admin &amp; Ban Rights - layer — Async Telegram MTProto in Rust</title>
+        <title>Admin &amp; Ban Rights - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,19 +182,19 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="admin--ban-rights"><a class="header" href="#admin--ban-rights">Admin &amp; Ban Rights</a></h1>
-<p><code>layer-client</code> provides two fluent builders for granular admin and ban rights — <code>AdminRightsBuilder</code> and <code>BannedRightsBuilder</code> — both in the <code>layer_client::participants</code> module.</p>
+<p><code>layer-client</code> provides two fluent builders for granular admin and ban rights: <code>AdminRightsBuilder</code> and <code>BannedRightsBuilder</code>: both in the <code>layer_client::participants</code> module.</p>
 <hr>
-<h2 id="bannedrightsbuilder--restrict-a-member"><a class="header" href="#bannedrightsbuilder--restrict-a-member"><code>BannedRightsBuilder</code> — restrict a member</a></h2>
+<h2 id="bannedrightsbuilder-restrict-a-member"><a class="header" href="#bannedrightsbuilder-restrict-a-member"><code>BannedRightsBuilder</code>: restrict a member</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::participants::BannedRightsBuilder;
 
-// ── Permanent full ban ────────────────────────────────────────────────────────
+// Permanent full ban
 client
     .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
     .await?;
 
-// ── Partial restriction (no media, expires in 24 h) ───────────────────────────
+// Partial restriction (no media, expires in 24 h)
 let tomorrow = (std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
 
@@ -209,7 +209,7 @@ client
     )
     .await?;
 
-// ── Unban ─────────────────────────────────────────────────────────────────────
+// Unban
 // Passing an empty builder restores full permissions
 client
     .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
@@ -241,15 +241,15 @@ client
 </table>
 </div>
 <blockquote>
-<p><strong>Note:</strong> Setting <code>view_messages: true</code> is a full ban — the member cannot read messages or remain in the group.</p>
+<p><strong>Note:</strong> Setting <code>view_messages: true</code> is a full ban: the member cannot read messages or remain in the group.</p>
 </blockquote>
 <hr>
-<h2 id="adminrightsbuilder--grant-admin-rights"><a class="header" href="#adminrightsbuilder--grant-admin-rights"><code>AdminRightsBuilder</code> — grant admin rights</a></h2>
+<h2 id="adminrightsbuilder-grant-admin-rights"><a class="header" href="#adminrightsbuilder-grant-admin-rights"><code>AdminRightsBuilder</code>: grant admin rights</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::participants::AdminRightsBuilder;
 
-// ── Custom moderator ──────────────────────────────────────────────────────────
+// Custom moderator
 client
     .promote_participant(
         peer.clone(), user_id,
@@ -262,12 +262,12 @@ client
     )
     .await?;
 
-// ── Full admin (all standard rights) ─────────────────────────────────────────
+// Full admin (all standard rights)
 client
     .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
     .await?;
 
-// ── Demote (remove all admin rights) ─────────────────────────────────────────
+// Demote (remove all admin rights)
 client
     .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
     .await?;
@@ -297,10 +297,10 @@ client
 </table>
 </div>
 <blockquote>
-<p><code>.add_admins(true)</code> grants significant trust — admins with this right can promote others to full admin level.</p>
+<p><code>.add_admins(true)</code> grants significant trust: admins with this right can promote others to full admin level.</p>
 </blockquote>
 <hr>
-<h2 id="participantpermissions--read-effective-rights"><a class="header" href="#participantpermissions--read-effective-rights"><code>ParticipantPermissions</code> — read effective rights</a></h2>
+<h2 id="participantpermissions-read-effective-rights"><a class="header" href="#participantpermissions-read-effective-rights"><code>ParticipantPermissions</code>: read effective rights</a></h2>
 <p>To inspect the actual current permissions of a user in a channel:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -333,7 +333,7 @@ let perms: ParticipantPermissions = client
 <h2 id="quick-patterns"><a class="header" href="#quick-patterns">Quick patterns</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Temporarily mute — no messages for 1 hour
+</span>// Temporarily mute: no messages for 1 hour
 let in_1h = (chrono::Utc::now().timestamp() + 3600) as i32;
 client.ban_participant(peer.clone(), uid,
     BannedRightsBuilder::new().send_messages(true).until_date(in_1h)

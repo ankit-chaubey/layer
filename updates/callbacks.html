@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Callback Queries - layer — Async Telegram MTProto in Rust</title>
+        <title>Callback Queries - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,7 +182,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="callback-queries"><a class="header" href="#callback-queries">Callback Queries</a></h1>
-<p>When a user taps an inline keyboard button, the bot receives <code>Update::CallbackQuery</code>. Always answer it — Telegram shows a loading spinner until you do.</p>
+<p>When a user taps an inline keyboard button, the bot receives <code>Update::CallbackQuery</code>. Always answer it: Telegram shows a loading spinner until you do.</p>
 <hr>
 <h2 id="basic-handling"><a class="header" href="#basic-handling">Basic handling</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -201,11 +201,11 @@
 <h2 id="callbackquery-fields"><a class="header" href="#callbackquery-fields"><code>CallbackQuery</code> fields</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>cb.query_id       // i64 — must be passed to answer_callback_query
-cb.user_id        // i64 — who pressed the button
-cb.msg_id         // Option&lt;i32&gt; — message the button was on
-cb.data()         // Option&lt;&amp;str&gt; — the callback data string
-cb.inline_msg_id  // Option&lt;tl::enums::InputBotInlineMessageID&gt; — for inline messages
+</span>cb.query_id       // i64: must be passed to answer_callback_query
+cb.user_id        // i64: who pressed the button
+cb.msg_id         // Option&lt;i32&gt;: message the button was on
+cb.data()         // Option&lt;&amp;str&gt;: the callback data string
+cb.inline_msg_id  // Option&lt;tl::enums::InputBotInlineMessageID&gt;: for inline messages
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="answer-builder-fluent-api"><a class="header" href="#answer-builder-fluent-api"><code>Answer</code> builder (fluent API)</a></h2>
@@ -244,7 +244,7 @@ cb.answer().send(&amp;client).await?;
 <tr><td><code>.text(str)</code></td><td>Toast message shown to the user</td></tr>
 <tr><td><code>.alert(str)</code></td><td>Modal popup shown to the user</td></tr>
 <tr><td><code>.url(str)</code></td><td>URL to open (with user confirmation)</td></tr>
-<tr><td><code>.send(&amp;client)</code></td><td>Execute — always call this</td></tr>
+<tr><td><code>.send(&amp;client)</code></td><td>Execute: always call this</td></tr>
 </tbody>
 </table>
 </div>
@@ -279,7 +279,7 @@ client.answer_callback_query(cb.query_id, None, false).await?;  // silent
     // Then edit the original message
     if let Some(msg_id) = cb.msg_id {
         client.edit_message(
-            // peer from the callback — resolve from context
+            // peer from the callback: resolve from context
             peer.clone(),
             msg_id,
             "Updated content",
@@ -288,7 +288,7 @@ client.answer_callback_query(cb.query_id, None, false).await?;  // silent
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="full-example--vote-bot"><a class="header" href="#full-example--vote-bot">Full example — vote bot</a></h2>
+<h2 id="full-example-vote-bot"><a class="header" href="#full-example-vote-bot">Full example: vote bot</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::CallbackQuery(cb) =&gt; {

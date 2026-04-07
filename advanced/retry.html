@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Retry &amp; Flood Wait - layer — Async Telegram MTProto in Rust</title>
+        <title>Retry &amp; Flood Wait - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -183,7 +183,7 @@
                     <main>
                         <h1 id="retry--flood-wait"><a class="header" href="#retry--flood-wait">Retry &amp; Flood Wait</a></h1>
 <p>Telegram’s rate limiting system sends <code>FLOOD_WAIT_X</code> errors when you call the API too frequently. <code>X</code> is the number of seconds you must wait before retrying.</p>
-<h2 id="default-behaviour--autosleep"><a class="header" href="#default-behaviour--autosleep">Default behaviour — AutoSleep</a></h2>
+<h2 id="default-behaviour-autosleep"><a class="header" href="#default-behaviour-autosleep">Default behaviour: AutoSleep</a></h2>
 <p>By default, <code>layer-client</code> uses <code>AutoSleep</code>: it transparently sleeps for the required duration, then retries. Your code never sees the error.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -196,7 +196,7 @@ let (client, _shutdown) = Client::connect(Config {
 }).await?;
 <span class="boring">}</span></code></pre>
 <p>This is the default. You don’t need to set it explicitly.</p>
-<h2 id="noretries--propagate-immediately"><a class="header" href="#noretries--propagate-immediately">NoRetries — propagate immediately</a></h2>
+<h2 id="noretries-propagate-immediately"><a class="header" href="#noretries-propagate-immediately">NoRetries: propagate immediately</a></h2>
 <p>If you want to handle FLOOD_WAIT yourself:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -229,7 +229,7 @@ loop {
 }
 <span class="boring">}</span></code></pre>
 <h2 id="custom-retry-policy"><a class="header" href="#custom-retry-policy">Custom retry policy</a></h2>
-<p>Implement <code>RetryPolicy</code> for full control — cap the wait, log, or give up after N attempts:</p>
+<p>Implement <code>RetryPolicy</code> for full control: cap the wait, log, or give up after N attempts:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::{RetryPolicy, RetryContext};
@@ -283,7 +283,7 @@ let (client, _shutdown) = Client::connect(Config {
 <h2 id="avoiding-flood-waits"><a class="header" href="#avoiding-flood-waits">Avoiding flood waits</a></h2>
 <ul>
 <li>Add small delays between bulk operations: <code>tokio::time::sleep(Duration::from_millis(100)).await</code></li>
-<li>Cache peer resolutions — don’t resolve the same username repeatedly</li>
+<li>Cache peer resolutions: don’t resolve the same username repeatedly</li>
 <li>Don’t send messages in tight loops</li>
 <li>Bots have more generous limits than user accounts</li>
 <li>Some methods (e.g. <code>GetHistory</code>) have separate, more generous limits</li>

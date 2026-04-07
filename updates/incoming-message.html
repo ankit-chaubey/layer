@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>IncomingMessage - layer — Async Telegram MTProto in Rust</title>
+        <title>IncomingMessage - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,28 +182,28 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="incomingmessage"><a class="header" href="#incomingmessage">IncomingMessage</a></h1>
-<p><code>IncomingMessage</code> is the type of <code>Update::NewMessage</code> and <code>Update::MessageEdited</code>. It wraps a raw <code>tl::enums::Message</code> and provides ergonomic accessors plus a full suite of <strong>convenience action methods</strong> that let you act on a message without passing the <code>Client</code> around explicitly (when the message was received from the update stream it already carries a client reference).</p>
+<p><code>IncomingMessage</code> is the type of <code>Update::NewMessage</code> and <code>Update::MessageEdited</code>. It wraps a raw <code>tl::enums::Message</code> and provides typed accessors plus a full suite of <strong>convenience action methods</strong> that let you act on a message without passing the <code>Client</code> around explicitly (when the message was received from the update stream it already carries a client reference).</p>
 <hr>
 <h2 id="basic-accessors"><a class="header" href="#basic-accessors">Basic accessors</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::NewMessage(msg) =&gt; {
-    msg.id()                  // i32 — unique message ID in this chat
-    msg.text()                // Option&lt;&amp;str&gt; — text or media caption
-    msg.peer_id()             // Option&lt;&amp;tl::enums::Peer&gt; — chat this is in
-    msg.sender_id()           // Option&lt;&amp;tl::enums::Peer&gt; — who sent it
-    msg.outgoing()            // bool — sent by us?
-    msg.date()                // i32 — Unix timestamp
-    msg.edit_date()           // Option&lt;i32&gt; — last edit timestamp
-    msg.mentioned()           // bool — are we @mentioned?
-    msg.silent()              // bool — no notification
-    msg.pinned()              // bool — currently pinned
-    msg.post()                // bool — channel post (no sender)
-    msg.noforwards()          // bool — forwarding disabled
-    msg.from_scheduled()      // bool — was a scheduled message
-    msg.edit_hide()           // bool — edit not shown in UI
-    msg.media_unread()        // bool — media not yet viewed
-    msg.raw                   // tl::enums::Message — full TL object
+    msg.id()                  // i32: unique message ID in this chat
+    msg.text()                // Option&lt;&amp;str&gt;: text or media caption
+    msg.peer_id()             // Option&lt;&amp;tl::enums::Peer&gt;: chat this is in
+    msg.sender_id()           // Option&lt;&amp;tl::enums::Peer&gt;: who sent it
+    msg.outgoing()            // bool: sent by us?
+    msg.date()                // i32: Unix timestamp
+    msg.edit_date()           // Option&lt;i32&gt;: last edit timestamp
+    msg.mentioned()           // bool: are we @mentioned?
+    msg.silent()              // bool: no notification
+    msg.pinned()              // bool: currently pinned
+    msg.post()                // bool: channel post (no sender)
+    msg.noforwards()          // bool: forwarding disabled
+    msg.from_scheduled()      // bool: was a scheduled message
+    msg.edit_hide()           // bool: edit not shown in UI
+    msg.media_unread()        // bool: media not yet viewed
+    msg.raw                   // tl::enums::Message: full TL object
 }
 <span class="boring">}</span></code></pre>
 <hr>
@@ -211,11 +211,11 @@
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>// Counters
-msg.forward_count()          // Option&lt;i32&gt; — number of times forwarded
-msg.view_count()             // Option&lt;i32&gt; — view count (channels)
-msg.reply_count()            // Option&lt;i32&gt; — number of replies in thread
-msg.reaction_count()         // i32 — total reactions
-msg.reply_to_message_id()    // Option&lt;i32&gt; — ID of the message replied to
+msg.forward_count()          // Option&lt;i32&gt;: number of times forwarded
+msg.view_count()             // Option&lt;i32&gt;: view count (channels)
+msg.reply_count()            // Option&lt;i32&gt;: number of replies in thread
+msg.reaction_count()         // i32: total reactions
+msg.reply_to_message_id()    // Option&lt;i32&gt;: ID of the message replied to
 
 // Typed timestamps
 msg.date_utc()               // Option&lt;DateTime&lt;Utc&gt;&gt;
@@ -224,25 +224,25 @@ msg.edit_date_utc()          // Option&lt;DateTime&lt;Utc&gt;&gt;
 // Rich content
 msg.media()                  // Option&lt;&amp;tl::enums::MessageMedia&gt;
 msg.entities()               // Option&lt;&amp;Vec&lt;tl::enums::MessageEntity&gt;&gt;
-msg.action()                 // Option&lt;&amp;tl::enums::MessageAction&gt; — service messages
+msg.action()                 // Option&lt;&amp;tl::enums::MessageAction&gt;: service messages
 msg.reply_markup()           // Option&lt;&amp;tl::enums::ReplyMarkup&gt;
 msg.forward_header()         // Option&lt;&amp;tl::enums::MessageFwdHeader&gt;
-msg.grouped_id()             // Option&lt;i64&gt; — album group ID
-msg.via_bot_id()             // Option&lt;i64&gt; — inline bot that sent this
-msg.post_author()            // Option&lt;&amp;str&gt; — channel post author signature
+msg.grouped_id()             // Option&lt;i64&gt;: album group ID
+msg.via_bot_id()             // Option&lt;i64&gt;: inline bot that sent this
+msg.post_author()            // Option&lt;&amp;str&gt;: channel post author signature
 msg.restriction_reason()     // Option&lt;&amp;Vec&lt;tl::enums::RestrictionReason&gt;&gt;
 
 // Formatted text helpers (requires html feature for html_text)
-msg.markdown_text()          // Option&lt;String&gt; — entities rendered as Markdown
-msg.html_text()              // Option&lt;String&gt; — entities rendered as HTML
+msg.markdown_text()          // Option&lt;String&gt;: entities rendered as Markdown
+msg.html_text()              // Option&lt;String&gt;: entities rendered as HTML
 
 // Typed media extraction
 msg.photo()                  // Option&lt;Photo&gt;
 msg.document()               // Option&lt;Document&gt;
 
 // Sender details
-msg.sender_user_id()         // Option&lt;i64&gt; — sender's user ID
-msg.sender_chat_id()         // Option&lt;i64&gt; — sender's chat ID
+msg.sender_user_id()         // Option&lt;i64&gt;: sender's user ID
+msg.sender_chat_id()         // Option&lt;i64&gt;: sender's chat ID
 msg.sender_user()            // async → Option&lt;User&gt; (fetches from cache/API)
 <span class="boring">}</span></code></pre>
 <hr>

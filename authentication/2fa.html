@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Two-Factor Auth (2FA) - layer — Async Telegram MTProto in Rust</title>
+        <title>Two-Factor Auth (2FA) - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,17 +182,17 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="two-factor-authentication-2fa"><a class="header" href="#two-factor-authentication-2fa">Two-Factor Authentication (2FA)</a></h1>
-<p>Telegram’s 2FA uses <strong>Secure Remote Password (SRP)</strong> — a zero-knowledge proof. Your password is never sent to Telegram’s servers; only a cryptographic proof is transmitted.</p>
+<p>Telegram’s 2FA uses <strong>Secure Remote Password (SRP)</strong>: a zero-knowledge proof. Your password is never sent to Telegram’s servers; only a cryptographic proof is transmitted.</p>
 <h2 id="how-it-works-in-layer"><a class="header" href="#how-it-works-in-layer">How it works in layer</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>match client.sign_in(&amp;login_token, &amp;code).await {
     Ok(name) =&gt; {
-        // ✅ No 2FA — login complete
+        // ✅ No 2FA: login complete
         println!("Welcome, {name}!");
     }
     Err(SignInError::PasswordRequired(password_token)) =&gt; {
-        // 2FA is enabled — the password_token carries SRP parameters
+        // 2FA is enabled: the password_token carries SRP parameters
         client.check_password(password_token, "my_2fa_password").await?;
         println!("✅ 2FA verified");
     }
@@ -218,7 +218,7 @@
 <span class="boring">}</span></code></pre>
 <h2 id="changing-the-2fa-password"><a class="header" href="#changing-the-2fa-password">Changing the 2FA password</a></h2>
 <blockquote>
-<p><strong>NOTE:</strong> Changing 2FA password requires calling <code>account.updatePasswordSettings</code> via raw API. This is an advanced operation — see <a href="../advanced/raw-api.html">Raw API Access</a>.</p>
+<p><strong>NOTE:</strong> Changing 2FA password requires calling <code>account.updatePasswordSettings</code> via raw API. This is an advanced operation: see <a href="../advanced/raw-api.html">Raw API Access</a>.</p>
 </blockquote>
 <h2 id="wrong-password-errors"><a class="header" href="#wrong-password-errors">Wrong password errors</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -237,7 +237,7 @@ match client.check_password(token, &amp;pw).await {
 <span class="boring">}</span></code></pre>
 <h2 id="security-notes"><a class="header" href="#security-notes">Security notes</a></h2>
 <ul>
-<li><code>layer-crypto</code> implements the SRP math from scratch — no external SRP library</li>
+<li><code>layer-crypto</code> implements the SRP math from scratch: no external SRP library</li>
 <li>The password derivation uses PBKDF2-SHA512 with 100,000+ iterations</li>
 <li>The SRP exchange is authenticated: a MITM cannot substitute their own verifier</li>
 </ul>

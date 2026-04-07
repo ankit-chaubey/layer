@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Search - layer — Async Telegram MTProto in Rust</title>
+        <title>Search - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -184,12 +184,12 @@
                         <h1 id="search"><a class="header" href="#search">Search</a></h1>
 <p><code>layer-client</code> provides two fluent search builders:</p>
 <ul>
-<li><strong><code>SearchBuilder</code></strong> — search within a single peer (<code>client.search()</code>)</li>
-<li><strong><code>GlobalSearchBuilder</code></strong> — search across all dialogs (<code>client.search_global_builder()</code>)</li>
+<li><strong><code>SearchBuilder</code></strong>: search within a single peer (<code>client.search()</code>)</li>
+<li><strong><code>GlobalSearchBuilder</code></strong>: search across all dialogs (<code>client.search_global_builder()</code>)</li>
 </ul>
 <p>Both builders return <code>Vec&lt;IncomingMessage&gt;</code> from <code>.fetch(&amp;client).await?</code>.</p>
 <hr>
-<h2 id="searchbuilder--in-chat-search"><a class="header" href="#searchbuilder--in-chat-search"><code>SearchBuilder</code> — in-chat search</a></h2>
+<h2 id="searchbuilder-in-chat-search"><a class="header" href="#searchbuilder-in-chat-search"><code>SearchBuilder</code>: in-chat search</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_tl_types::enums::MessagesFilter;
@@ -204,7 +204,7 @@ for msg in &amp;results {
     println!("[{}] {}", msg.id, msg.message);
 }
 <span class="boring">}</span></code></pre>
-<p><code>client.search(peer, query)</code> accepts any <code>impl Into&lt;PeerRef&gt;</code> — a <code>&amp;str</code> username, a <code>tl::enums::Peer</code>, or a numeric <code>i64</code> ID.</p>
+<p><code>client.search(peer, query)</code> accepts any <code>impl Into&lt;PeerRef&gt;</code>: a <code>&amp;str</code> username, a <code>tl::enums::Peer</code>, or a numeric <code>i64</code> ID.</p>
 <h3 id="all-searchbuilder-methods"><a class="header" href="#all-searchbuilder-methods">All <code>SearchBuilder</code> methods</a></h3>
 <div class="table-wrapper">
 <table>
@@ -220,10 +220,10 @@ for msg in &amp;results {
 <tr><td><code>.max_id(id: i32)</code></td><td><code>0</code></td><td>Only messages with ID ≤ <code>max_id</code></td></tr>
 <tr><td><code>.min_id(id: i32)</code></td><td><code>0</code></td><td>Only messages with ID ≥ <code>min_id</code></td></tr>
 <tr><td><code>.filter(f: MessagesFilter)</code></td><td><code>Empty</code></td><td>Filter by media type</td></tr>
-<tr><td><code>.sent_by_self()</code></td><td>—</td><td>Only messages sent by the logged-in user</td></tr>
+<tr><td><code>.sent_by_self()</code></td><td>:</td><td>Only messages sent by the logged-in user</td></tr>
 <tr><td><code>.from_peer(peer: InputPeer)</code></td><td><code>None</code></td><td>Only messages from this specific sender</td></tr>
 <tr><td><code>.top_msg_id(id: i32)</code></td><td><code>None</code></td><td>Restrict search to a forum topic thread</td></tr>
-<tr><td><code>.fetch(&amp;client)</code></td><td>—</td><td>Execute — returns <code>Vec&lt;IncomingMessage&gt;</code></td></tr>
+<tr><td><code>.fetch(&amp;client)</code></td><td>:</td><td>Execute: returns <code>Vec&lt;IncomingMessage&gt;</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -346,7 +346,7 @@ loop {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="globalsearchbuilder--search-all-chats"><a class="header" href="#globalsearchbuilder--search-all-chats"><code>GlobalSearchBuilder</code> — search all chats</a></h2>
+<h2 id="globalsearchbuilder-search-all-chats"><a class="header" href="#globalsearchbuilder-search-all-chats"><code>GlobalSearchBuilder</code>: search all chats</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let results = client
@@ -376,7 +376,7 @@ for msg in &amp;results {
 <tr><td><code>.groups_only(v: bool)</code></td><td><code>false</code></td><td>Only search groups / supergroups</td></tr>
 <tr><td><code>.users_only(v: bool)</code></td><td><code>false</code></td><td>Only search private chats / bots</td></tr>
 <tr><td><code>.filter(f: MessagesFilter)</code></td><td><code>Empty</code></td><td>Filter by media type</td></tr>
-<tr><td><code>.fetch(&amp;client)</code></td><td>—</td><td>Execute — returns <code>Vec&lt;IncomingMessage&gt;</code></td></tr>
+<tr><td><code>.fetch(&amp;client)</code></td><td>:</td><td>Execute: returns <code>Vec&lt;IncomingMessage&gt;</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -425,10 +425,10 @@ let photos = client
 <p>For quick lookups that don’t need date/filter options:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Per-chat search — returns Vec&lt;IncomingMessage&gt;
+</span>// Per-chat search: returns Vec&lt;IncomingMessage&gt;
 let results = client.search_messages(peer.clone(), "query", 20).await?;
 
-// Global search — returns Vec&lt;IncomingMessage&gt;
+// Global search: returns Vec&lt;IncomingMessage&gt;
 let results = client.search_global("layer rust", 10).await?;
 <span class="boring">}</span></code></pre>
 

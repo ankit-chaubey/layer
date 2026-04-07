@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Participants &amp; Members - layer — Async Telegram MTProto in Rust</title>
+        <title>Participants &amp; Members - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -196,7 +196,7 @@ let members: Vec&lt;Participant&gt; = client
 
 for p in &amp;members {
     println!(
-        "{} — admin: {}, banned: {}",
+        "{}: admin: {}, banned: {}",
         p.user.first_name.as_deref().unwrap_or("?"),
         p.is_admin(),
         p.is_banned(),
@@ -221,11 +221,11 @@ let results: Vec&lt;tl::enums::Peer&gt; = client.search_peer("John").await?;
 <h2 id="participant-fields"><a class="header" href="#participant-fields"><code>Participant</code> fields</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>p.user          // tl::types::User — raw user data
-p.is_creator()  // bool — is the channel/group creator
-p.is_admin()    // bool — has any admin rights
-p.is_banned()   // bool — is banned/restricted
-p.is_member()   // bool — active member (not banned, not left)
+</span>p.user          // tl::types::User: raw user data
+p.is_creator()  // bool: is the channel/group creator
+p.is_admin()    // bool: has any admin rights
+p.is_banned()   // bool: is banned/restricted
+p.is_member()   // bool: active member (not banned, not left)
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="kick-participant"><a class="header" href="#kick-participant">Kick participant</a></h2>
@@ -236,7 +236,7 @@ p.is_member()   // bool — active member (not banned, not left)
 client.kick_participant(peer.clone(), user_id).await?;
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="ban-participant--bannedrightsbuilder"><a class="header" href="#ban-participant--bannedrightsbuilder">Ban participant — <code>BannedRightsBuilder</code></a></h2>
+<h2 id="ban-participant-bannedrightsbuilder"><a class="header" href="#ban-participant-bannedrightsbuilder">Ban participant: <code>BannedRightsBuilder</code></a></h2>
 <p>Use the fluent <code>BannedRightsBuilder</code> for granular bans:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -247,7 +247,7 @@ client
     .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
     .await?;
 
-// Partial restriction — no media, no stickers, expires in 24 h
+// Partial restriction: no media, no stickers, expires in 24 h
 let expires = (std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
 
@@ -263,7 +263,7 @@ client
     )
     .await?;
 
-// Unban — pass an empty builder to restore full permissions
+// Unban: pass an empty builder to restore full permissions
 client
     .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
     .await?;
@@ -294,7 +294,7 @@ client
 </table>
 </div>
 <hr>
-<h2 id="promote-admin--adminrightsbuilder"><a class="header" href="#promote-admin--adminrightsbuilder">Promote admin — <code>AdminRightsBuilder</code></a></h2>
+<h2 id="promote-admin-adminrightsbuilder"><a class="header" href="#promote-admin-adminrightsbuilder">Promote admin: <code>AdminRightsBuilder</code></a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::participants::AdminRightsBuilder;
@@ -319,7 +319,7 @@ client
     .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
     .await?;
 
-// Demote — pass an empty builder to remove all admin rights
+// Demote: pass an empty builder to remove all admin rights
 client
     .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
     .await?;
@@ -433,7 +433,7 @@ for p in &amp;members {
 }
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="profilephotoiter--extended-methods"><a class="header" href="#profilephotoiter--extended-methods"><code>ProfilePhotoIter</code> — extended methods</a></h2>
+<h2 id="profilephotoiter-extended-methods"><a class="header" href="#profilephotoiter-extended-methods"><code>ProfilePhotoIter</code>: extended methods</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut iter = client.iter_profile_photos(user_id);
@@ -453,8 +453,8 @@ let all_photos = iter.collect().await?;
 </thead>
 <tbody>
 <tr><td><code>iter.next()</code></td><td><code>async → Option&lt;tl::enums::Photo&gt;</code></td></tr>
-<tr><td><code>iter.collect()</code></td><td><code>async → Vec&lt;tl::enums::Photo&gt;</code> — all photos</td></tr>
-<tr><td><code>iter.total_count()</code></td><td><code>Option&lt;i32&gt;</code> — total count after first fetch</td></tr>
+<tr><td><code>iter.collect()</code></td><td><code>async → Vec&lt;tl::enums::Photo&gt;</code>: all photos</td></tr>
+<tr><td><code>iter.total_count()</code></td><td><code>Option&lt;i32&gt;</code>: total count after first fetch</td></tr>
 </tbody>
 </table>
 </div>

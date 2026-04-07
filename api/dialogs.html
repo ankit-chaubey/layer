@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Dialogs &amp; History - layer — Async Telegram MTProto in Rust</title>
+        <title>Dialogs &amp; History - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -190,7 +190,7 @@
 let dialogs = client.get_dialogs(50).await?;
 
 for d in &amp;dialogs {
-    println!("{} — {} unread — top msg: {}",
+    println!("{}: {} unread: top msg: {}",
         d.title(), d.unread_count(), d.top_message());
 }
 <span class="boring">}</span></code></pre>
@@ -209,7 +209,7 @@ for d in &amp;dialogs {
 </table>
 </div>
 <hr>
-<h2 id="dialogiter--lazy-paginated-iterator"><a class="header" href="#dialogiter--lazy-paginated-iterator"><code>DialogIter</code> — lazy paginated iterator</a></h2>
+<h2 id="dialogiter-lazy-paginated-iterator"><a class="header" href="#dialogiter-lazy-paginated-iterator"><code>DialogIter</code>: lazy paginated iterator</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut iter = client.iter_dialogs();
@@ -230,13 +230,13 @@ while let Some(dialog) = iter.next(&amp;client).await? {
 </thead>
 <tbody>
 <tr><td><code>client.iter_dialogs()</code></td><td>Create iterator</td></tr>
-<tr><td><code>iter.total()</code></td><td><code>Option&lt;i32&gt;</code> — total count after first fetch</td></tr>
+<tr><td><code>iter.total()</code></td><td><code>Option&lt;i32&gt;</code>: total count after first fetch</td></tr>
 <tr><td><code>iter.next(&amp;client)</code></td><td><code>async → Option&lt;Dialog&gt;</code></td></tr>
 </tbody>
 </table>
 </div>
 <hr>
-<h2 id="messageiter--lazy-message-history"><a class="header" href="#messageiter--lazy-message-history"><code>MessageIter</code> — lazy message history</a></h2>
+<h2 id="messageiter-lazy-message-history"><a class="header" href="#messageiter-lazy-message-history"><code>MessageIter</code>: lazy message history</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut iter = client.iter_messages(peer.clone());
@@ -257,7 +257,7 @@ while let Some(msg) = iter.next(&amp;client).await? {
 </thead>
 <tbody>
 <tr><td><code>client.iter_messages(peer)</code></td><td>Create iterator (newest first)</td></tr>
-<tr><td><code>iter.total()</code></td><td><code>Option&lt;i32&gt;</code> — total message count after first fetch</td></tr>
+<tr><td><code>iter.total()</code></td><td><code>Option&lt;i32&gt;</code>: total message count after first fetch</td></tr>
 <tr><td><code>iter.next(&amp;client)</code></td><td><code>async → Option&lt;tl::types::Message&gt;</code></td></tr>
 </tbody>
 </table>
@@ -271,7 +271,7 @@ let messages = client.get_messages(peer.clone(), 20).await?;
 
 // Specific message IDs
 let messages = client.get_messages_by_id(peer.clone(), &amp;[100, 101, 102]).await?;
-// Returns Vec&lt;Option&lt;tl::enums::Message&gt;&gt; — None if not found
+// Returns Vec&lt;Option&lt;tl::enums::Message&gt;&gt;: None if not found
 
 // Pinned message
 let pinned = client.get_pinned_message(peer.clone()).await?;

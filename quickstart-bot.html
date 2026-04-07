@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Quick Start — Bot - layer — Async Telegram MTProto in Rust</title>
+        <title>Quick Start: Bot - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-aabd3487.js"></script>
+        <script src="toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -181,8 +181,8 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="quick-start--bot"><a class="header" href="#quick-start--bot">Quick Start — Bot</a></h1>
-<p>A production-ready bot skeleton with commands, callback queries, and inline mode — all handled concurrently.</p>
+                        <h1 id="quick-start-bot"><a class="header" href="#quick-start-bot">Quick Start: Bot</a></h1>
+<p>A production-ready bot skeleton with commands, callback queries, and inline mode: all handled concurrently.</p>
 <pre class="playground"><code class="language-rust">use layer_client::{Client, InputMessage, parsers::parse_markdown, update::Update};
 use layer_tl_types as tl;
 use std::sync::Arc;
@@ -209,7 +209,7 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 
     while let Some(update) = updates.next().await {
         let client = client.clone();
-        // Each update in its own task — the loop never blocks
+        // Each update in its own task: the loop never blocks
         tokio::spawn(async move {
             if let Err(e) = dispatch(update, &amp;client).await {
                 eprintln!("Handler error: {e}");
@@ -226,7 +226,7 @@ async fn dispatch(
 ) -&gt; Result&lt;(), Box&lt;dyn std::error::Error + Send + Sync&gt;&gt; {
 
     match update {
-        // ── Commands ───────────────────────────────────────────────
+        // Commands
         Update::NewMessage(msg) if !msg.outgoing() =&gt; {
             let text = msg.text().unwrap_or("").trim().to_string();
             let peer = match msg.peer_id() {
@@ -243,7 +243,7 @@ async fn dispatch(
             match cmd {
                 "/start" =&gt; {
                     let (t, e) = parse_markdown(
-                        "👋 **Hello!** I'm built with **layer** — async Telegram MTProto in Rust 🦀\n\n\
+                        "👋 **Hello!** I'm built with **layer**: async Telegram MTProto in Rust 🦀\n\n\
                          Use /help to see all commands."
                     );
                     client.send_message_to_peer_ex(peer, &amp;InputMessage::text(t)
@@ -252,13 +252,13 @@ async fn dispatch(
                 "/help" =&gt; {
                     let (t, e) = parse_markdown(
                         "📖 **Commands**\n\n\
-                         /start — Welcome message\n\
-                         /ping — Latency check\n\
-                         /echo `&lt;text&gt;` — Repeat your text\n\
-                         /upper `&lt;text&gt;` — UPPERCASE\n\
-                         /lower `&lt;text&gt;` — lowercase\n\
-                         /reverse `&lt;text&gt;` — esreveR\n\
-                         /id — Your user and chat ID"
+                         /start: Welcome message\n\
+                         /ping: Latency check\n\
+                         /echo `&lt;text&gt;`: Repeat your text\n\
+                         /upper `&lt;text&gt;`: UPPERCASE\n\
+                         /lower `&lt;text&gt;`: lowercase\n\
+                         /reverse `&lt;text&gt;`: esreveR\n\
+                         /id: Your user and chat ID"
                     );
                     client.send_message_to_peer_ex(peer, &amp;InputMessage::text(t)
                         .entities(e).reply_to(Some(reply_to))).await?;
@@ -292,16 +292,16 @@ async fn dispatch(
             }
         }
 
-        // ── Callback queries ───────────────────────────────────────
+        // Callback queries
         Update::CallbackQuery(cb) =&gt; {
             match cb.data().unwrap_or("") {
                 "help"  =&gt; { client.answer_callback_query(cb.query_id, Some("Send /help for commands"), false).await?; }
-                "about" =&gt; { client.answer_callback_query(cb.query_id, Some("Built with layer — Rust MTProto 🦀"), true).await?; }
+                "about" =&gt; { client.answer_callback_query(cb.query_id, Some("Built with layer: Rust MTProto 🦀"), true).await?; }
                 _       =&gt; { client.answer_callback_query(cb.query_id, None, false).await?; }
             }
         }
 
-        // ── Inline mode ────────────────────────────────────────────
+        // Inline mode
         Update::InlineQuery(iq) =&gt; {
             let q   = iq.query().to_string();
             let qid = iq.query_id;
@@ -353,7 +353,7 @@ fn make_article(id: &amp;str, title: &amp;str, text: &amp;str) -&gt; tl::enums::
 <hr>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ul>
-<li><a href="./authentication/bot-login.html">Bot Login — full guide</a></li>
+<li><a href="./authentication/bot-login.html">Bot Login: full guide</a></li>
 <li><a href="./updates/callbacks.html">Callback Queries</a></li>
 <li><a href="./updates/inline-mode.html">Inline Mode</a></li>
 <li><a href="./messaging/keyboards.html">Inline Keyboards</a></li>

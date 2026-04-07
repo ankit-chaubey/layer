@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction - layer — Async Telegram MTProto in Rust</title>
+        <title>Introduction - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-aabd3487.js"></script>
+        <script src="toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -185,7 +185,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/layer-banner-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="images/layer-banner-light.png">
-  <img src="images/layer-banner.png" alt="layer — Async Rust MTProto" width="100%" style="border-radius:8px; margin-bottom:1.5rem;" />
 </picture>
 <div class="hero-banner">
 <h2>A modular, production-grade async Rust implementation of the Telegram MTProto protocol</h2>
@@ -200,11 +199,11 @@
 
 </div>
 
-<p><code>layer</code> is a hand-written, bottom-up implementation of <a href="https://core.telegram.org/mtproto">Telegram MTProto</a> in pure Rust. Every component — from the <code>.tl</code> schema parser, to AES-IGE encryption, to the Diffie-Hellman key exchange, to the typed async update stream — is owned and understood by this project.</p>
+<p><code>layer</code> is a hand-written, bottom-up implementation of <a href="https://core.telegram.org/mtproto">Telegram MTProto</a> in pure Rust. Every component: from the <code>.tl</code> schema parser, to AES-IGE encryption, to the Diffie-Hellman key exchange, to the typed async update stream: is owned and understood by this project.</p>
 <p><strong>No black boxes. No magic. Just Rust, all the way down.</strong></p>
 <hr>
 <h2 id="why-layer"><a class="header" href="#why-layer">Why layer?</a></h2>
-<p>Most Telegram libraries are thin wrappers around generated code or ports from Python/JavaScript. <code>layer</code> is different — it was built from scratch to understand MTProto at the lowest level, then wrapped in an ergonomic high-level API.</p>
+<p>Most Telegram libraries are thin wrappers around generated code or ports from Python/JavaScript. <code>layer</code> is different: it was built from scratch to understand MTProto at the lowest level, then exposed through a straightforward high-level API.</p>
 <div class="feature-grid">
 <div class="feature-card">
 <div class="fc-icon">🦀</div>
@@ -220,7 +219,7 @@
 
 <div class="fc-title">Full MTProto 2.0</div>
 
-<div class="fc-desc">Complete DH handshake, AES-IGE encryption, salt tracking, DC migration — all handled automatically.</div>
+<div class="fc-desc">Complete DH handshake, AES-IGE encryption, salt tracking, DC migration: all handled automatically.</div>
 
 </div>
 
@@ -238,7 +237,7 @@
 
 <div class="fc-title">Typed Update Stream</div>
 
-<div class="fc-desc">NewMessage, MessageEdited, CallbackQuery, InlineQuery, ChatAction, UserStatus — all strongly typed.</div>
+<div class="fc-desc">NewMessage, MessageEdited, CallbackQuery, InlineQuery, ChatAction, UserStatus: all strongly typed.</div>
 
 </div>
 
@@ -264,14 +263,13 @@
 
 <hr>
 <h2 id="crate-overview"><a class="header" href="#crate-overview">Crate overview</a></h2>
-<img src="images/arch-stack.svg" alt="layer crate architecture stack" width="100%" style="margin: 1rem 0 1.5rem 0;" />
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Crate</th><th>Description</th><th>Typical user</th></tr>
 </thead>
 <tbody>
-<tr><td><strong><code>layer-client</code></strong></td><td>High-level async client — auth, send, receive, bots</td><td>✅ You</td></tr>
+<tr><td><strong><code>layer-client</code></strong></td><td>High-level async client: auth, send, receive, bots</td><td>✅ You</td></tr>
 <tr><td><code>layer-tl-types</code></td><td>All Layer 224 constructors, functions, enums</td><td>Raw API calls</td></tr>
 <tr><td><code>layer-mtproto</code></td><td>MTProto session, DH, framing, transport</td><td>Library authors</td></tr>
 <tr><td><code>layer-crypto</code></td><td>AES-IGE, RSA, SHA, auth key derivation</td><td>Internal</td></tr>
@@ -286,28 +284,28 @@
 <hr>
 <h2 id="quick-install"><a class="header" href="#quick-install">Quick install</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.6"
+layer-client = "0.4.7"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p>Then head to <a href="./installation.html">Installation</a> for credentials setup, or jump straight to:</p>
 <ul>
-<li><a href="./quickstart-user.html">Quick Start — User Account</a> — login, send a message, receive updates</li>
-<li><a href="./quickstart-bot.html">Quick Start — Bot</a> — bot token login, commands, callbacks</li>
+<li><a href="./quickstart-user.html">Quick Start: User Account</a>: login, send a message, receive updates</li>
+<li><a href="./quickstart-bot.html">Quick Start: Bot</a>: bot token login, commands, callbacks</li>
 </ul>
 <hr>
-<h2 id="whats-new-in-v046"><a class="header" href="#whats-new-in-v046">What’s new in v0.4.6</a></h2>
+<h2 id="whats-new-in-v047"><a class="header" href="#whats-new-in-v047">What’s new in v0.4.7</a></h2>
 <ul>
-<li><strong><code>StringSessionBackend</code></strong> — portable base64 sessions, no file required</li>
-<li><strong><code>LibSqlBackend</code></strong> — libsql/Turso remote database sessions</li>
-<li><strong><code>Update::ChatAction</code></strong> and <strong><code>Update::UserStatus</code></strong> — new typed update variants</li>
-<li><strong><code>sync_update_state()</code></strong> — force immediate pts/seq reconciliation</li>
+<li><strong><code>StringSessionBackend</code></strong>: portable base64 sessions, no file required</li>
+<li><strong><code>LibSqlBackend</code></strong>: libsql/Turso remote database sessions</li>
+<li><strong><code>Update::ChatAction</code></strong> and <strong><code>Update::UserStatus</code></strong>: new typed update variants</li>
+<li><strong><code>sync_update_state()</code></strong>: force immediate pts/seq reconciliation</li>
 <li>7 bug fixes (pagination, memory leaks, chunk alignment, and more)</li>
 </ul>
 <p>See the full <a href="https://github.com/ankit-chaubey/layer/blob/main/CHANGELOG.md">CHANGELOG</a>.</p>
 <hr>
 <h2 id="acknowledgements"><a class="header" href="#acknowledgements">Acknowledgements</a></h2>
 <ul>
-<li><a href="https://codeberg.org/Lonami"><strong>Lonami</strong></a> for <a href="https://codeberg.org/Lonami/grammers"><strong>grammers</strong></a> — the architecture, SRP math, and session design are deeply inspired by this fantastic library.</li>
+<li><a href="https://codeberg.org/Lonami"><strong>Lonami</strong></a> for <a href="https://codeberg.org/Lonami/grammers"><strong>grammers</strong></a>: the architecture, SRP math, and session design are deeply inspired by this fantastic library.</li>
 <li><a href="https://core.telegram.org/mtproto"><strong>Telegram</strong></a> for the detailed MTProto specification.</li>
 <li>The Rust async ecosystem: <code>tokio</code>, <code>flate2</code>, <code>getrandom</code>, <code>sha2</code>, and friends.</li>
 </ul>

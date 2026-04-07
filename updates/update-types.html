@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Update Types - layer — Async Telegram MTProto in Rust</title>
+        <title>Update Types - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,31 +182,31 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="update-types"><a class="header" href="#update-types">Update Types</a></h1>
-<p><code>stream.next().await</code> yields <code>Option&lt;Update&gt;</code>. <code>Update</code> is <code>#[non_exhaustive]</code> — always include <code>_ =&gt; {}</code>.</p>
+<p><code>stream.next().await</code> yields <code>Option&lt;Update&gt;</code>. <code>Update</code> is <code>#[non_exhaustive]</code>: always include <code>_ =&gt; {}</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::update::Update;
 
 while let Some(update) = stream.next().await {
     match update {
-        // ── Messages ─────────────────────────────────────────────────
+        // Messages
         Update::NewMessage(msg)     =&gt; { /* IncomingMessage */ }
         Update::MessageEdited(msg)  =&gt; { /* IncomingMessage */ }
         Update::MessageDeleted(del) =&gt; { /* MessageDeletion */ }
 
-        // ── Bot interactions ─────────────────────────────────────────
+        // Bot interactions
         Update::CallbackQuery(cb)   =&gt; { /* CallbackQuery */ }
         Update::InlineQuery(iq)     =&gt; { /* InlineQuery */ }
         Update::InlineSend(is)      =&gt; { /* InlineSend */ }
 
-        // ── Presence ─────────────────────────────────────────────────
+        // Presence
         Update::UserTyping(action)  =&gt; { /* ChatActionUpdate */ }
         Update::UserStatus(status)  =&gt; { /* UserStatusUpdate */ }
 
-        // ── Raw passthrough ──────────────────────────────────────────
+        // Raw passthrough
         Update::Raw(raw)            =&gt; { /* RawUpdate */ }
 
-        _ =&gt; {}  // required — Update is #[non_exhaustive]
+        _ =&gt; {}  // required: Update is #[non_exhaustive]
     }
 }
 <span class="boring">}</span></code></pre>
@@ -247,8 +247,8 @@ cb.answer_alert(&amp;client, text)
 </span><span class="boring">fn main() {
 </span>iq.query_id      // i64
 iq.user_id       // i64
-iq.query()       // &amp;str — the typed query
-iq.offset        // String — pagination offset
+iq.query()       // &amp;str: the typed query
+iq.offset        // String: pagination offset
 <span class="boring">}</span></code></pre>
 <p>Answer with <code>client.answer_inline_query(...)</code>. See <a href="./inline-mode.html">Inline Mode</a>.</p>
 <hr>
@@ -256,9 +256,9 @@ iq.offset        // String — pagination offset
 <p>Fires when a user picks a result from your bot’s inline mode.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>is.result_id     // String — which result was chosen
+</span>is.result_id     // String: which result was chosen
 is.user_id       // i64
-is.query         // String — original query
+is.query         // String: original query
 
 // Edit the message the inline result was sent as
 is.edit_message(&amp;client, updated_input_msg).await?;
@@ -268,7 +268,7 @@ is.edit_message(&amp;client, updated_input_msg).await?;
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::UserTyping(action) =&gt; {
-    action.peer      // tl::enums::Peer — the chat
+    action.peer      // tl::enums::Peer: the chat
     action.user_id   // Option&lt;i64&gt;
     action.action    // tl::enums::SendMessageAction
 }
@@ -289,7 +289,7 @@ is.edit_message(&amp;client, updated_input_msg).await?;
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Update::Raw(raw) =&gt; {
-    raw.update   // tl::enums::Update — the raw TL object
+    raw.update   // tl::enums::Update: the raw TL object
 }
 <span class="boring">}</span></code></pre>
 <hr>

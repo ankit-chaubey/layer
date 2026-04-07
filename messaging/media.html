@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Media &amp; Files - layer — Async Telegram MTProto in Rust</title>
+        <title>Media &amp; Files - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -186,12 +186,12 @@
 <h2 id="upload"><a class="header" href="#upload">Upload</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Upload from bytes — sequential
+</span>// Upload from bytes: sequential
 let uploaded: UploadedFile = client
     .upload_file("photo.jpg", &amp;bytes)
     .await?;
 
-// Upload from bytes — parallel chunks (faster for large files)
+// Upload from bytes: parallel chunks (faster for large files)
 let uploaded = client
     .upload_file_concurrent("video.mp4", &amp;bytes)
     .await?;
@@ -225,7 +225,7 @@ client.send_file(peer.clone(), uploaded, false).await?;
 // Send as album (multiple files in one message group)
 client.send_album(peer.clone(), vec![uploaded_a, uploaded_b]).await?;
 <span class="boring">}</span></code></pre>
-<h3 id="albumitem--per-item-control-in-albums"><a class="header" href="#albumitem--per-item-control-in-albums"><code>AlbumItem</code> — per-item control in albums</a></h3>
+<h3 id="albumitem-per-item-control-in-albums"><a class="header" href="#albumitem-per-item-control-in-albums"><code>AlbumItem</code>: per-item control in albums</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::media::AlbumItem;
@@ -255,10 +255,10 @@ client.send_album(peer.clone(), items).await?;
 <h2 id="download"><a class="header" href="#download">Download</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// To bytes — sequential
+</span>// To bytes: sequential
 let bytes: Vec&lt;u8&gt; = client.download_media(&amp;msg_media).await?;
 
-// To bytes — parallel chunks
+// To bytes: parallel chunks
 let bytes = client.download_media_concurrent(&amp;msg_media).await?;
 
 // Stream to file
@@ -267,7 +267,7 @@ client.download_media_to_file(&amp;msg_media, "output.jpg").await?;
 // Via Downloadable trait (Photo, Document, Sticker)
 let bytes = client.download(&amp;photo).await?;
 <span class="boring">}</span></code></pre>
-<h3 id="downloaditer--streaming-chunks"><a class="header" href="#downloaditer--streaming-chunks"><code>DownloadIter</code> — streaming chunks</a></h3>
+<h3 id="downloaditer-streaming-chunks"><a class="header" href="#downloaditer-streaming-chunks"><code>DownloadIter</code>: streaming chunks</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let location = msg.raw.download_location().unwrap();
@@ -302,9 +302,9 @@ let photo = msg.photo().unwrap();
 
 photo.id()                // i64
 photo.access_hash()       // i64
-photo.date()              // i32 — Unix timestamp
+photo.date()              // i32: Unix timestamp
 photo.has_stickers()      // bool
-photo.largest_thumb_type() // &amp;str — e.g. "y", "x", "s"
+photo.largest_thumb_type() // &amp;str: e.g. "y", "x", "s"
 
 let bytes = client.download(&amp;photo).await?;
 <span class="boring">}</span></code></pre>
@@ -333,9 +333,9 @@ doc.id()              // i64
 doc.access_hash()     // i64
 doc.date()            // i32
 doc.mime_type()       // &amp;str
-doc.size()            // i64 — bytes
+doc.size()            // i64: bytes
 doc.file_name()       // Option&lt;&amp;str&gt;
-doc.is_animated()     // bool — animated GIF or sticker
+doc.is_animated()     // bool: animated GIF or sticker
 
 let bytes = client.download(&amp;doc).await?;
 <span class="boring">}</span></code></pre>
@@ -359,9 +359,9 @@ let bytes = client.download(&amp;doc).await?;
 let sticker = Sticker::from_media(&amp;msg.raw).unwrap();
 
 sticker.id()          // i64
-sticker.mime_type()   // &amp;str — "image/webp" or "video/webm"
-sticker.emoji()       // Option&lt;&amp;str&gt; — associated emoji
-sticker.is_video()    // bool — animated video sticker
+sticker.mime_type()   // &amp;str: "image/webp" or "video/webm"
+sticker.emoji()       // Option&lt;&amp;str&gt;: associated emoji
+sticker.is_video()    // bool: animated video sticker
 
 let bytes = client.download(&amp;sticker).await?;
 <span class="boring">}</span></code></pre>

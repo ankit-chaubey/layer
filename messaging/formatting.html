@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Message Formatting - layer — Async Telegram MTProto in Rust</title>
+        <title>Message Formatting - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -182,7 +182,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="message-formatting"><a class="header" href="#message-formatting">Message Formatting</a></h1>
-<p>Telegram supports rich text formatting through <strong>message entities</strong> — positional markers that indicate bold, italic, code, links, and more.</p>
+<p>Telegram supports rich text formatting through <strong>message entities</strong>: positional markers that indicate bold, italic, code, links, and more.</p>
 <h2 id="using-parse_markdown"><a class="header" href="#using-parse_markdown">Using parse_markdown</a></h2>
 <p>The easiest way is <code>parse_markdown</code>, which converts a Markdown-like syntax into a <code>(String, Vec&lt;MessageEntity&gt;)</code> tuple:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -265,7 +265,7 @@ let msg = InputMessage::text(text).entities(entities);
 <tr><td><code>BankCard</code></td><td>Bank card number</td></tr>
 <tr><td><code>BlockquoteCollapsible</code></td><td>Collapsible quote block</td></tr>
 <tr><td><code>CustomEmoji</code></td><td>Custom emoji by document ID</td></tr>
-<tr><td><code>FormattedDate</code></td><td>✨ New in Layer 223 — displays a date in local time</td></tr>
+<tr><td><code>FormattedDate</code></td><td>✨ New in Layer 223: displays a date in local time</td></tr>
 </tbody>
 </table>
 </div>
@@ -287,7 +287,7 @@ let msg = InputMessage::text(text).entities(entities);
     user_id: 123456789,
 })
 <span class="boring">}</span></code></pre>
-<h2 id="formatteddate--layer-224"><a class="header" href="#formatteddate--layer-224">FormattedDate — Layer 224</a></h2>
+<h2 id="formatteddate-layer-224"><a class="header" href="#formatteddate-layer-224">FormattedDate: Layer 224</a></h2>
 <p>A new entity that automatically formats a unix timestamp into the user’s local timezone and locale:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Error Types - layer — Async Telegram MTProto in Rust</title>
+        <title>Error Types - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-aabd3487.js"></script>
+        <script src="toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -243,10 +243,10 @@ match client.send_message("@peer", "Hello").await {
 </span><span class="boring">fn main() {
 </span>let e: RpcError = /* ... */;
 
-e.code               // i32 — HTTP-like error code (400, 401, 403, 420, etc.)
-e.message            // String — e.g. "FLOOD_WAIT_30"
-e.is("FLOOD_WAIT")   // bool — prefix/substring match
-e.flood_wait_seconds() // Option&lt;u64&gt; — parses the number from FLOOD_WAIT_N
+e.code               // i32: HTTP-like error code (400, 401, 403, 420, etc.)
+e.message            // String: e.g. "FLOOD_WAIT_30"
+e.is("FLOOD_WAIT")   // bool: prefix/substring match
+e.flood_wait_seconds() // Option&lt;u64&gt;: parses the number from FLOOD_WAIT_N
 <span class="boring">}</span></code></pre>
 <h3 id="common-error-codes"><a class="header" href="#common-error-codes">Common error codes</a></h3>
 <div class="table-wrapper">
@@ -255,11 +255,11 @@ e.flood_wait_seconds() // Option&lt;u64&gt; — parses the number from FLOOD_WAI
 <tr><th>Code</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td><code>400</code></td><td>Bad request — wrong parameters</td></tr>
-<tr><td><code>401</code></td><td>Unauthorized — not logged in</td></tr>
-<tr><td><code>403</code></td><td>Forbidden — no permission</td></tr>
+<tr><td><code>400</code></td><td>Bad request: wrong parameters</td></tr>
+<tr><td><code>401</code></td><td>Unauthorized: not logged in</td></tr>
+<tr><td><code>403</code></td><td>Forbidden: no permission</td></tr>
 <tr><td><code>404</code></td><td>Not found</td></tr>
-<tr><td><code>420</code></td><td>FLOOD_WAIT — too many requests</td></tr>
+<tr><td><code>420</code></td><td>FLOOD_WAIT: too many requests</td></tr>
 <tr><td><code>500</code></td><td>Internal server error</td></tr>
 </tbody>
 </table>
@@ -294,7 +294,7 @@ match client.sign_in(&amp;token, &amp;code).await {
     Ok(name) =&gt; println!("Welcome, {name}!"),
 
     Err(SignInError::PasswordRequired(password_token)) =&gt; {
-        // 2FA is enabled — provide the password
+        // 2FA is enabled: provide the password
         println!("2FA hint: {:?}", password_token.hint());
         client.check_password(*password_token, "my_password").await?;
     }
@@ -307,7 +307,7 @@ match client.sign_in(&amp;token, &amp;code).await {
 <h3 id="passwordtoken-methods"><a class="header" href="#passwordtoken-methods"><code>PasswordToken</code> methods</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>password_token.hint()   // Option&lt;&amp;str&gt; — 2FA password hint
+</span>password_token.hint()   // Option&lt;&amp;str&gt;: 2FA password hint
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="buildererror"><a class="header" href="#buildererror"><code>BuilderError</code></a></h2>
@@ -325,13 +325,13 @@ match Client::builder().api_id(0).api_hash("").connect().await {
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="flood_wait-auto-retry"><a class="header" href="#flood_wait-auto-retry">FLOOD_WAIT auto-retry</a></h2>
-<p><code>FLOOD_WAIT</code> errors are automatically retried by the default <code>AutoSleep</code> policy — you don’t need to handle them unless you want custom behaviour.</p>
+<p><code>FLOOD_WAIT</code> errors are automatically retried by the default <code>AutoSleep</code> policy: you don’t need to handle them unless you want custom behaviour.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use layer_client::retry::{AutoSleep, NoRetries};
 use std::sync::Arc;
 
-// Default — retries FLOOD_WAIT automatically
+// Default: retries FLOOD_WAIT automatically
 Client::builder().retry_policy(Arc::new(AutoSleep::default()))
 
 // Disable all retries

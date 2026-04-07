@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Session Persistence - layer — Async Telegram MTProto in Rust</title>
+        <title>Session Persistence - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -199,7 +199,7 @@ let (client, _shutdown) = Client::builder()
 </span><span class="boring">fn main() {
 </span>client.save_session().await?;
 <span class="boring">}</span></code></pre>
-<p>The file is created at <code>session_path</code> and reloaded automatically on the next <code>Client::connect</code>. <strong>Keep it in <code>.gitignore</code> — it grants full API access to your account.</strong></p>
+<p>The file is created at <code>session_path</code> and reloaded automatically on the next <code>Client::connect</code>. <strong>Keep it in <code>.gitignore</code>: it grants full API access to your account.</strong></p>
 <hr>
 <h2 id="in-memory-ephemeral"><a class="header" href="#in-memory-ephemeral">In-memory (ephemeral)</a></h2>
 <p>Nothing written to disk. Useful for tests or short-lived scripts:</p>
@@ -217,7 +217,7 @@ let (client, _shutdown) = Client::builder()
 <p>Login is required on every run since nothing persists.</p>
 <hr>
 <h2 id="sqlite-robust-long-running-servers"><a class="header" href="#sqlite-robust-long-running-servers">SQLite (robust, long-running servers)</a></h2>
-<pre><code class="language-toml">layer-client = { version = "0.4.6", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.7", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -227,7 +227,7 @@ let (client, _shutdown) = Client::builder()
 <span class="boring">}</span></code></pre>
 <p>SQLite is more resilient against crash-corruption than the binary format. Ideal for production bots.</p>
 <hr>
-<h2 id="string-session--new-in-v046"><a class="header" href="#string-session--new-in-v046">String session — New in v0.4.6</a></h2>
+<h2 id="string-session-new-in-v047"><a class="header" href="#string-session-new-in-v047">String session: New in v0.4.7</a></h2>
 <p>Encode the entire session as a portable base64 string. Store it in an env var, a DB column, or CI secrets:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {

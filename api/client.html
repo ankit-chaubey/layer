@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Client Methods - layer — Async Telegram MTProto in Rust</title>
+        <title>Client Methods - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -181,7 +181,7 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="client-methods--full-reference"><a class="header" href="#client-methods--full-reference">Client Methods — Full Reference</a></h1>
+                        <h1 id="client-methods-full-reference"><a class="header" href="#client-methods-full-reference">Client Methods: Full Reference</a></h1>
 <p>All methods on <code>Client</code>. Every method is <code>async</code> and returns <code>Result&lt;T, InvocationError&gt;</code> unless noted.</p>
 <hr>
 <h2 id="connection--session"><a class="header" href="#connection--session">Connection &amp; Session</a></h2>
@@ -200,7 +200,7 @@ Opens a TCP connection to Telegram, performs the full 3-step DH key exchange, an
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge">sync</span>
-<span class="api-card-sig">Client::with_string_session(session: &amp;str, api_id: i32, api_hash: &amp;str) → Result&lt;(Client, ShutdownToken), InvocationError&gt; <span class="api-badge-new">New 0.4.6</span></span>
+<span class="api-card-sig">Client::with_string_session(session: &amp;str, api_id: i32, api_hash: &amp;str) → Result&lt;(Client, ShutdownToken), InvocationError&gt; <span class="api-badge-new">New 0.4.7</span></span>
 </div>
 
 <div class="api-card-body">
@@ -236,7 +236,7 @@ Writes the current session (auth key + DC info + peer cache) to the backend. Cal
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge api-badge-async">async</span>
-<span class="api-card-sig">client.export_session_string() → Result&lt;String, InvocationError&gt; <span class="api-badge-new">New 0.4.6</span></span>
+<span class="api-card-sig">client.export_session_string() → Result&lt;String, InvocationError&gt; <span class="api-badge-new">New 0.4.7</span></span>
 </div>
 
 <div class="api-card-body">
@@ -275,7 +275,7 @@ Immediately closes the TCP connection and stops the reader task without waiting 
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge api-badge-async">async</span>
-<span class="api-card-sig">client.sync_update_state() <span class="api-badge-new">New 0.4.6</span></span>
+<span class="api-card-sig">client.sync_update_state() <span class="api-badge-new">New 0.4.7</span></span>
 </div>
 
 <div class="api-card-body">
@@ -326,7 +326,7 @@ Submits the verification code. Returns the user's full name on success, or <code
 <span class="api-card-sig">client.check_password(token: PasswordToken, password: &amp;str) → Result&lt;(), InvocationError&gt;</span>
 </div>
 
-<div class="api-card-body">Completes the SRP 2FA verification. The password is never transmitted in plain text — only a zero-knowledge cryptographic proof is sent.</div>
+<div class="api-card-body">Completes the SRP 2FA verification. The password is never transmitted in plain text: only a zero-knowledge cryptographic proof is sent.</div>
 
 </div>
 
@@ -359,7 +359,7 @@ Submits the verification code. Returns the user's full name on success, or <code
 </div>
 
 <div class="api-card-body">
-Returns an <code>UpdateStream</code> — an async iterator that yields typed <code>Update</code> values. Call <code>.next().await</code> in a loop to process events. The stream runs until the connection is closed.
+Returns an <code>UpdateStream</code>: an async iterator that yields typed <code>Update</code> values. Call <code>.next().await</code> in a loop to process events. The stream runs until the connection is closed.
 <pre><code>let mut updates = client.stream_updates();
 while let Some(update) = updates.next().await {
     match update {
@@ -413,7 +413,7 @@ Send a plain-text message. <code>peer</code> can be <code>"me"</code>, <code>"@u
 </div>
 
 <div class="api-card-body">
-Full-featured send with the <a href="./input-message.html"><code>InputMessage</code></a> builder — supports markdown entities, reply-to, inline keyboard, scheduled date, silent flag, and more.
+Full-featured send with the <a href="./input-message.html"><code>InputMessage</code></a> builder: supports markdown entities, reply-to, inline keyboard, scheduled date, silent flag, and more.
 </div>
 
 </div>
@@ -693,7 +693,7 @@ Send a one-shot typing / uploading / recording indicator. Expires after ~5 secon
 <span class="api-card-sig">client.iter_participants(peer: Peer) → ParticipantIter</span>
 </div>
 
-<div class="api-card-body">Lazy async iterator that pages through all members, including beyond the 200-member limit. Fixed in v0.4.6 to paginate correctly for large channels.</div>
+<div class="api-card-body">Lazy async iterator that pages through all members, including beyond the 200-member limit. Fixed in v0.4.7 to paginate correctly for large channels.</div>
 
 </div>
 
@@ -797,7 +797,7 @@ Send a one-shot typing / uploading / recording indicator. Expires after ~5 secon
 <span class="api-card-sig">client.answer_inline_query(query_id: i64, results: Vec&lt;InputBotInlineResult&gt;, cache_time: i32, is_personal: bool, next_offset: Option&lt;&amp;str&gt;) → Result&lt;(), InvocationError&gt;</span>
 </div>
 
-<div class="api-card-body">Respond to an inline query with a list of results. <code>cache_time</code> in seconds. Empty result list now handled correctly (fixed in v0.4.6).</div>
+<div class="api-card-body">Respond to an inline query with a list of results. <code>cache_time</code> in seconds. Empty result list now handled correctly (fixed in v0.4.7).</div>
 
 </div>
 

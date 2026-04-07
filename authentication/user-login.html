@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>User Login - layer — Async Telegram MTProto in Rust</title>
+        <title>User Login - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "../searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-aabd3487.js"></script>
+        <script src="../toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -183,13 +183,13 @@
                     <main>
                         <h1 id="user-login"><a class="header" href="#user-login">User Login</a></h1>
 <p>User login happens in three steps: request code → submit code → (optional) submit 2FA password.</p>
-<h2 id="step-1--request-login-code"><a class="header" href="#step-1--request-login-code">Step 1 — Request login code</a></h2>
+<h2 id="step-1-request-login-code"><a class="header" href="#step-1-request-login-code">Step 1: Request login code</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let token = client.request_login_code("+1234567890").await?;
 <span class="boring">}</span></code></pre>
 <p>This sends a verification code to the phone number via SMS or Telegram app notification. The returned <code>LoginToken</code> must be passed to the next step.</p>
-<h2 id="step-2--submit-the-code"><a class="header" href="#step-2--submit-the-code">Step 2 — Submit the code</a></h2>
+<h2 id="step-2-submit-the-code"><a class="header" href="#step-2-submit-the-code">Step 2: Submit the code</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>match client.sign_in(&amp;token, "12345").await {
@@ -197,23 +197,23 @@
         println!("Signed in as {name}");
     }
     Err(SignInError::PasswordRequired(password_token)) =&gt; {
-        // 2FA is enabled — go to step 3
+        // 2FA is enabled: go to step 3
     }
     Err(e) =&gt; return Err(e.into()),
 }
 <span class="boring">}</span></code></pre>
 <p><code>sign_in</code> returns:</p>
 <ul>
-<li><code>Ok(String)</code> — the user’s full name, login complete</li>
-<li><code>Err(SignInError::PasswordRequired(PasswordToken))</code> — 2FA is enabled, need password</li>
-<li><code>Err(e)</code> — wrong code, expired code, or network error</li>
+<li><code>Ok(String)</code>: the user’s full name, login complete</li>
+<li><code>Err(SignInError::PasswordRequired(PasswordToken))</code>: 2FA is enabled, need password</li>
+<li><code>Err(e)</code>: wrong code, expired code, or network error</li>
 </ul>
-<h2 id="step-3--2fa-password-if-required"><a class="header" href="#step-3--2fa-password-if-required">Step 3 — 2FA password (if required)</a></h2>
+<h2 id="step-3-2fa-password-if-required"><a class="header" href="#step-3-2fa-password-if-required">Step 3: 2FA password (if required)</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>client.check_password(password_token, "my_2fa_password").await?;
 <span class="boring">}</span></code></pre>
-<p>This performs the full SRP (Secure Remote Password) exchange. The password is never sent to Telegram in plain text — only a cryptographic proof is transmitted.</p>
+<p>This performs the full SRP (Secure Remote Password) exchange. The password is never sent to Telegram in plain text: only a cryptographic proof is transmitted.</p>
 <h2 id="save-the-session"><a class="header" href="#save-the-session">Save the session</a></h2>
 <p>After a successful login, always save the session so you don’t need to log in again:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -271,12 +271,11 @@ fn read_line() -&gt; String {
 <hr>
 <h2 id="how-the-dh-auth-key-exchange-works"><a class="header" href="#how-the-dh-auth-key-exchange-works">How the DH auth key exchange works</a></h2>
 <p>Under the hood, every new session establishes a shared auth key via a 3-step Diffie-Hellman exchange before any login code is ever sent. This key is what secures the entire session.</p>
-<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 <ol>
-<li>Client sends <code>req_pq_multi</code> — server responds with a <code>pq</code> product</li>
+<li>Client sends <code>req_pq_multi</code>: server responds with a <code>pq</code> product</li>
 <li>Client factorises <code>pq</code> into primes (Pollard’s rho), encrypts its DH parameters with the server’s RSA key</li>
-<li>Server responds with <code>server_DH_params_ok</code> — client completes <code>g^ab mod p</code></li>
-<li>Both sides now share a 2048-bit auth key — login code is sent encrypted using this key</li>
+<li>Server responds with <code>server_DH_params_ok</code>: client completes <code>g^ab mod p</code></li>
+<li>Both sides now share a 2048-bit auth key: login code is sent encrypted using this key</li>
 </ol>
 <p>See <a href="../crates.html#layer-mtproto">Crate Architecture</a> for more on the MTProto internals.</p>
 

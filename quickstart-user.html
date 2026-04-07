@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Quick Start — User Account - layer — Async Telegram MTProto in Rust</title>
+        <title>Quick Start: User Account - layer: Async Telegram MTProto in Rust</title>
 
 
         <!-- Custom HTML head -->
@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-799ad97c.js";
+            window.path_to_searchindex_js = "searchindex-acf26dd3.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-aabd3487.js"></script>
+        <script src="toc-51a31796.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">layer — Async Telegram MTProto in Rust</h1>
+                    <h1 class="menu-title">layer: Async Telegram MTProto in Rust</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -181,7 +181,7 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="quick-start--user-account"><a class="header" href="#quick-start--user-account">Quick Start — User Account</a></h1>
+                        <h1 id="quick-start-user-account"><a class="header" href="#quick-start-user-account">Quick Start: User Account</a></h1>
 <p>A complete working example: connect, log in, send a message to Saved Messages, and listen for incoming messages.</p>
 <pre class="playground"><code class="language-rust">use layer_client::{Client, Config, SignInError};
 use layer_client::update::Update;
@@ -196,7 +196,7 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
         .connect()
         .await?;
 
-    // ── Login (skipped if session file already has valid auth) ──
+    // Login (skipped if session file already has valid auth)
     if !client.is_authorized().await? {
         print!("Phone number (+1234567890): ");
         io::stdout().flush()?;
@@ -222,11 +222,11 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
         client.save_session().await?;
     }
 
-    // ── Send a message to yourself ──────────────────────────────
+    // Send a message to yourself
     client.send_to_self("Hello from layer! 👋").await?;
     println!("Message sent to Saved Messages");
 
-    // ── Stream incoming updates ─────────────────────────────────
+    // Stream incoming updates
     println!("Listening for messages… (Ctrl+C to quit)");
     let mut updates = client.stream_updates();
 
@@ -272,7 +272,7 @@ fn read_line() -&gt; String {
 <tr><td>Check auth</td><td><code>is_authorized</code></td><td>Returns <code>true</code> if session has a valid logged-in user</td></tr>
 <tr><td>Request code</td><td><code>request_login_code</code></td><td>Sends SMS/app code to the phone</td></tr>
 <tr><td>Sign in</td><td><code>sign_in</code></td><td>Submits the code. Returns <code>PasswordRequired</code> if 2FA is on</td></tr>
-<tr><td>2FA</td><td><code>check_password</code></td><td>Performs SRP exchange — password never sent in plain text</td></tr>
+<tr><td>2FA</td><td><code>check_password</code></td><td>Performs SRP exchange: password never sent in plain text</td></tr>
 <tr><td>Save</td><td><code>save_session</code></td><td>Writes auth key + DC info to disk</td></tr>
 <tr><td>Stream</td><td><code>stream_updates</code></td><td>Returns an <code>UpdateStream</code> async iterator</td></tr>
 </tbody>
@@ -281,9 +281,9 @@ fn read_line() -&gt; String {
 <hr>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ul>
-<li><a href="./authentication/user-login.html">User Login — full guide</a></li>
+<li><a href="./authentication/user-login.html">User Login: full guide</a></li>
 <li><a href="./authentication/2fa.html">Two-Factor Auth (2FA)</a></li>
-<li><a href="./authentication/session-backends.html">Session Backends</a> — string sessions, SQLite, Turso</li>
+<li><a href="./authentication/session-backends.html">Session Backends</a>: string sessions, SQLite, Turso</li>
 <li><a href="./updates/update-types.html">Update Types</a></li>
 </ul>
 
