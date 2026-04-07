@@ -1,6 +1,4 @@
-//! Unit tests for PtsState gap detection logic.
-//!
-//! Fix #8: grammers has 631 lines of gap-logic tests; Layer had zero.
+//! Unit tests for PtsState gap detection and recovery logic.
 //! These tests use a pure synchronous PtsState (no async, no mocks needed)
 //! so they run instantly without any network or tokio overhead.
 
@@ -22,7 +20,7 @@ mod tests {
         }
     }
 
-    // ── Global pts ────────────────────────────────────────────────────────
+    // Global pts
 
     #[test]
     fn global_in_order() {
@@ -69,7 +67,7 @@ mod tests {
         assert_eq!(state.check_pts(5, 5), PtsCheckResult::Ok);
     }
 
-    // ── QTS ───────────────────────────────────────────────────────────────
+    // QTS
 
     #[test]
     fn qts_in_order() {
@@ -98,7 +96,7 @@ mod tests {
         assert_eq!(state.check_qts(9, 1), PtsCheckResult::Duplicate);
     }
 
-    // ── SEQ ───────────────────────────────────────────────────────────────
+    // SEQ
 
     #[test]
     fn seq_uninitialised_accepts_any() {
@@ -138,7 +136,7 @@ mod tests {
         assert_eq!(state.check_seq(5, 4), PtsCheckResult::Duplicate);
     }
 
-    // ── Per-channel pts ───────────────────────────────────────────────────
+    // Per-channel pts
 
     #[test]
     fn channel_unseen_accepts_any() {
@@ -193,11 +191,11 @@ mod tests {
         let mut state = fresh(0);
         state.channel_pts.insert(7, 80);
         state.advance_channel(7, 90);
-        state.advance_channel(7, 85); // regress attempt — must not lower
+        state.advance_channel(7, 85); // regress attempt: must not lower
         assert_eq!(state.channel_pts[&7], 90);
     }
 
-    // ── getting_diff_for guard (Fix #4) ───────────────────────────────────
+    // getting_diff_for guard ()
 
     #[test]
     fn getting_diff_for_starts_empty() {
@@ -226,7 +224,7 @@ mod tests {
         assert!(state.getting_diff_for.contains(&2)); // unaffected
     }
 
-    // ── Deadline ──────────────────────────────────────────────────────────
+    // Deadline
 
     #[test]
     fn deadline_not_exceeded_when_uninitialised() {

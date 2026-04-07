@@ -1,5 +1,4 @@
 
-<img src="images/layer-logo.svg" alt="layer" height="48" style="margin-bottom:1rem;" />
 
 # Installation
 
@@ -7,7 +6,7 @@
 
 ```toml
 [dependencies]
-layer-client = "0.4.6"
+layer-client = "0.4.7"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -30,11 +29,11 @@ Every Telegram API call requires an `api_id` (integer) and `api_hash` (hex strin
 > **SECURITY:** Never hardcode credentials in source code. Use environment variables or a secrets file that is in `.gitignore`.
 
 ```rust
-// Good — from environment
+// Good: from environment
 let api_id:   i32    = std::env::var("TG_API_ID")?.parse()?;
 let api_hash: String = std::env::var("TG_API_HASH")?;
 
-// Bad — hardcoded in source
+// Bad: hardcoded in source
 let api_id   = 12345;
 let api_hash = "deadbeef..."; // ← never do this in a public repo
 ```
@@ -58,18 +57,18 @@ For bots, additionally get a **bot token** from [@BotFather](https://t.me/BotFat
 ### SQLite session storage
 
 ```toml
-layer-client = { version = "0.4.6", features = ["sqlite-session"] }
+layer-client = { version = "0.4.7", features = ["sqlite-session"] }
 ```
 
 Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.
 
-### LibSQL / Turso session storage — New in v0.4.6
+### LibSQL / Turso session storage: New in v0.4.7
 
 ```toml
-layer-client = { version = "0.4.6", features = ["libsql-session"] }
+layer-client = { version = "0.4.7", features = ["libsql-session"] }
 ```
 
-Backed by [libsql](https://github.com/tursodatabase/libsql) — supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.
+Backed by [libsql](https://github.com/tursodatabase/libsql): supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.
 
 ```rust
 use layer_client::session_backend::LibSqlBackend;
@@ -84,7 +83,7 @@ let backend = LibSqlBackend::open_remote(
 ).await?;
 ```
 
-### String session (portable, no extra deps) — New in v0.4.6
+### String session (portable, no extra deps): New in v0.4.7
 
 No feature flag needed. Encode a session as a base64 string and restore it anywhere:
 
@@ -104,10 +103,10 @@ See [Session Backends](./authentication/session-backends.md) for the full guide.
 
 ```toml
 # Built-in hand-rolled HTML parser (no extra deps)
-layer-client = { version = "0.4.6", features = ["html"] }
+layer-client = { version = "0.4.7", features = ["html"] }
 
 # OR: spec-compliant html5ever tokenizer (overrides built-in)
-layer-client = { version = "0.4.6", features = ["html5ever"] }
+layer-client = { version = "0.4.7", features = ["html5ever"] }
 ```
 
 | Feature | Deps added | Notes |
@@ -120,7 +119,7 @@ layer-client = { version = "0.4.6", features = ["html5ever"] }
 If you use `layer-tl-types` directly for raw API access:
 
 ```toml
-layer-tl-types = { version = "0.4.6", features = [
+layer-tl-types = { version = "0.4.7", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)

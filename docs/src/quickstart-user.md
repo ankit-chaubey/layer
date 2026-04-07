@@ -1,4 +1,4 @@
-# Quick Start — User Account
+# Quick Start: User Account
 
 A complete working example: connect, log in, send a message to Saved Messages, and listen for incoming messages.
 
@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect()
         .await?;
 
-    // ── Login (skipped if session file already has valid auth) ──
+    // Login (skipped if session file already has valid auth)
     if !client.is_authorized().await? {
         print!("Phone number (+1234567890): ");
         io::stdout().flush()?;
@@ -42,11 +42,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client.save_session().await?;
     }
 
-    // ── Send a message to yourself ──────────────────────────────
+    // Send a message to yourself
     client.send_to_self("Hello from layer! 👋").await?;
     println!("Message sent to Saved Messages");
 
-    // ── Stream incoming updates ─────────────────────────────────
+    // Stream incoming updates
     println!("Listening for messages… (Ctrl+C to quit)");
     let mut updates = client.stream_updates();
 
@@ -97,7 +97,7 @@ On first run you'll be prompted for your phone number and the code Telegram send
 | Check auth | `is_authorized` | Returns `true` if session has a valid logged-in user |
 | Request code | `request_login_code` | Sends SMS/app code to the phone |
 | Sign in | `sign_in` | Submits the code. Returns `PasswordRequired` if 2FA is on |
-| 2FA | `check_password` | Performs SRP exchange — password never sent in plain text |
+| 2FA | `check_password` | Performs SRP exchange: password never sent in plain text |
 | Save | `save_session` | Writes auth key + DC info to disk |
 | Stream | `stream_updates` | Returns an `UpdateStream` async iterator |
 
@@ -105,7 +105,7 @@ On first run you'll be prompted for your phone number and the code Telegram send
 
 ## Next steps
 
-- [User Login — full guide](./authentication/user-login.md)
+- [User Login: full guide](./authentication/user-login.md)
 - [Two-Factor Auth (2FA)](./authentication/2fa.md)
-- [Session Backends](./authentication/session-backends.md) — string sessions, SQLite, Turso
+- [Session Backends](./authentication/session-backends.md): string sessions, SQLite, Turso
 - [Update Types](./updates/update-types.md)

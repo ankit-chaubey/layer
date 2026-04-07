@@ -10,14 +10,14 @@
 //! `<tg-emoji emoji-id="id">text</tg-emoji>`
 //!
 //! # Feature gates
-//! * `html`      — enables `parse_html` / `generate_html` via the built-in hand-rolled
-//!   parser (zero extra deps).
-//! * `html5ever` — replaces `parse_html` with a spec-compliant html5ever tokenizer.
-//!   `generate_html` is always the same hand-rolled generator.
+//! * `html`     : enables `parse_html` / `generate_html` via the built-in hand-rolled
+//! parser (zero extra deps).
+//! * `html5ever`: replaces `parse_html` with a spec-compliant html5ever tokenizer.
+//! `generate_html` is always the same hand-rolled generator.
 
 use layer_tl_types as tl;
 
-// ─── Markdown ─────────────────────────────────────────────────────────────────
+// Markdown
 
 /// Parse Telegram-flavoured markdown into (plain_text, entities).
 pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
@@ -38,7 +38,7 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
     }
 
     while i < n {
-        // ── code block ```lang\n...``` ──────────────────────────────────────
+        // code block ```lang\n...```
         if i + 2 < n && chars[i] == '`' && chars[i + 1] == '`' && chars[i + 2] == '`' {
             let start = i + 3;
             let mut j = start;
@@ -70,7 +70,7 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
             }
         }
 
-        // ── inline code ─────────────────────────────────────────────────────
+        // inline code
         if chars[i] == '`' {
             let start = i + 1;
             let mut j = start;
@@ -95,7 +95,7 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
             }
         }
 
-        // ── [text](url) ─────────────────────────────────────────────────────
+        // [text](url)
         if chars[i] == '[' {
             let text_start = i + 1;
             let mut j = text_start;
@@ -152,7 +152,7 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
             }
         }
 
-        // ── two-char delimiters ──────────────────────────────────────────────
+        // two-char delimiters
         let two: Option<(&str, MarkdownTag)> = if i + 1 < n {
             match [chars[i], chars[i + 1]] {
                 ['*', '*'] => Some(("**", MarkdownTag::Bold)),
@@ -269,7 +269,7 @@ pub fn generate_markdown(text: &str, entities: &[tl::enums::MessageEntity]) -> S
     result
 }
 
-// ─── HTML parser — built-in hand-rolled (no extra deps) ──────────────────────
+// HTML parser: built-in hand-rolled (no extra deps)
 // Compiled when `html5ever` feature is NOT active.
 
 /// Parse a Telegram-compatible HTML string into (plain_text, entities).
@@ -519,7 +519,7 @@ impl HtmlTag {
     }
 }
 
-// ─── HTML parser — html5ever backend ─────────────────────────────────────────
+// HTML parser: html5ever backend
 // Compiled when `html5ever` feature IS active; overrides the built-in parser.
 
 /// Parse a Telegram-compatible HTML string into (plain_text, entities).
@@ -573,7 +573,7 @@ pub fn parse_html(html: &str) -> (String, Vec<tl::enums::MessageEntity>) {
             }
 
             match token {
-                // ── Start tags ───────────────────────────────────────────────
+                // Start tags
                 Token::TagToken(Tag {
                     kind: TagKind::StartTag,
                     name,
@@ -704,7 +704,7 @@ pub fn parse_html(html: &str) -> (String, Vec<tl::enums::MessageEntity>) {
                     }
                 }
 
-                // ── End tags ─────────────────────────────────────────────────
+                // End tags
                 Token::TagToken(Tag {
                     kind: TagKind::EndTag,
                     name,
@@ -738,7 +738,7 @@ pub fn parse_html(html: &str) -> (String, Vec<tl::enums::MessageEntity>) {
                     }
                 }
 
-                // ── Text content ─────────────────────────────────────────────
+                // Text content
                 Token::CharacterTokens(s) => {
                     let s_str: &str = s.as_ref();
                     offset += s_str.encode_utf16().count() as i32;
@@ -773,7 +773,7 @@ pub fn parse_html(html: &str) -> (String, Vec<tl::enums::MessageEntity>) {
     (text.take(), entities.take())
 }
 
-// ─── HTML generator (always available, no html5ever dependency) ───────────────
+// HTML generator (always available, no html5ever dependency)
 
 /// Generate Telegram-compatible HTML from plain text + entities.
 pub fn generate_html(text: &str, entities: &[tl::enums::MessageEntity]) -> String {
@@ -869,7 +869,7 @@ fn escape_html(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// Tests
 
 #[cfg(test)]
 mod tests {

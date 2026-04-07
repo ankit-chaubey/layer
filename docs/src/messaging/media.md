@@ -5,12 +5,12 @@
 ## Upload
 
 ```rust
-// Upload from bytes — sequential
+// Upload from bytes: sequential
 let uploaded: UploadedFile = client
     .upload_file("photo.jpg", &bytes)
     .await?;
 
-// Upload from bytes — parallel chunks (faster for large files)
+// Upload from bytes: parallel chunks (faster for large files)
 let uploaded = client
     .upload_file_concurrent("video.mp4", &bytes)
     .await?;
@@ -42,7 +42,7 @@ client.send_file(peer.clone(), uploaded, false).await?;
 client.send_album(peer.clone(), vec![uploaded_a, uploaded_b]).await?;
 ```
 
-### `AlbumItem` — per-item control in albums
+### `AlbumItem`: per-item control in albums
 
 ```rust
 use layer_client::media::AlbumItem;
@@ -68,10 +68,10 @@ client.send_album(peer.clone(), items).await?;
 ## Download
 
 ```rust
-// To bytes — sequential
+// To bytes: sequential
 let bytes: Vec<u8> = client.download_media(&msg_media).await?;
 
-// To bytes — parallel chunks
+// To bytes: parallel chunks
 let bytes = client.download_media_concurrent(&msg_media).await?;
 
 // Stream to file
@@ -81,7 +81,7 @@ client.download_media_to_file(&msg_media, "output.jpg").await?;
 let bytes = client.download(&photo).await?;
 ```
 
-### `DownloadIter` — streaming chunks
+### `DownloadIter`: streaming chunks
 
 ```rust
 let location = msg.raw.download_location().unwrap();
@@ -112,9 +112,9 @@ let photo = msg.photo().unwrap();
 
 photo.id()                // i64
 photo.access_hash()       // i64
-photo.date()              // i32 — Unix timestamp
+photo.date()              // i32: Unix timestamp
 photo.has_stickers()      // bool
-photo.largest_thumb_type() // &str — e.g. "y", "x", "s"
+photo.largest_thumb_type() // &str: e.g. "y", "x", "s"
 
 let bytes = client.download(&photo).await?;
 ```
@@ -139,9 +139,9 @@ doc.id()              // i64
 doc.access_hash()     // i64
 doc.date()            // i32
 doc.mime_type()       // &str
-doc.size()            // i64 — bytes
+doc.size()            // i64: bytes
 doc.file_name()       // Option<&str>
-doc.is_animated()     // bool — animated GIF or sticker
+doc.is_animated()     // bool: animated GIF or sticker
 
 let bytes = client.download(&doc).await?;
 ```
@@ -161,9 +161,9 @@ use layer_client::media::Sticker;
 let sticker = Sticker::from_media(&msg.raw).unwrap();
 
 sticker.id()          // i64
-sticker.mime_type()   // &str — "image/webp" or "video/webm"
-sticker.emoji()       // Option<&str> — associated emoji
-sticker.is_video()    // bool — animated video sticker
+sticker.mime_type()   // &str: "image/webp" or "video/webm"
+sticker.emoji()       // Option<&str>: associated emoji
+sticker.is_video()    // bool: animated video sticker
 
 let bytes = client.download(&sticker).await?;
 ```

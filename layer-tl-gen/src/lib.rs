@@ -13,14 +13,14 @@
 //! use std::fs;
 //!
 //! fn main() {
-//!     let schema = fs::read_to_string("tl/api.tl").unwrap();
-//!     let defs: Vec<_> = parse_tl_file(&schema)
-//!         .filter_map(|r| r.ok())
-//!         .collect();
+//! let schema = fs::read_to_string("tl/api.tl").unwrap();
+//! let defs: Vec<_> = parse_tl_file(&schema)
+//!     .filter_map(|r| r.ok())
+//!     .collect();
 //!
-//!     let out = std::env::var("OUT_DIR").unwrap();
-//!     let mut outputs = Outputs::from_dir(&out).unwrap();
-//!     generate(&defs, &Config::default(), &mut outputs).unwrap();
+//! let out = std::env::var("OUT_DIR").unwrap();
+//! let mut outputs = Outputs::from_dir(&out).unwrap();
+//! generate(&defs, &Config::default(), &mut outputs).unwrap();
 //! }
 //! ```
 

@@ -10,12 +10,12 @@
 //! use layer_tl_types as tl;
 //!
 //! async fn handle(client: Client, peer: tl::enums::Peer) {
-//!     // Typing indicator is sent immediately and auto-cancelled on drop.
-//!     let _typing = TypingGuard::start(&client, peer.clone(),
-//!         tl::enums::SendMessageAction::SendMessageTypingAction).await.unwrap();
+//! // Typing indicator is sent immediately and auto-cancelled on drop.
+//! let _typing = TypingGuard::start(&client, peer.clone(),
+//!     tl::enums::SendMessageAction::SendMessageTypingAction).await.unwrap();
 //!
-//!     do_expensive_work().await;
-//!     // `_typing` is dropped here — Telegram sees the typing stop.
+//! do_expensive_work().await;
+//! // `_typing` is dropped here: Telegram sees the typing stop.
 //! }
 //! # async fn do_expensive_work() {}
 //! ```
@@ -27,7 +27,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
-// ─── TypingGuard ─────────────────────────────────────────────────────────────
+// TypingGuard
 
 /// Scoped typing indicator.  Keeps the action alive by re-sending it every
 /// ~4 seconds (Telegram drops the indicator after ~5 s).
@@ -53,11 +53,11 @@ impl TypingGuard {
     /// (`top_msg_id`) and a custom **repeat delay**.
     ///
     /// # Arguments
-    /// * `topic_id`     — `Some(msg_id)` for a forum topic thread; `None` for
-    ///   the main chat.
-    /// * `repeat_delay` — How often to re-send the action to keep it alive.
-    ///   Telegram drops the indicator after ~5 s; ≤ 4 s is
-    ///   recommended.
+    /// * `topic_id`    : `Some(msg_id)` for a forum topic thread; `None` for
+    /// the main chat.
+    /// * `repeat_delay`: How often to re-send the action to keep it alive.
+    /// Telegram drops the indicator after ~5 s; ≤ 4 s is
+    /// recommended.
     pub async fn start_ex(
         client: &Client,
         peer: tl::enums::Peer,
@@ -114,7 +114,7 @@ impl Drop for TypingGuard {
     }
 }
 
-// ─── Client extension ─────────────────────────────────────────────────────────
+// Client extension
 
 impl Client {
     /// Start a scoped typing indicator that auto-cancels when dropped.

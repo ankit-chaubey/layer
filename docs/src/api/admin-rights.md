@@ -1,20 +1,20 @@
 # Admin & Ban Rights
 
-`layer-client` provides two fluent builders for granular admin and ban rights — `AdminRightsBuilder` and `BannedRightsBuilder` — both in the `layer_client::participants` module.
+`layer-client` provides two fluent builders for granular admin and ban rights: `AdminRightsBuilder` and `BannedRightsBuilder`: both in the `layer_client::participants` module.
 
 ---
 
-## `BannedRightsBuilder` — restrict a member
+## `BannedRightsBuilder`: restrict a member
 
 ```rust
 use layer_client::participants::BannedRightsBuilder;
 
-// ── Permanent full ban ────────────────────────────────────────────────────────
+// Permanent full ban
 client
     .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
     .await?;
 
-// ── Partial restriction (no media, expires in 24 h) ───────────────────────────
+// Partial restriction (no media, expires in 24 h)
 let tomorrow = (std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
 
@@ -29,7 +29,7 @@ client
     )
     .await?;
 
-// ── Unban ─────────────────────────────────────────────────────────────────────
+// Unban
 // Passing an empty builder restores full permissions
 client
     .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
@@ -56,16 +56,16 @@ client
 | `.pin_messages(bool)` | `false` | Block pinning messages |
 | `.until_date(ts: i32)` | `0` | Expiry Unix timestamp (`0` = permanent) |
 
-> **Note:** Setting `view_messages: true` is a full ban — the member cannot read messages or remain in the group.
+> **Note:** Setting `view_messages: true` is a full ban: the member cannot read messages or remain in the group.
 
 ---
 
-## `AdminRightsBuilder` — grant admin rights
+## `AdminRightsBuilder`: grant admin rights
 
 ```rust
 use layer_client::participants::AdminRightsBuilder;
 
-// ── Custom moderator ──────────────────────────────────────────────────────────
+// Custom moderator
 client
     .promote_participant(
         peer.clone(), user_id,
@@ -78,12 +78,12 @@ client
     )
     .await?;
 
-// ── Full admin (all standard rights) ─────────────────────────────────────────
+// Full admin (all standard rights)
 client
     .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
     .await?;
 
-// ── Demote (remove all admin rights) ─────────────────────────────────────────
+// Demote (remove all admin rights)
 client
     .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
     .await?;
@@ -108,11 +108,11 @@ client
 | `.manage_topics(bool)` | `false` | Can create/edit/delete forum topics |
 | `.rank(str)` | `None` | Custom admin title (max 16 chars) |
 
-> `.add_admins(true)` grants significant trust — admins with this right can promote others to full admin level.
+> `.add_admins(true)` grants significant trust: admins with this right can promote others to full admin level.
 
 ---
 
-## `ParticipantPermissions` — read effective rights
+## `ParticipantPermissions`: read effective rights
 
 To inspect the actual current permissions of a user in a channel:
 
@@ -143,7 +143,7 @@ let perms: ParticipantPermissions = client
 ## Quick patterns
 
 ```rust
-// Temporarily mute — no messages for 1 hour
+// Temporarily mute: no messages for 1 hour
 let in_1h = (chrono::Utc::now().timestamp() + 3600) as i32;
 client.ban_participant(peer.clone(), uid,
     BannedRightsBuilder::new().send_messages(true).until_date(in_1h)

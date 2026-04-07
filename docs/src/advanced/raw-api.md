@@ -127,7 +127,7 @@ client.invoke(&functions::bots::SetBotCommands {
 }).await?;
 ```
 
-### New in Layer 223 — edit chat creator
+### New in Layer 223: edit chat creator
 
 ```rust
 client.invoke(&functions::messages::EditChatCreator {
@@ -137,7 +137,7 @@ client.invoke(&functions::messages::EditChatCreator {
 }).await?;
 ```
 
-### New in Layer 223 — URL auth match code
+### New in Layer 223: URL auth match code
 
 ```rust
 let valid = client.invoke(&functions::messages::CheckUrlAuthMatchCode {

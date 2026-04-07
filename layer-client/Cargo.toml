@@ -1,6 +1,6 @@
 [package]
 name        = "layer-client"
-description = "Production-grade async Telegram client — updates, bots, flood-wait, dialogs, messages"
+description = "Production-grade async Telegram client: updates, bots, flood-wait, dialogs, messages"
 readme = "README.md"
 version.workspace    = true
 edition.workspace    = true
@@ -25,7 +25,7 @@ num-traits     = "0.2"
 sha2           = "0.10"
 hmac           = "0.12"
 pbkdf2         = "0.12"
-# G-18: replaced by tracing (tracing has log feature bridge)
+#: replaced by tracing (tracing has log feature bridge)
 tracing        = { version = "0.1", features = ["log"] }
 serde          = { version = "1", features = ["derive"], optional = true }
 mime_guess     = "2"
@@ -49,5 +49,5 @@ html = []
 html5ever = ["dep:html5ever"]
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["sqlite-session", "serde", "html", "html5ever"]
 rustdoc-args = ["--cfg", "docsrs"]

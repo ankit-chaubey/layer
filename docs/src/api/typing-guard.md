@@ -8,7 +8,7 @@ The guard re-sends the action every **4 seconds** (Telegram drops indicators aft
 
 ## Setup
 
-`TypingGuard` is re-exported from `layer_client` — no extra import needed beyond `use layer_client::TypingGuard;`.
+`TypingGuard` is re-exported from `layer_client`: no extra import needed beyond `use layer_client::TypingGuard;`.
 
 ---
 
@@ -38,7 +38,7 @@ The guard auto-cancels when it goes out of scope.
 
 ## Using `TypingGuard::start` directly
 
-For any `SendMessageAction` variant — including ones that don't have a convenience method:
+For any `SendMessageAction` variant: including ones that don't have a convenience method:
 
 ```rust
 use layer_client::TypingGuard;
@@ -70,7 +70,7 @@ let _guard = TypingGuard::start(
 
 ---
 
-## `TypingGuard::start_ex` — forum topics + custom delay
+## `TypingGuard::start_ex`: forum topics + custom delay
 
 ```rust
 use std::time::Duration;
@@ -79,7 +79,7 @@ let _guard = TypingGuard::start_ex(
     client,
     peer,                   // tl::enums::Peer (already resolved)
     tl::enums::SendMessageAction::SendMessageTypingAction,
-    Some(topic_msg_id),     // top_msg_id — None for normal chats
+    Some(topic_msg_id),     // top_msg_id: None for normal chats
     Duration::from_secs(4), // repeat delay (≤ 4 s recommended)
 ).await?;
 ```
@@ -111,7 +111,7 @@ If you don't need the automatic renewal, fire a single action:
 client.send_chat_action(
     peer.clone(),
     tl::enums::SendMessageAction::SendMessageTypingAction,
-    None, // top_msg_id — Some(id) for forum topics
+    None, // top_msg_id: Some(id) for forum topics
 ).await?;
 ```
 
@@ -119,7 +119,7 @@ Telegram shows the indicator for ~5 seconds and then removes it automatically.
 
 ---
 
-## Complete example — long task with typing
+## Complete example: long task with typing
 
 ```rust
 use layer_client::{Client, InvocationError};
@@ -151,7 +151,7 @@ async fn compute_answer() -> String {
 
 ---
 
-## Example — upload with "uploading document…" indicator
+## Example: upload with "uploading document…" indicator
 
 ```rust
 async fn send_document(
@@ -189,7 +189,7 @@ async fn send_document(
 |---|---|---|
 | `TypingGuard` | struct | RAII guard; drop to cancel |
 | `TypingGuard::start(client, peer, action)` | `async fn` | Start any `SendMessageAction` |
-| `TypingGuard::start_ex(client, peer, action, topic_id, delay)` | `async fn` | Full control — topic support + custom repeat delay |
+| `TypingGuard::start_ex(client, peer, action, topic_id, delay)` | `async fn` | Full control: topic support + custom repeat delay |
 | `guard.cancel()` | `fn` | Stop the indicator immediately (guard stays alive) |
 | `client.typing(peer)` | `async fn` | Shorthand for `TypingAction` |
 | `client.uploading_document(peer)` | `async fn` | Shorthand for `UploadDocumentAction` |

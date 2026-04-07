@@ -4,7 +4,7 @@
 //!
 //! | Before | After |
 //! |---|---|
-//! | Only `save(PersistedSession)` + `load()` — full round-trip for every change | New `update_dc`, `set_home_dc`, `update_state` allow granular writes |
+//! | Only `save(PersistedSession)` + `load()`: full round-trip for every change | New `update_dc`, `set_home_dc`, `update_state` allow granular writes |
 //! | All methods sync (`io::Result`) | New methods are `async` (optional; default impls fall back to save/load) |
 //! | No way to update a single DC key without touching everything else | `update_dc` only rewrites what changed |
 //!
@@ -18,15 +18,15 @@
 //! High-performance backends (e.g. a future Redis backend) can override the
 //! granular methods to avoid the load/save round-trip.
 //!
-//! # Ported from grammers
+//! # Ported from
 //!
-//! grammers' `Session` trait (in `grammers-session/src/session.rs`) exposes:
-//! - `home_dc_id() -> i32`                            — cheap sync read
-//! - `set_home_dc_id(dc_id) -> BoxFuture<'_, ()>`     — async write
-//! - `dc_option(dc_id) -> Option<DcOption>`           — cheap sync read
-//! - `set_dc_option(&DcOption) -> BoxFuture<'_, ()>`  — async write
-//! - `updates_state() -> BoxFuture<UpdatesState>`      — async read
-//! - `set_update_state(UpdateState) -> BoxFuture<()>` — fine-grained async write
+//! ' `Session` trait (in `-session/src/session.rs`) exposes:
+//! - `home_dc_id() -> i32`                           : cheap sync read
+//! - `set_home_dc_id(dc_id) -> BoxFuture<'_, ()>`    : async write
+//! - `dc_option(dc_id) -> Option<DcOption>`          : cheap sync read
+//! - `set_dc_option(&DcOption) -> BoxFuture<'_, ()>` : async write
+//! - `updates_state() -> BoxFuture<UpdatesState>`     : async read
+//! - `set_update_state(UpdateState) -> BoxFuture<()>`: fine-grained async write
 //!
 //! We adopt the same pattern while keeping layer's `PersistedSession` struct.
 
@@ -35,9 +35,9 @@ use std::path::PathBuf;
 
 use crate::session::{CachedPeer, DcEntry, PersistedSession, UpdatesStateSnap};
 
-// ─── Core trait (unchanged) ──────────────────────────────────────────────────
+// Core trait (unchanged)
 
-/// Synchronous snapshot backend — saves and loads the full session at once.
+/// Synchronous snapshot backend: saves and loads the full session at once.
 ///
 /// All built-in backends implement this. Higher-level code should prefer the
 /// extension methods below (`update_dc`, `set_home_dc`, `update_state`) which
@@ -50,7 +50,7 @@ pub trait SessionBackend: Send + Sync {
     /// Human-readable name for logging/debug output.
     fn name(&self) -> &str;
 
-    // ── Granular helpers (default: load → mutate → save) ─────────────────
+    // Granular helpers (default: load → mutate → save)
     //
     // These default implementations are correct but not optimal.
     // Backends that store data in a database (SQLite, libsql, Redis) should
@@ -62,7 +62,7 @@ pub trait SessionBackend: Send + Sync {
     /// - completing a DH handshake on a new DC (to persist its auth key)
     /// - receiving updated DC addresses from `help.getConfig`
     ///
-    /// Ported from grammers `Session::set_dc_option`.
+    /// Ported from  `Session::set_dc_option`.
     fn update_dc(&self, entry: &DcEntry) -> io::Result<()> {
         let mut s = self.load()?.unwrap_or_default();
         // Replace existing entry or append
@@ -76,10 +76,10 @@ pub trait SessionBackend: Send + Sync {
 
     /// Change the home DC without touching any other session data.
     ///
-    /// Called after a successful `*_MIGRATE` redirect — the user's account
+    /// Called after a successful `*_MIGRATE` redirect: the user's account
     /// now lives on a different DC.
     ///
-    /// Ported from grammers `Session::set_home_dc_id`.
+    /// Ported from  `Session::set_home_dc_id`.
     fn set_home_dc(&self, dc_id: i32) -> io::Result<()> {
         let mut s = self.load()?.unwrap_or_default();
         s.home_dc_id = dc_id;
@@ -88,7 +88,7 @@ pub trait SessionBackend: Send + Sync {
 
     /// Apply a single update-sequence change without a full save/load.
     ///
-    /// Ported from grammers `Session::set_update_state(UpdateState)`.
+    /// Ported from  `Session::set_update_state(UpdateState)`.
     ///
     /// `update` is the new partial or full state to merge in.
     fn apply_update_state(&self, update: UpdateStateChange) -> io::Result<()> {
@@ -102,7 +102,7 @@ pub trait SessionBackend: Send + Sync {
     /// This is lossy-on-default (full round-trip) but correct.
     /// Override in SQL backends to issue a single `INSERT OR REPLACE`.
     ///
-    /// Ported from grammers `Session::cache_peer`.
+    /// Ported from  `Session::cache_peer`.
     fn cache_peer(&self, peer: &CachedPeer) -> io::Result<()> {
         let mut s = self.load()?.unwrap_or_default();
         if let Some(existing) = s.peers.iter_mut().find(|p| p.id == peer.id) {
@@ -114,11 +114,11 @@ pub trait SessionBackend: Send + Sync {
     }
 }
 
-// ─── UpdateStateChange (mirrors grammers UpdateState enum) ───────────────────
+// UpdateStateChange (mirrors  UpdateState enum)
 
 /// A single update-sequence change, applied via [`SessionBackend::apply_update_state`].
 ///
-/// grammers uses:
+///uses:
 /// ```text
 /// UpdateState::All(updates_state)
 /// UpdateState::Primary { pts, date, seq }
@@ -164,7 +164,7 @@ impl UpdateStateChange {
     }
 }
 
-// ─── BinaryFileBackend ───────────────────────────────────────────────────────
+// BinaryFileBackend
 
 /// Stores the session in a compact binary file (v2 format).
 pub struct BinaryFileBackend {
@@ -221,9 +221,9 @@ impl SessionBackend for BinaryFileBackend {
     // fine since the format is a single compact binary blob. No override needed.
 }
 
-// ─── InMemoryBackend ─────────────────────────────────────────────────────────
+// InMemoryBackend
 
-/// Ephemeral in-process session — nothing persisted to disk.
+/// Ephemeral in-process session: nothing persisted to disk.
 ///
 /// Override the granular methods to skip the clone overhead of the full
 /// snapshot path (we're already in memory, so direct field mutations are
@@ -263,7 +263,7 @@ impl SessionBackend for InMemoryBackend {
         "in-memory"
     }
 
-    // ── Granular overrides: cheaper than load→clone→save ─────────────────
+    // Granular overrides: cheaper than load→clone→save
 
     fn update_dc(&self, entry: &DcEntry) -> io::Result<()> {
         let mut guard = self.data.lock().unwrap();
@@ -302,7 +302,7 @@ impl SessionBackend for InMemoryBackend {
     }
 }
 
-// ─── StringSessionBackend ────────────────────────────────────────────────────
+// StringSessionBackend
 
 /// Portable base64 string session backend.
 pub struct StringSessionBackend {
@@ -345,7 +345,7 @@ impl SessionBackend for StringSessionBackend {
     }
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// Tests
 
 #[cfg(test)]
 mod tests {
@@ -369,7 +369,7 @@ mod tests {
         }
     }
 
-    // ── InMemoryBackend — basic save/load ─────────────────────────────────
+    // InMemoryBackend: basic save/load
 
     #[test]
     fn inmemory_load_returns_none_when_empty() {
@@ -400,7 +400,7 @@ mod tests {
         assert!(b.load().unwrap().is_none());
     }
 
-    // ── InMemoryBackend — granular methods ────────────────────────────────
+    // InMemoryBackend: granular methods
 
     #[test]
     fn inmemory_update_dc_inserts_new() {
@@ -450,7 +450,7 @@ mod tests {
         assert_eq!(s.peers[0].access_hash, 222);
     }
 
-    // ── UpdateStateChange ─────────────────────────────────────────────────
+    // UpdateStateChange
 
     #[test]
     fn update_state_primary() {
@@ -528,7 +528,7 @@ mod tests {
         assert_eq!(s.updates_state.pts, 7);
     }
 
-    // ── Default impl (BinaryFileBackend trait shape via InMemory smoke) ───
+    // Default impl (BinaryFileBackend trait shape via InMemory smoke)
 
     #[test]
     fn default_update_dc_via_trait_object() {

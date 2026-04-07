@@ -1,10 +1,10 @@
 # Peer Types & PeerRef
 
-`layer-client` provides ergonomic high-level wrappers over the raw `tl::enums::User` and `tl::enums::Chat` types, plus `PeerRef` — a flexible peer argument accepted by every `Client` method.
+`layer-client` provides typed wrappers over the raw `tl::enums::User` and `tl::enums::Chat` types, plus `PeerRef`: a flexible peer argument accepted by every `Client` method.
 
 ---
 
-## `PeerRef` — flexible peer argument
+## `PeerRef`: flexible peer argument
 
 Every `Client` method that previously required a bare `tl::enums::Peer` now accepts `impl Into<PeerRef>`. That means you can pass:
 
@@ -13,19 +13,19 @@ Every `Client` method that previously required a bare `tl::enums::Peer` now acce
 client.send_message_to_peer("@durov", "hi").await?;
 client.send_message_to_peer("durov",  "hi").await?;
 
-// "me" / "self" — always resolves to the logged-in account
+// "me" / "self": always resolves to the logged-in account
 client.send_message_to_peer("me", "Note to self").await?;
 
-// Positive i64 — Telegram user ID
+// Positive i64: Telegram user ID
 client.send_message_to_peer(12345678_i64, "hi").await?;
 
-// Negative i64 — Bot-API channel ID (-100… prefix)
+// Negative i64: Bot-API channel ID (-100… prefix)
 client.iter_messages(-1001234567890_i64);
 
-// Negative i64 — Bot-API basic-group ID (small negative)
+// Negative i64: Bot-API basic-group ID (small negative)
 client.mark_as_read(-123456_i64).await?;
 
-// Already-resolved TL peer — zero overhead, no network call
+// Already-resolved TL peer: zero overhead, no network call
 use layer_client::tl;
 let peer = tl::enums::Peer::User(tl::types::PeerUser { user_id: 123 });
 client.send_message_to_peer(peer, "hi").await?;
@@ -36,8 +36,8 @@ client.send_message_to_peer(peer, "hi").await?;
 | Variant | How resolved |
 |---|---|
 | `PeerRef::Username(s)` | `contacts.resolveUsername` RPC (cached after first call) |
-| `PeerRef::Id(i64)` | Decoded from Bot-API encoding — **no network call** |
-| `PeerRef::Peer(tl::enums::Peer)` | Forwarded as-is — **zero cost** |
+| `PeerRef::Id(i64)` | Decoded from Bot-API encoding: **no network call** |
+| `PeerRef::Peer(tl::enums::Peer)` | Forwarded as-is: **zero cost** |
 
 ### Bot-API ID encoding
 
@@ -58,7 +58,7 @@ let peer: tl::enums::Peer = peer_ref.resolve(&client).await?;
 
 ---
 
-## `User` — user account wrapper
+## `User`: user account wrapper
 
 ```rust
 use layer_client::types::User;
@@ -109,7 +109,7 @@ if let Some(user) = User::from_raw(raw_tl_user) {
 
 ---
 
-## `Group` — basic group wrapper
+## `Group`: basic group wrapper
 
 ```rust
 use layer_client::types::Group;
@@ -136,7 +136,7 @@ if let Some(group) = Group::from_raw(raw_tl_chat) {
 
 ---
 
-## `Channel` — channel / supergroup wrapper
+## `Channel`: channel / supergroup wrapper
 
 ```rust
 use layer_client::types::{Channel, ChannelKind};
@@ -188,7 +188,7 @@ match channel.kind() {
 
 ---
 
-## `Chat` — unified chat enum
+## `Chat`: unified chat enum
 
 `Chat` unifies `Group` and `Channel` into one enum with shared accessors:
 

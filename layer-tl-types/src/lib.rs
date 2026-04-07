@@ -19,10 +19,10 @@
 //! use layer_tl_types::{functions, Serializable};
 //!
 //! let req = functions::auth::SendCode {
-//!     phone_number: "+1234567890".into(),
-//!     api_id: 12345,
-//!     api_hash: "abc".into(),
-//!     settings: Default::default(),
+//! phone_number: "+1234567890".into(),
+//! api_id: 12345,
+//! api_hash: "abc".into(),
+//! settings: Default::default(),
 //! };
 //!
 //! let bytes = req.to_bytes();
@@ -32,7 +32,7 @@
 //! # Updating to a new layer
 //!
 //! 1. Replace `tl/api.tl` with the new schema.
-//! 2. `cargo build` — the build script regenerates everything.
+//! 2. `cargo build`: the build script regenerates everything.
 
 #![deny(unsafe_code)]
 #![allow(clippy::large_enum_variant)]
@@ -47,7 +47,7 @@ pub use generated::name_for_id;
 pub use generated::{LAYER, enums, functions, types};
 pub use serialize::Serializable;
 
-/// Bare vector — `vector` (lowercase) as opposed to the boxed `Vector`.
+/// Bare vector: `vector` (lowercase) as opposed to the boxed `Vector`.
 ///
 /// Used in rare cases where Telegram sends a length-prefixed list without
 /// the usual `0x1cb5c415` constructor ID header.
@@ -66,7 +66,7 @@ impl From<Vec<u8>> for Blob {
     }
 }
 
-// ─── Core traits ──────────────────────────────────────────────────────────────
+// Core traits
 
 /// Every generated type has a unique 32-bit constructor ID.
 pub trait Identifiable {

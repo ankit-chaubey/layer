@@ -1,6 +1,6 @@
 # Callback Queries
 
-When a user taps an inline keyboard button, the bot receives `Update::CallbackQuery`. Always answer it — Telegram shows a loading spinner until you do.
+When a user taps an inline keyboard button, the bot receives `Update::CallbackQuery`. Always answer it: Telegram shows a loading spinner until you do.
 
 ---
 
@@ -23,11 +23,11 @@ Update::CallbackQuery(cb) => {
 ## `CallbackQuery` fields
 
 ```rust
-cb.query_id       // i64 — must be passed to answer_callback_query
-cb.user_id        // i64 — who pressed the button
-cb.msg_id         // Option<i32> — message the button was on
-cb.data()         // Option<&str> — the callback data string
-cb.inline_msg_id  // Option<tl::enums::InputBotInlineMessageID> — for inline messages
+cb.query_id       // i64: must be passed to answer_callback_query
+cb.user_id        // i64: who pressed the button
+cb.msg_id         // Option<i32>: message the button was on
+cb.data()         // Option<&str>: the callback data string
+cb.inline_msg_id  // Option<tl::enums::InputBotInlineMessageID>: for inline messages
 ```
 
 ---
@@ -67,7 +67,7 @@ cb.answer().send(&client).await?;
 | `.text(str)` | Toast message shown to the user |
 | `.alert(str)` | Modal popup shown to the user |
 | `.url(str)` | URL to open (with user confirmation) |
-| `.send(&client)` | Execute — always call this |
+| `.send(&client)` | Execute: always call this |
 
 ---
 
@@ -105,7 +105,7 @@ Update::CallbackQuery(cb) => {
     // Then edit the original message
     if let Some(msg_id) = cb.msg_id {
         client.edit_message(
-            // peer from the callback — resolve from context
+            // peer from the callback: resolve from context
             peer.clone(),
             msg_id,
             "Updated content",
@@ -116,7 +116,7 @@ Update::CallbackQuery(cb) => {
 
 ---
 
-## Full example — vote bot
+## Full example: vote bot
 
 ```rust
 Update::CallbackQuery(cb) => {

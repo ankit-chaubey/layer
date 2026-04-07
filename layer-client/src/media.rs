@@ -1,20 +1,20 @@
-//! Media upload, download, and typed media wrappers (G-41 / G-42 / G-43 / G-44).
+//! Media upload, download, and typed wrappers.
 //!
 //! ## Upload
-//! - [`Client::upload_file`]   — sequential (small files, < 10 MB)
-//! - [`Client::upload_file_concurrent`] — **G-41** parallel worker pool (big files)
-//! - [`Client::upload_stream`] — reads AsyncRead → calls upload_file
+//! - [`Client::upload_file`]  : sequential (small files, < 10 MB)
+//! - [`Client::upload_file_concurrent`]: parallel worker pool for large files
+//! - [`Client::upload_stream`]: reads AsyncRead → calls upload_file
 //!
 //! ## Download
-//! - [`Client::iter_download`]          — chunk-by-chunk streaming
-//! - [`Client::download_media`]         — collect all bytes
-//! - [`Client::download_media_concurrent`] — **G-42** parallel multi-worker download
+//! - [`Client::iter_download`]         : chunk-by-chunk streaming
+//! - [`Client::download_media`]        : collect all bytes
+//! - [`Client::download_media_concurrent`]: parallel multi-worker download
 //!
-//! ## Typed wrappers (G-43)
-//! [`Photo`], [`Document`], [`Sticker`] — ergonomic accessors over raw TL types.
+//! ## Typed wrappers
+//! [`Photo`], [`Document`], [`Sticker`]: typed wrappers over raw TL types.
 //!
-//! ## Downloadable trait (G-44)
-//! [`Downloadable`] — implemented by Photo, Document, Sticker so you can pass
+//! ## Downloadable trait
+//! [`Downloadable`]: implemented by Photo, Document, Sticker so you can pass
 //! any of them to `iter_download` / `download_media`.
 
 use std::sync::Arc;
@@ -26,8 +26,6 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
 use crate::{Client, InvocationError};
-
-// ─── AlbumItem ───────────────────────────────────────────────────────────────
 
 /// A single item in a multi-media album send.
 ///
@@ -64,15 +62,11 @@ impl From<(tl::enums::InputMedia, String)> for AlbumItem {
     }
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 /// Chunk size used for uploads and downloads (512 KB).
 pub const UPLOAD_CHUNK_SIZE: i32 = 512 * 1024;
 pub const DOWNLOAD_CHUNK_SIZE: i32 = 512 * 1024;
 /// Files larger than this use `SaveBigFilePart` and the parallel upload path.
 const BIG_FILE_THRESHOLD: usize = 10 * 1024 * 1024;
-
-// ─── G-14: MIME auto-detection ───────────────────────────────────────────────
 
 /// Return `mime_type` as-is if it is non-empty and not the generic fallback,
 /// otherwise infer from `name`'s extension via `mime_guess`.
@@ -86,8 +80,6 @@ fn resolve_mime(name: &str, mime_type: &str) -> String {
 }
 /// Number of parallel workers for concurrent transfer.
 const WORKER_COUNT: usize = 4;
-
-// ─── UploadedFile ─────────────────────────────────────────────────────────────
 
 /// A successfully uploaded file handle, ready to be sent as media.
 #[derive(Debug, Clone)]
@@ -139,7 +131,7 @@ impl UploadedFile {
     }
 }
 
-// ─── Downloadable trait (G-44) ────────────────────────────────────────────────
+// Downloadable trait
 
 /// Something that can be downloaded via [`Client::iter_download`].
 ///
@@ -154,9 +146,9 @@ pub trait Downloadable {
     }
 }
 
-// ─── Typed media wrappers (G-43) ──────────────────────────────────────────────
+// Typed media wrappers
 
-/// Ergonomic wrapper over a Telegram photo.
+/// Typed wrapper over a Telegram photo.
 #[derive(Debug, Clone)]
 pub struct Photo {
     pub raw: tl::types::Photo,
@@ -217,7 +209,7 @@ impl Downloadable for Photo {
     }
 }
 
-/// Ergonomic wrapper over a Telegram document (file, video, audio, …).
+/// Typed wrapper over a Telegram document (file, video, audio).
 #[derive(Debug, Clone)]
 pub struct Document {
     pub raw: tl::types::Document,
@@ -288,7 +280,7 @@ impl Downloadable for Document {
     }
 }
 
-/// Ergonomic wrapper over a Telegram sticker (a document with sticker attributes).
+/// Typed wrapper over a Telegram sticker.
 #[derive(Debug, Clone)]
 pub struct Sticker {
     pub inner: Document,
@@ -348,7 +340,7 @@ impl Downloadable for Sticker {
     }
 }
 
-// ─── DownloadIter ─────────────────────────────────────────────────────────────
+// DownloadIter
 
 /// Sequential chunk-by-chunk download iterator.
 pub struct DownloadIter {
@@ -400,10 +392,10 @@ impl DownloadIter {
     }
 }
 
-// ─── Client methods ───────────────────────────────────────────────────────────
+// Client methods
 
 impl Client {
-    // ── Upload ───────────────────────────────────────────────────────────────
+    // Upload
 
     /// Upload bytes sequentially. For big files (≥ 10 MB) prefer
     /// [`upload_file_concurrent`] which uses parallel workers.
@@ -413,7 +405,7 @@ impl Client {
         name: &str,
         mime_type: &str,
     ) -> Result<UploadedFile, InvocationError> {
-        // G-14: auto-detect MIME from filename when caller passes "" or the generic fallback.
+        // auto-detect MIME from filename when caller passes "" or the generic fallback.
         let resolved_mime = resolve_mime(name, mime_type);
 
         let file_id = crate::random_i64_pub();
@@ -456,7 +448,7 @@ impl Client {
         })
     }
 
-    /// **G-41** — Upload bytes using `WORKER_COUNT` (4) parallel workers.
+    /// Upload bytes using `WORKER_COUNT` (4) parallel workers.
     ///
     /// Only beneficial for big files (≥ 10 MB).  Falls through to sequential
     /// for small files automatically.
@@ -471,7 +463,7 @@ impl Client {
         let total_parts = total.div_ceil(part_size) as i32;
 
         if total < BIG_FILE_THRESHOLD {
-            // Not big enough to benefit — fall back to sequential.
+            // Not big enough to benefit: fall back to sequential.
             return self.upload_file(&data, name, mime_type).await;
         }
 
@@ -552,7 +544,7 @@ impl Client {
         }
     }
 
-    // ── Send ─────────────────────────────────────────────────────────────────
+    // Send
 
     /// Send a file as a document or photo to a chat.
     pub async fn send_file(
@@ -598,13 +590,13 @@ impl Client {
     /// use layer_client::media::AlbumItem;
     ///
     /// client.send_album(peer, vec![
-    ///     AlbumItem::new(photo_media).caption("First photo"),
-    ///     AlbumItem::new(video_media).caption("Second photo").reply_to(Some(42)),
+    /// AlbumItem::new(photo_media).caption("First photo"),
+    /// AlbumItem::new(video_media).caption("Second photo").reply_to(Some(42)),
     /// ]).await?;
     ///
     /// // Shorthand: legacy tuple API still works via From impl
     /// client.send_album(peer, vec![
-    ///     (photo_media, "caption".to_string()).into(),
+    /// (photo_media, "caption".to_string()).into(),
     /// ]).await?;
     /// ```
     pub async fn send_album(
@@ -666,7 +658,7 @@ impl Client {
         Ok(())
     }
 
-    // ── Download ─────────────────────────────────────────────────────────────
+    // Download
 
     /// Create a sequential chunk download iterator.
     pub fn iter_download(&self, location: tl::enums::InputFileLocation) -> DownloadIter {
@@ -696,7 +688,7 @@ impl Client {
         Ok(bytes)
     }
 
-    /// **G-42** — Download a file using `WORKER_COUNT` (4) parallel workers.
+    /// Download a file using `WORKER_COUNT` (4) parallel workers.
     ///
     /// `size` must be the exact byte size of the file (obtained from the
     /// [`Downloadable::size`] accessor, or from the document's `size` field).
@@ -776,7 +768,7 @@ impl Client {
     }
 
     /// Download any [`Downloadable`] item, automatically choosing concurrent
-    /// mode for files ≥ 10 MB (G-42 / G-44 integration).
+    /// mode for files ≥ 10 MB (/ integration).
     pub async fn download<D: Downloadable>(&self, item: &D) -> Result<Vec<u8>, InvocationError> {
         let loc = item
             .to_input_location()
@@ -788,7 +780,7 @@ impl Client {
     }
 }
 
-// ─── InputFileLocation from IncomingMessage ───────────────────────────────────
+// InputFileLocation from IncomingMessage
 
 impl crate::update::IncomingMessage {
     /// Get the download location for the media in this message, if any.
@@ -824,7 +816,7 @@ pub fn download_location_from_media(
     None
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Helpers
 
 fn make_input_file(
     big: bool,
@@ -840,7 +832,7 @@ fn make_input_file(
             name: name.to_string(),
         })
     } else {
-        let _ = data; // MD5 omitted — Telegram accepts empty checksum
+        let _ = data; // MD5 omitted: Telegram accepts empty checksum
         tl::enums::InputFile::InputFile(tl::types::InputFile {
             id: file_id,
             parts: total_parts,

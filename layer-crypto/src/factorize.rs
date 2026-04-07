@@ -1,4 +1,4 @@
-//! Pollard-rho (Brent variant) integer factorization — used for PQ step.
+//! Pollard-rho (Brent variant) integer factorization: used for PQ step.
 
 fn gcd(mut a: u128, mut b: u128) -> u128 {
     while b != 0 {

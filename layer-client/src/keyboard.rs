@@ -1,13 +1,13 @@
-//! Inline keyboard builder — create reply markups without raw TL verbosity.
+//! Inline keyboard builder: create reply markups without raw TL verbosity.
 //!
 //! # Example
 //! ```rust,no_run
 //! use layer_client::keyboard::{InlineKeyboard, Button};
 //!
 //! let kb = InlineKeyboard::new()
-//!     .row([Button::callback("✅ Yes", b"yes"),
-//!           Button::callback("❌ No",  b"no")])
-//!     .row([Button::url("📖 Docs", "https://docs.rs/layer-client")]);
+//! .row([Button::callback("✅ Yes", b"yes"),
+//!       Button::callback("❌ No",  b"no")])
+//! .row([Button::url("📖 Docs", "https://docs.rs/layer-client")]);
 //!
 //! // Pass to InputMessage:
 //! // let msg = InputMessage::text("Choose:").keyboard(kb);
@@ -15,7 +15,7 @@
 
 use layer_tl_types as tl;
 
-// ─── Button ───────────────────────────────────────────────────────────────────
+// Button
 
 /// A single inline keyboard button.
 #[derive(Clone)]
@@ -209,7 +209,7 @@ impl Button {
     }
 }
 
-// ─── InlineKeyboard ───────────────────────────────────────────────────────────
+// InlineKeyboard
 
 /// Builder for an inline keyboard reply markup.
 ///
@@ -221,9 +221,9 @@ impl Button {
 /// use layer_client::keyboard::{InlineKeyboard, Button};
 ///
 /// let kb = InlineKeyboard::new()
-///     .row([Button::callback("Option A", b"a"),
-///           Button::callback("Option B", b"b")])
-///     .row([Button::url("More info", "https://example.com")]);
+/// .row([Button::callback("Option A", b"a"),
+///       Button::callback("Option B", b"b")])
+/// .row([Button::url("More info", "https://example.com")]);
 /// ```
 #[derive(Clone, Default)]
 pub struct InlineKeyboard {
@@ -264,7 +264,7 @@ impl From<InlineKeyboard> for tl::enums::ReplyMarkup {
     }
 }
 
-// ─── ReplyKeyboard ────────────────────────────────────────────────────────────
+// ReplyKeyboard
 
 /// Builder for a reply keyboard (shown below the message input box).
 #[derive(Clone, Default)]

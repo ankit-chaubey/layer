@@ -114,7 +114,7 @@ let msg = InputMessage::text("This will appear in 1 hour")
 ## No link preview
 
 ```rust
-let msg = InputMessage::text("https://example.com — visit it!")
+let msg = InputMessage::text("https://example.com: visit it!")
     .no_webpage(true);
 ```
 

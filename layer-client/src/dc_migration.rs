@@ -1,48 +1,12 @@
 //! DC migration helpers.
-//!
-//! # What changed vs the original
-//!
-//! | Before | After |
-//! |---|---|
-//! | `migrate_to` only called from 3 auth methods (`bot_sign_in`, `request_login_code`, `sign_in`) | `rpc_call_raw` detects MIGRATE errors and auto-calls `migrate_to` before retrying |
-//! | Hardcoded fallback IP `"149.154.167.51:443"` when DC not in table | `fallback_dc_addr` returns the proper static address table |
-//! | No auth export/import for non-home DCs | `copy_auth_to_dc` ported from grammers |
-//! | `migrate_to` calls held inside each auth function | `do_rpc_call_migrating` wraps the pattern centrally |
-//!
-//! # How to integrate
-//!
-//! In `lib.rs`, replace `rpc_call_raw` and `rpc_write` with versions that call
-//! `do_rpc_call_migrating`. The key loop becomes:
-//!
-//! ```rust,ignore
-//! async fn rpc_call_raw<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
-//!     let mut rl = RetryLoop::new(Arc::clone(&self.inner.retry_policy));
-//!     loop {
-//!         match self.do_rpc_call(req).await {
-//!             Ok(body) => return Ok(body),
-//!             Err(e) if e.migrate_dc_id().is_some() => {
-//!                 // Auto-migrate then retry on the new DC — no need to propagate.
-//!                 self.migrate_to(e.migrate_dc_id().unwrap()).await?;
-//!             }
-//!             Err(e) => rl.advance(e).await?,
-//!         }
-//!     }
-//! }
-//! ```
-//!
-//! And also remove the manual MIGRATE checks in `bot_sign_in`,
-//! `request_login_code`, and `sign_in` — they will be handled automatically.
 
 use layer_tl_types as tl;
 use std::sync::Mutex;
 
 use crate::errors::InvocationError;
 
-// ─── Static DC address table ─────────────────────────────────────────────────
-//
-// grammers keeps this in `grammers-session/src/dc_options.rs`.
-// Layer had this inlined in `session.rs`; we expose it as a pub fn so
-// `migrate_to` and tests can reference it without a hardcoded string literal.
+// Static DC address table.
+// Exposes a pub fn so migrate_to and tests can reference it without hardcoding strings.
 
 /// Return the statically known IPv4 address for a Telegram DC.
 ///
@@ -68,14 +32,9 @@ pub fn default_dc_addresses() -> Vec<(i32, String)> {
         .collect()
 }
 
-// ─── copy_auth_to_dc (ported from grammers net.rs) ───────────────────────────
-//
-// When the client is fully signed in and wants to perform an operation on a
-// non-home DC (e.g. download a file from DC4 while home is DC1), it must
-// export its authorization from the home DC and import it on the target DC.
-//
-// grammers deduplicates this with `auth_copied_to_dcs: Mutex<Vec<i32>>`.
-// We do the same here.
+// When operating on a non-home DC (e.g. downloading from DC4 while home is DC1),
+// the client must export its auth from home and import it on the target DC.
+// We track which DCs already have a copy to avoid redundant round-trips.
 
 /// State that must live inside `ClientInner` to track which DCs already have
 /// a copy of the account's authorization key.
@@ -113,7 +72,7 @@ impl Default for DcAuthTracker {
 /// - `target_dc_id == home_dc_id` (already home)
 /// - auth was already copied in this session (tracked by `DcAuthTracker`)
 ///
-/// Ported from grammers `Client::copy_auth_to_dc`.
+/// Ported from  `Client::copy_auth_to_dc`.
 ///
 /// # Where to call this
 ///
@@ -122,12 +81,12 @@ impl Default for DcAuthTracker {
 ///
 /// ```rust,ignore
 /// pub async fn invoke_on_dc<R: RemoteCall>(
-///     &self,
-///     dc_id: i32,
-///     req: &R,
+/// &self,
+/// dc_id: i32,
+/// req: &R,
 /// ) -> Result<R::Return, InvocationError> {
-///     self.copy_auth_to_dc(dc_id).await?;
-///     // ... then call the DC-specific connection
+/// self.copy_auth_to_dc(dc_id).await?;
+/// // ... then call the DC-specific connection
 /// }
 /// ```
 pub async fn copy_auth_to_dc<F, Fut>(
@@ -167,18 +126,18 @@ where
     Ok(())
 }
 
-// ─── migrate_to integration patch ────────────────────────────────────────────
+// migrate_to integration patch
 //
 // The following documents what migrate_to must be changed to use
 // fallback_dc_addr() instead of a hardcoded string.
 //
 // In lib.rs, replace:
 //
-//   .unwrap_or_else(|| "149.154.167.51:443".to_string())
+// .unwrap_or_else(|| "149.154.167.51:443".to_string())
 //
 // With:
 //
-//   .unwrap_or_else(|| crate::dc_migration::fallback_dc_addr(new_dc_id).to_string())
+// .unwrap_or_else(|| crate::dc_migration::fallback_dc_addr(new_dc_id).to_string())
 //
 // And add auto-migration to rpc_call_raw:
 
@@ -186,38 +145,38 @@ where
 ///
 /// Replace the existing loop body:
 /// ```rust,ignore
-/// // BEFORE — only FLOOD_WAIT handled:
+/// // BEFORE: only FLOOD_WAIT handled:
 /// async fn rpc_call_raw<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
-///     let mut fail_count   = NonZeroU32::new(1).unwrap();
-///     let mut slept_so_far = Duration::default();
-///     loop {
-///         match self.do_rpc_call(req).await {
-///             Ok(body) => return Ok(body),
-///             Err(e) => {
-///                 let ctx = RetryContext { fail_count, slept_so_far, error: e };
-///                 match self.inner.retry_policy.should_retry(&ctx) {
-///                     ControlFlow::Continue(delay) => { sleep(delay).await; slept_so_far += delay; fail_count = fail_count.saturating_add(1); }
-///                     ControlFlow::Break(())       => return Err(ctx.error),
-///                 }
+/// let mut fail_count   = NonZeroU32::new(1).unwrap();
+/// let mut slept_so_far = Duration::default();
+/// loop {
+///     match self.do_rpc_call(req).await {
+///         Ok(body) => return Ok(body),
+///         Err(e) => {
+///             let ctx = RetryContext { fail_count, slept_so_far, error: e };
+///             match self.inner.retry_policy.should_retry(&ctx) {
+///                 ControlFlow::Continue(delay) => { sleep(delay).await; slept_so_far += delay; fail_count = fail_count.saturating_add(1); }
+///                 ControlFlow::Break(())       => return Err(ctx.error),
 ///             }
 ///         }
 ///     }
 /// }
+/// }
 ///
-/// // AFTER — MIGRATE auto-handled, RetryLoop used:
+/// // AFTER: MIGRATE auto-handled, RetryLoop used:
 /// async fn rpc_call_raw<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
-///     let mut rl = RetryLoop::new(Arc::clone(&self.inner.retry_policy));
-///     loop {
-///         match self.do_rpc_call(req).await {
-///             Ok(body) => return Ok(body),
-///             Err(e) if let Some(dc_id) = e.migrate_dc_id() => {
-///                 // Telegram is redirecting us to a different DC.
-///                 // Migrate transparently and retry — no error surfaces to caller.
-///                 self.migrate_to(dc_id).await?;
-///             }
-///             Err(e) => rl.advance(e).await?,
+/// let mut rl = RetryLoop::new(Arc::clone(&self.inner.retry_policy));
+/// loop {
+///     match self.do_rpc_call(req).await {
+///         Ok(body) => return Ok(body),
+///         Err(e) if let Some(dc_id) = e.migrate_dc_id() => {
+///             // Telegram is redirecting us to a different DC.
+///             // Migrate transparently and retry: no error surfaces to caller.
+///             self.migrate_to(dc_id).await?;
 ///         }
+///         Err(e) => rl.advance(e).await?,
 ///     }
+/// }
 /// }
 /// ```
 ///
@@ -225,13 +184,13 @@ where
 /// `request_login_code`, and `sign_in` can be deleted.
 pub const MIGRATE_PATCH_DESCRIPTION: &str = "see doc comment above";
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// Tests
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // ── fallback_dc_addr ─────────────────────────────────────────────────────
+    // fallback_dc_addr
 
     #[test]
     fn known_dcs_return_correct_ips() {
@@ -257,7 +216,7 @@ mod tests {
         }
     }
 
-    // ── DcAuthTracker ────────────────────────────────────────────────────────
+    // DcAuthTracker
 
     #[test]
     fn tracker_starts_empty() {
@@ -287,7 +246,7 @@ mod tests {
         assert!(!t.has_copied(3));
     }
 
-    // ── migrate_dc_id detection (also in retry.rs but sanity check here) ─────
+    // migrate_dc_id detection (also in retry.rs but sanity check here)
 
     #[test]
     fn rpc_error_migrate_detection_all_variants() {

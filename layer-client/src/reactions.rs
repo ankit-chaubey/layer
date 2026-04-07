@@ -1,6 +1,6 @@
-//! [`InputReactions`] — typed parameter for reacting to messages.
+//! [`InputReactions`]: typed parameter for reacting to messages.
 //!
-//! Mirrors grammers' `InputReactions` API.
+//!  API.
 //!
 //! # Examples
 //!
@@ -19,8 +19,8 @@
 //! // Multi-reaction
 //! use layer_tl_types::enums::Reaction;
 //! InputReactions::from(vec![
-//!     Reaction::Emoji(layer_tl_types::types::ReactionEmoji { emoticon: "👍".into() }),
-//!     Reaction::Emoji(layer_tl_types::types::ReactionEmoji { emoticon: "❤️".into() }),
+//! Reaction::Emoji(layer_tl_types::types::ReactionEmoji { emoticon: "👍".into() }),
+//! Reaction::Emoji(layer_tl_types::types::ReactionEmoji { emoticon: "❤️".into() }),
 //! ]);
 //!
 //! // Chained modifiers
@@ -41,7 +41,7 @@ pub struct InputReactions {
 }
 
 impl InputReactions {
-    // ── Constructors ─────────────────────────────────────────────────────────
+    // Constructors
 
     /// React with a standard Unicode emoji (e.g. `"👍"`).
     pub fn emoticon<S: Into<String>>(emoticon: S) -> Self {
@@ -68,7 +68,7 @@ impl InputReactions {
         Self::default()
     }
 
-    // ── Modifiers ────────────────────────────────────────────────────────────
+    // Modifiers
 
     /// Play the reaction with a large animated effect.
     pub fn big(mut self) -> Self {
@@ -83,7 +83,7 @@ impl InputReactions {
     }
 }
 
-// ── From impls ───────────────────────────────────────────────────────────────
+// From impls
 
 impl From<&str> for InputReactions {
     fn from(s: &str) -> Self {

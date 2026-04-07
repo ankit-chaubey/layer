@@ -2,7 +2,7 @@
 
 Telegram's rate limiting system sends `FLOOD_WAIT_X` errors when you call the API too frequently. `X` is the number of seconds you must wait before retrying.
 
-## Default behaviour — AutoSleep
+## Default behaviour: AutoSleep
 
 By default, `layer-client` uses `AutoSleep`: it transparently sleeps for the required duration, then retries. Your code never sees the error.
 
@@ -18,7 +18,7 @@ let (client, _shutdown) = Client::connect(Config {
 
 This is the default. You don't need to set it explicitly.
 
-## NoRetries — propagate immediately
+## NoRetries: propagate immediately
 
 If you want to handle FLOOD_WAIT yourself:
 
@@ -55,7 +55,7 @@ loop {
 
 ## Custom retry policy
 
-Implement `RetryPolicy` for full control — cap the wait, log, or give up after N attempts:
+Implement `RetryPolicy` for full control: cap the wait, log, or give up after N attempts:
 
 ```rust
 use layer_client::{RetryPolicy, RetryContext};
@@ -105,7 +105,7 @@ let (client, _shutdown) = Client::connect(Config {
 ## Avoiding flood waits
 
 - Add small delays between bulk operations: `tokio::time::sleep(Duration::from_millis(100)).await`
-- Cache peer resolutions — don't resolve the same username repeatedly
+- Cache peer resolutions: don't resolve the same username repeatedly
 - Don't send messages in tight loops
 - Bots have more generous limits than user accounts
 - Some methods (e.g. `GetHistory`) have separate, more generous limits

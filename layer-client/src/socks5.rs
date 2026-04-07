@@ -10,8 +10,8 @@
 //! use layer_client::retry::AutoSleep;
 //!
 //! let cfg = Config {
-//!     socks5: Some(Socks5Config::new("127.0.0.1:1080")),
-//!     ..Default::default()
+//! socks5: Some(Socks5Config::new("127.0.0.1:1080")),
+//! ..Default::default()
 //! };
 //! ```
 

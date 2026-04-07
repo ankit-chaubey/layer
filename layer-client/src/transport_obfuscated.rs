@@ -3,19 +3,9 @@
 //! Wraps [`layer_crypto::ObfuscatedCipher`] (AES-256-CTR) for the full
 //! Obfuscated2 handshake and per-frame encryption.
 //!
-//! All three bugs from the original implementation are fixed here:
-//!
-//! * **Bug A** — The original `ObfCipher` used SHA-256-based XOR instead of
-//!   AES-256-CTR.  Replaced entirely by [`layer_crypto::ObfuscatedCipher`].
-//!
-//! * **Bug B** — `derive_keys` reversed only the 32-byte and 16-byte
-//!   sub-slices instead of the full 64-byte buffer.  Fixed by using
-//!   `ObfuscatedCipher::new` which reverses the whole buffer correctly.
-//!
-//! * **Bug C** — The handshake only encrypted 8 bytes (`nonce[56..]`) and
-//!   discarded the cipher, leaving subsequent data unencrypted.  Fixed: all
-//!   64 bytes are encrypted, only `[56..64]` are taken from the ciphertext,
-//!   and the cipher is retained for all subsequent sends/receives.
+//! The cipher is AES-256-CTR via [`layer_crypto::ObfuscatedCipher`].
+//! Key derivation reverses the full 64-byte buffer. The handshake encrypts
+//! all 64 bytes and retains the cipher for all subsequent sends/receives.
 //!
 //! [Obfuscated2]: https://core.telegram.org/mtproto/mtproto-transports#obfuscated-2
 
@@ -24,8 +14,6 @@ pub use layer_crypto::ObfuscatedCipher;
 use crate::InvocationError;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-
-// ─── ObfuscatedStream ─────────────────────────────────────────────────────────
 
 /// Wraps a [`TcpStream`] with correct Obfuscated2 framing (AES-256-CTR).
 ///
@@ -60,12 +48,12 @@ impl ObfuscatedStream {
         nonce[58] = 0xef;
         nonce[59] = 0xef;
 
-        // Bug B fix: ObfuscatedCipher::new reverses the WHOLE 64-byte buffer
+        // ObfuscatedCipher::new reverses the WHOLE 64-byte buffer
         // to derive the RX key - not just sub-slices.
-        // Bug A fix: uses AES-256-CTR, not SHA-256 XOR.
+        // uses AES-256-CTR, not SHA-256 XOR.
         let mut cipher = ObfuscatedCipher::new(&nonce);
 
-        // Bug C fix: encrypt ALL 64 bytes, copy only [56..64] back.
+        // encrypt ALL 64 bytes, copy only [56..64] back.
         // TX cipher is now at position 64; all subsequent sends continue from there.
         let mut encrypted = nonce;
         cipher.encrypt(&mut encrypted);

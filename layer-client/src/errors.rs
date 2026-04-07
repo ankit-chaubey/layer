@@ -1,10 +1,10 @@
 //! Error types for layer-client.
 //!
-//! Mirrors `grammers_mtsender` error hierarchy for API compatibility.
+//! Error types for invoke and I/O failures.
 
 use std::{fmt, io};
 
-// ─── RpcError ─────────────────────────────────────────────────────────────────
+// RpcError
 
 /// An error returned by Telegram's servers in response to an RPC call.
 ///
@@ -63,9 +63,9 @@ impl RpcError {
     /// Match on the error name, with optional wildcard prefix/suffix `'*'`.
     ///
     /// # Examples
-    /// - `err.is("FLOOD_WAIT")` — exact match
-    /// - `err.is("PHONE_CODE_*")` — starts-with match  
-    /// - `err.is("*_INVALID")` — ends-with match
+    /// - `err.is("FLOOD_WAIT")`: exact match
+    /// - `err.is("PHONE_CODE_*")`: starts-with match  
+    /// - `err.is("*_INVALID")`: ends-with match
     pub fn is(&self, pattern: &str) -> bool {
         if let Some(prefix) = pattern.strip_suffix('*') {
             self.name.starts_with(prefix)
@@ -86,7 +86,7 @@ impl RpcError {
     }
 }
 
-// ─── InvocationError ──────────────────────────────────────────────────────────
+// InvocationError
 
 /// The error type returned from any `Client` method that talks to Telegram.
 #[derive(Debug)]
@@ -100,7 +100,7 @@ pub enum InvocationError {
     Deserialize(String),
     /// The request was dropped (e.g. sender task shut down).
     Dropped,
-    /// DC migration required — handled internally by [`crate::Client`].
+    /// DC migration required: handled internally by [`crate::Client`].
     /// Not returned to callers; present only for internal routing.
     #[doc(hidden)]
     Migrate(i32),
@@ -150,12 +150,12 @@ impl InvocationError {
     }
 }
 
-// ─── SignInError ──────────────────────────────────────────────────────────────
+// SignInError
 
 /// Errors returned by [`crate::Client::sign_in`].
 #[derive(Debug)]
 pub enum SignInError {
-    /// The phone number is new — must sign up via the official Telegram app first.
+    /// The phone number is new: must sign up via the official Telegram app first.
     SignUpRequired,
     /// 2FA is enabled; the contained token must be passed to [`crate::Client::check_password`].
     PasswordRequired(Box<PasswordToken>),
@@ -168,7 +168,7 @@ pub enum SignInError {
 impl fmt::Display for SignInError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SignUpRequired => write!(f, "sign up required — use official Telegram app"),
+            Self::SignUpRequired => write!(f, "sign up required: use official Telegram app"),
             Self::PasswordRequired(_) => write!(f, "2FA password required"),
             Self::InvalidCode => write!(f, "invalid or expired code"),
             Self::Other(e) => write!(f, "{e}"),
@@ -184,7 +184,7 @@ impl From<InvocationError> for SignInError {
     }
 }
 
-// ─── PasswordToken ────────────────────────────────────────────────────────────
+// PasswordToken
 
 /// Opaque 2FA challenge token returned in [`SignInError::PasswordRequired`].
 ///
@@ -206,7 +206,7 @@ impl fmt::Debug for PasswordToken {
     }
 }
 
-// ─── LoginToken ───────────────────────────────────────────────────────────────
+// LoginToken
 
 /// Opaque token returned by [`crate::Client::request_login_code`].
 ///

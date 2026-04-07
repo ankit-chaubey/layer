@@ -58,6 +58,6 @@ Deleted message updates only contain the message IDs, not the content:
 ```rust
 Update::MessageDeleted(del) => {
     println!("Deleted IDs: {:?}", del.messages());
-    // del.channel_id() — Some if deleted from a channel
+    // del.channel_id(): Some if deleted from a channel
 }
 ```

@@ -63,7 +63,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let me = client.get_me().await?;
     let bot_id = me.id;
     println!(
-        "✅ @{} (id={bot_id}) ready — listening…\n",
+        "✅ @{} (id={bot_id}) ready: listening…\n",
         me.username.as_deref().unwrap_or("bot")
     );
 
@@ -263,7 +263,7 @@ async fn dispatch(upd: Update, client: Arc<Client>, me: Arc<tl::types::User>, bo
                     let _ = client
                         .answer_callback_query(
                             qid,
-                            Some("Built with layer — pure Rust MTProto 🦀"),
+                            Some("Built with layer: pure Rust MTProto 🦀"),
                             true,
                         )
                         .await;
@@ -371,7 +371,7 @@ async fn dispatch(upd: Update, client: Arc<Client>, me: Arc<tl::types::User>, bo
 }
 
 async fn h_start(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
-    let text = "👋 <b>Welcome to layer-bot!</b>\n\nShowcase bot built with <b>layer</b> — a pure-Rust async Telegram MTProto library 🦀\n\nUse the buttons below or send /help for all commands.";
+    let text = "👋 <b>Welcome to layer-bot!</b>\n\nShowcase bot built with <b>layer</b>: a pure-Rust async Telegram MTProto library 🦀\n\nUse the buttons below or send /help for all commands.";
     let kb = kb(vec![
         vec![bc("🏓 Ping", "cb:ping"), bc("🕐 Time", "cb:time")],
         vec![bc("📊 Stats", "cb:stats"), bc("📡 Layer", "cb:layer")],
@@ -535,7 +535,7 @@ async fn h_layer(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
 
 async fn h_about(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     let text = format!(
-        "ℹ️ <b>About layer-bot</b>\n\nBuilt with <b>layer</b> — async Telegram MTProto in pure <b>Rust</b> 🦀\n\n\
+        "ℹ️ <b>About layer-bot</b>\n\nBuilt with <b>layer</b>: async Telegram MTProto in pure <b>Rust</b> 🦀\n\n\
         Commands · Inline keyboards · Callback queries · Inline mode · HTML entities · \
         Concurrent update handling · pts gap recovery\n\n\
         <b>Layer:</b> <code>{}</code>  <b>Author:</b> Ankit Chaubey (vasu)",
@@ -1030,7 +1030,7 @@ fn random_joke() -> &'static str {
         "I have a joke about UDP, but I'm not sure you'll get it.",
         "I have a joke about TCP, but I'll keep sending it until you acknowledge it.",
         "Debugging is being the detective in a crime movie where you're also the murderer.",
-        "It's not a bug — it's an undocumented feature.",
+        "It's not a bug: it's an undocumented feature.",
         "Why did the Rust developer cross the road? To avoid garbage collection.",
         "A byte walks into a bar looking rough. Bartender: 'What's wrong?' Byte: 'Bit error.'",
     ];

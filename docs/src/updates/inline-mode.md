@@ -10,8 +10,8 @@ Inline mode lets users type `@yourbot query` in any chat and receive results. La
 
 ```rust
 Update::InlineQuery(iq) => {
-    let query    = iq.query();    // &str — what the user typed
-    let query_id = iq.query_id;  // i64 — must be passed to answer_inline_query
+    let query    = iq.query();    // &str: what the user typed
+    let query_id = iq.query_id;  // i64: must be passed to answer_inline_query
 
     let results = vec![
         tl::enums::InputBotInlineResult::InputBotInlineResult(
@@ -51,17 +51,17 @@ while let Some(iq) = iter.next().await {
 }
 ```
 
-`InlineQueryIter` is backed by the update stream — it filters and yields only `InlineQuery` updates.
+`InlineQueryIter` is backed by the update stream: it filters and yields only `InlineQuery` updates.
 
 ---
 
 ## `InlineQuery` fields
 
 ```rust
-iq.query()       // &str — the search text
+iq.query()       // &str: the search text
 iq.query_id      // i64
-iq.user_id       // i64 — who sent the query
-iq.offset        // String — pagination offset
+iq.user_id       // i64: who sent the query
+iq.offset        // String: pagination offset
 ```
 
 ---
@@ -72,9 +72,9 @@ When a user selects a result from your bot's inline mode, you get `Update::Inlin
 
 ```rust
 Update::InlineSend(is) => {
-    // is.result_id  — which result was chosen
-    // is.user_id    — who chose it
-    // is.query      — the original query
+    // is.result_id : which result was chosen
+    // is.user_id   : who chose it
+    // is.query     : the original query
 }
 ```
 
@@ -99,7 +99,7 @@ let mut iter = client
     .await?;
 
 while let Some(result) = iter.next().await? {
-    println!("Result: {:?} — {:?}", result.id(), result.title());
+    println!("Result: {:?}: {:?}", result.id(), result.title());
 
     // Send the first result to a chat
     result.send(target_peer.clone()).await?;
@@ -123,7 +123,7 @@ while let Some(result) = iter.next().await? {
 |---|---|
 | `client.inline_query(bot, query)` | Create builder, returns `InlineResultIter` |
 | `iter.peer(input_peer)` | Set the chat context (required by some bots) |
-| `iter.next()` | `async → Option<InlineResult>` — fetch next result |
+| `iter.next()` | `async → Option<InlineResult>`: fetch next result |
 
 ---
 
@@ -131,10 +131,10 @@ while let Some(result) = iter.next().await? {
 
 ```rust
 client.answer_inline_query(
-    query_id,   // i64 — from InlineQuery
+    query_id,   // i64: from InlineQuery
     results,    // Vec<InputBotInlineResult>
-    30,         // cache_time: i32 — seconds to cache results
-    false,      // is_personal: bool — different results per user?
-    None,       // next_offset: Option<String> — for pagination
+    30,         // cache_time: i32: seconds to cache results
+    false,      // is_personal: bool: different results per user?
+    None,       // next_offset: Option<String>: for pagination
 ).await?;
 ```

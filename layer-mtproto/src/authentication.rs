@@ -21,7 +21,7 @@ use layer_tl_types::{Cursor, Deserializable, Serializable};
 use num_bigint::{BigUint, ToBigUint};
 use sha1::{Digest, Sha1};
 
-// ─── Error ────────────────────────────────────────────────────────────────────
+// Error
 
 /// Errors that can occur during auth key generation.
 #[allow(missing_docs)]
@@ -111,7 +111,7 @@ impl fmt::Display for Error {
     }
 }
 
-// ─── Step state ──────────────────────────────────────────────────────────────
+// Step state
 
 /// State after step 1.
 pub struct Step1 {
@@ -145,7 +145,7 @@ pub struct Finished {
     pub first_salt: i64,
 }
 
-// ─── Step 1: req_pq_multi ────────────────────────────────────────────────────
+// Step 1: req_pq_multi
 
 /// Generate a `req_pq_multi` request. Returns the request + opaque state.
 pub fn step1() -> Result<(layer_tl_types::functions::ReqPqMulti, Step1), Error> {
@@ -162,7 +162,7 @@ fn do_step1(random: &[u8; 16]) -> Result<(layer_tl_types::functions::ReqPqMulti,
     ))
 }
 
-// ─── Step 2: req_DH_params ───────────────────────────────────────────────────
+// Step 2: req_DH_params
 
 /// Process `ResPQ` and generate `req_DH_params`.
 pub fn step2(
@@ -252,7 +252,7 @@ fn do_step2(
     ))
 }
 
-// ─── Step 3: set_client_DH_params ────────────────────────────────────────────
+// Step 3: set_client_DH_params
 
 /// Process `ServerDhParams` and generate `set_client_DH_params`.
 pub fn step3(
@@ -336,7 +336,7 @@ fn do_step3(
     check_nonce(&inner.nonce, &nonce)?;
     check_server_nonce(&inner.server_nonce, &server_nonce)?;
 
-    // G-53: validate server-supplied DH prime and generator against MTProto spec.
+    // validate server-supplied DH prime and generator against MTProto spec.
     check_p_and_g(&inner.dh_prime, inner.g as u32)
         .map_err(|source| Error::InvalidDhPrime { source })?;
 
@@ -402,7 +402,7 @@ fn do_step3(
     ))
 }
 
-// ─── finish: create_key ──────────────────────────────────────────────────────
+// finish: create_key
 
 /// Finalise the handshake. Returns the ready [`Finished`] on success.
 pub fn finish(
@@ -477,7 +477,7 @@ pub fn finish(
     }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Helpers
 
 fn check_nonce(got: &[u8; 16], expected: &[u8; 16]) -> Result<(), Error> {
     if got == expected {

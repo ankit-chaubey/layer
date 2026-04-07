@@ -1,6 +1,6 @@
 # IncomingMessage
 
-`IncomingMessage` is the type of `Update::NewMessage` and `Update::MessageEdited`. It wraps a raw `tl::enums::Message` and provides ergonomic accessors plus a full suite of **convenience action methods** that let you act on a message without passing the `Client` around explicitly (when the message was received from the update stream it already carries a client reference).
+`IncomingMessage` is the type of `Update::NewMessage` and `Update::MessageEdited`. It wraps a raw `tl::enums::Message` and provides typed accessors plus a full suite of **convenience action methods** that let you act on a message without passing the `Client` around explicitly (when the message was received from the update stream it already carries a client reference).
 
 ---
 
@@ -8,22 +8,22 @@
 
 ```rust
 Update::NewMessage(msg) => {
-    msg.id()                  // i32 — unique message ID in this chat
-    msg.text()                // Option<&str> — text or media caption
-    msg.peer_id()             // Option<&tl::enums::Peer> — chat this is in
-    msg.sender_id()           // Option<&tl::enums::Peer> — who sent it
-    msg.outgoing()            // bool — sent by us?
-    msg.date()                // i32 — Unix timestamp
-    msg.edit_date()           // Option<i32> — last edit timestamp
-    msg.mentioned()           // bool — are we @mentioned?
-    msg.silent()              // bool — no notification
-    msg.pinned()              // bool — currently pinned
-    msg.post()                // bool — channel post (no sender)
-    msg.noforwards()          // bool — forwarding disabled
-    msg.from_scheduled()      // bool — was a scheduled message
-    msg.edit_hide()           // bool — edit not shown in UI
-    msg.media_unread()        // bool — media not yet viewed
-    msg.raw                   // tl::enums::Message — full TL object
+    msg.id()                  // i32: unique message ID in this chat
+    msg.text()                // Option<&str>: text or media caption
+    msg.peer_id()             // Option<&tl::enums::Peer>: chat this is in
+    msg.sender_id()           // Option<&tl::enums::Peer>: who sent it
+    msg.outgoing()            // bool: sent by us?
+    msg.date()                // i32: Unix timestamp
+    msg.edit_date()           // Option<i32>: last edit timestamp
+    msg.mentioned()           // bool: are we @mentioned?
+    msg.silent()              // bool: no notification
+    msg.pinned()              // bool: currently pinned
+    msg.post()                // bool: channel post (no sender)
+    msg.noforwards()          // bool: forwarding disabled
+    msg.from_scheduled()      // bool: was a scheduled message
+    msg.edit_hide()           // bool: edit not shown in UI
+    msg.media_unread()        // bool: media not yet viewed
+    msg.raw                   // tl::enums::Message: full TL object
 }
 ```
 
@@ -33,11 +33,11 @@ Update::NewMessage(msg) => {
 
 ```rust
 // Counters
-msg.forward_count()          // Option<i32> — number of times forwarded
-msg.view_count()             // Option<i32> — view count (channels)
-msg.reply_count()            // Option<i32> — number of replies in thread
-msg.reaction_count()         // i32 — total reactions
-msg.reply_to_message_id()    // Option<i32> — ID of the message replied to
+msg.forward_count()          // Option<i32>: number of times forwarded
+msg.view_count()             // Option<i32>: view count (channels)
+msg.reply_count()            // Option<i32>: number of replies in thread
+msg.reaction_count()         // i32: total reactions
+msg.reply_to_message_id()    // Option<i32>: ID of the message replied to
 
 // Typed timestamps
 msg.date_utc()               // Option<DateTime<Utc>>
@@ -46,25 +46,25 @@ msg.edit_date_utc()          // Option<DateTime<Utc>>
 // Rich content
 msg.media()                  // Option<&tl::enums::MessageMedia>
 msg.entities()               // Option<&Vec<tl::enums::MessageEntity>>
-msg.action()                 // Option<&tl::enums::MessageAction> — service messages
+msg.action()                 // Option<&tl::enums::MessageAction>: service messages
 msg.reply_markup()           // Option<&tl::enums::ReplyMarkup>
 msg.forward_header()         // Option<&tl::enums::MessageFwdHeader>
-msg.grouped_id()             // Option<i64> — album group ID
-msg.via_bot_id()             // Option<i64> — inline bot that sent this
-msg.post_author()            // Option<&str> — channel post author signature
+msg.grouped_id()             // Option<i64>: album group ID
+msg.via_bot_id()             // Option<i64>: inline bot that sent this
+msg.post_author()            // Option<&str>: channel post author signature
 msg.restriction_reason()     // Option<&Vec<tl::enums::RestrictionReason>>
 
 // Formatted text helpers (requires html feature for html_text)
-msg.markdown_text()          // Option<String> — entities rendered as Markdown
-msg.html_text()              // Option<String> — entities rendered as HTML
+msg.markdown_text()          // Option<String>: entities rendered as Markdown
+msg.html_text()              // Option<String>: entities rendered as HTML
 
 // Typed media extraction
 msg.photo()                  // Option<Photo>
 msg.document()               // Option<Document>
 
 // Sender details
-msg.sender_user_id()         // Option<i64> — sender's user ID
-msg.sender_chat_id()         // Option<i64> — sender's chat ID
+msg.sender_user_id()         // Option<i64>: sender's user ID
+msg.sender_chat_id()         // Option<i64>: sender's chat ID
 msg.sender_user()            // async → Option<User> (fetches from cache/API)
 ```
 

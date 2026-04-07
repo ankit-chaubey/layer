@@ -5,7 +5,7 @@ use crate::errors::{ParamParseError, ParseError};
 use crate::tl::{Category, Flag, Parameter, ParameterType, Type};
 use crate::utils::tl_id;
 
-/// A single TL definition — either a constructor or a function.
+/// A single TL definition: either a constructor or a function.
 ///
 /// For example:
 /// ```text

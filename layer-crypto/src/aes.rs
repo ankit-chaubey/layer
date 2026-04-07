@@ -1,4 +1,4 @@
-//! AES-IGE (Infinite Garble Extension) — used by Telegram's MTProto.
+//! AES-IGE (Infinite Garble Extension): used by Telegram's MTProto.
 
 #![allow(deprecated)]
 

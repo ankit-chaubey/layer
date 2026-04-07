@@ -1,4 +1,4 @@
-//! SRP 2FA math — ported from grammers-crypto.
+//! SRP 2FA math for Telegram 2FA.
 
 use hmac::Hmac;
 use num_bigint::{BigInt, Sign};
@@ -43,7 +43,7 @@ fn xor32(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
     out
 }
 
-/// Compute SRP `(M1, g_a)` for Telegram 2FA — mirrors `grammers_crypto::two_factor_auth::calculate_2fa`.
+/// Compute SRP `(M1, g_a)` for Telegram 2FA.
 pub fn calculate_2fa(
     salt1: &[u8],
     salt2: &[u8],

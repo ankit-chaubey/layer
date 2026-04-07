@@ -140,7 +140,7 @@ async fn route(
     arg: &str,
     peer: tl::enums::Peer,
     msg_id: i32,
-    my_id: i64,
+    _my_id: i64,
     sender: Option<i64>,
 ) {
     match cmd {
@@ -405,11 +405,11 @@ async fn cmd_help(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     rh(client, peer, reply_to,
         "📖 <b>layer-app Commands</b>\n\n\
         <b>Info</b>\n\
-        <code>.ping</code> — latency  <code>.me</code> — self info\n\
-        <code>.id</code> — IDs  <code>.msgid</code> — msg ID\n\
-        <code>.dc</code> — DC info  <code>.layer</code> — lib info\n\
-        <code>.time</code> — UTC time  <code>.whois</code> — sender info\n\
-        <code>.dialogs</code> — last 10 dialogs\n\n\
+        <code>.ping</code>: latency  <code>.me</code>: self info\n\
+        <code>.id</code>: IDs  <code>.msgid</code>: msg ID\n\
+        <code>.dc</code>: DC info  <code>.layer</code>: lib info\n\
+        <code>.time</code>: UTC time  <code>.whois</code>: sender info\n\
+        <code>.dialogs</code>: last 10 dialogs\n\n\
         <b>Actions</b>\n\
         <code>.read</code> <code>.del</code> <code>.pin</code> <code>.unpin</code> <code>.typing</code>\n\n\
         <b>Text</b>\n\

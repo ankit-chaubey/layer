@@ -17,7 +17,7 @@ pub enum ParamParseError {
     InvalidFlag,
     /// A generic `<…>` argument was malformed (missing closing `>`).
     InvalidGeneric,
-    /// A bare `name` with no `:type` — e.g. old-style `? = Int`.
+    /// A bare `name` with no `:type`: e.g. old-style `? = Int`.
     NotImplemented,
 }
 

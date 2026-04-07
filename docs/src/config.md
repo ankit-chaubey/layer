@@ -35,14 +35,14 @@ let (client, _shutdown) = Client::connect(Config {
 
 ## All fields
 
-### `api_id` — required
+### `api_id`: required
 Your Telegram app's numeric ID from [my.telegram.org](https://my.telegram.org).
 
 ```rust
 api_id: 12345_i32,
 ```
 
-### `api_hash` — required
+### `api_hash`: required
 Your Telegram app's hex hash string from [my.telegram.org](https://my.telegram.org).
 
 ```rust

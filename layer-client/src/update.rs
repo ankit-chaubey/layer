@@ -9,7 +9,7 @@ use layer_tl_types::{Cursor, Deserializable};
 
 use crate::{Client, InvocationError as Error};
 
-// ─── IncomingMessage ─────────────────────────────────────────────────────────
+// IncomingMessage
 
 /// A new or edited message.
 #[derive(Clone)]
@@ -56,7 +56,7 @@ impl IncomingMessage {
     fn require_client(&self, method: &str) -> Result<&Client, Error> {
         self.client.as_ref().ok_or_else(|| {
             Error::Deserialize(format!(
-                "{method}: this IncomingMessage has no embedded client — \
+                "{method}: this IncomingMessage has no embedded client: \
                  use the `_with` variant and pass a &Client explicitly"
             ))
         })
@@ -400,18 +400,18 @@ impl IncomingMessage {
         crate::media::Document::from_media(self.media()?)
     }
 
-    // ── Convenience action methods ──────────────────────────────────────────
+    // Convenience action methods
     //
     // Two tiers for every action:
-    //  1. Clientless  — `msg.reply("hi").await?`
-    //     Uses the embedded `self.client`. Returns an error if the message was
-    //     constructed without `.with_client(…)`.
-    //  2. Explicit    — `msg.reply_with(&client, "hi").await?`
-    //     Always works, even when no client is embedded.
+    //  1. Clientless : `msg.reply("hi").await?`
+    // Uses the embedded `self.client`. Returns an error if the message was
+    // constructed without `.with_client(…)`.
+    //  2. Explicit   : `msg.reply_with(&client, "hi").await?`
+    // Always works, even when no client is embedded.
 
-    // ── reply ───────────────────────────────────────────────────────────────
+    // reply
 
-    /// Reply to this message (clientless — requires an embedded client).
+    /// Reply to this message (clientless: requires an embedded client).
     ///
     /// Returns the sent message so you can chain further operations on it.
     pub async fn reply(&self, text: impl Into<String>) -> Result<IncomingMessage, Error> {
@@ -461,7 +461,7 @@ impl IncomingMessage {
             .await
     }
 
-    // ── respond ─────────────────────────────────────────────────────────────
+    // respond
 
     /// Send to the same chat without quoting (clientless).
     pub async fn respond(&self, text: impl Into<String>) -> Result<IncomingMessage, Error> {
@@ -503,7 +503,7 @@ impl IncomingMessage {
         client.send_message_to_peer_ex(peer, &msg).await
     }
 
-    // ── edit ────────────────────────────────────────────────────────────────
+    // edit
 
     /// Edit this message (clientless).
     pub async fn edit(&self, new_text: impl Into<String>) -> Result<(), Error> {
@@ -526,7 +526,7 @@ impl IncomingMessage {
             .await
     }
 
-    // ── delete ──────────────────────────────────────────────────────────────
+    // delete
 
     /// Delete this message (clientless).
     pub async fn delete(&self) -> Result<(), Error> {
@@ -539,7 +539,7 @@ impl IncomingMessage {
         client.delete_messages(vec![self.id()], true).await
     }
 
-    // ── mark_as_read ────────────────────────────────────────────────────────
+    // mark_as_read
 
     /// Mark this message (and all before it) as read (clientless).
     pub async fn mark_as_read(&self) -> Result<(), Error> {
@@ -556,7 +556,7 @@ impl IncomingMessage {
         client.mark_as_read(peer).await
     }
 
-    // ── pin ─────────────────────────────────────────────────────────────────
+    // pin
 
     /// Pin this message silently (clientless).
     pub async fn pin(&self) -> Result<(), Error> {
@@ -575,7 +575,7 @@ impl IncomingMessage {
             .await
     }
 
-    // ── unpin ───────────────────────────────────────────────────────────────
+    // unpin
 
     /// Unpin this message (clientless).
     pub async fn unpin(&self) -> Result<(), Error> {
@@ -592,7 +592,7 @@ impl IncomingMessage {
         client.unpin_message(peer, self.id()).await
     }
 
-    // ── forward_to ──────────────────────────────────────────────────────────
+    // forward_to
 
     /// Forward this message to another chat (clientless).
     ///
@@ -627,7 +627,7 @@ impl IncomingMessage {
             })
     }
 
-    // ── refetch ─────────────────────────────────────────────────────────────
+    // refetch
 
     /// Re-fetch this message from Telegram (clientless).
     ///
@@ -656,7 +656,7 @@ impl IncomingMessage {
         }
     }
 
-    // ── download_media ──────────────────────────────────────────────────────
+    // download_media
 
     /// Download attached media to `path` (clientless).
     pub async fn download_media(&self, path: impl AsRef<std::path::Path>) -> Result<bool, Error> {
@@ -678,7 +678,7 @@ impl IncomingMessage {
         }
     }
 
-    // ── react ───────────────────────────────────────────────────────────────
+    // react
 
     /// Send a reaction (clientless).
     ///
@@ -711,7 +711,7 @@ impl IncomingMessage {
         client.send_reaction(peer, self.id(), reactions).await
     }
 
-    // ── get_reply ───────────────────────────────────────────────────────────
+    // get_reply
 
     /// Fetch the message this is a reply to (clientless).
     pub async fn get_reply(&self) -> Result<Option<IncomingMessage>, Error> {
@@ -724,7 +724,7 @@ impl IncomingMessage {
         client.get_reply_to_message(self).await
     }
 
-    // ── sender helpers ──────────────────────────────────────────────────────
+    // sender helpers
 
     /// The sender's bare user-ID, if this is a user message.
     ///
@@ -760,7 +760,7 @@ impl IncomingMessage {
     }
 }
 
-// ─── MessageDeletion ─────────────────────────────────────────────────────────
+// MessageDeletion
 
 /// One or more messages were deleted.
 #[derive(Debug, Clone)]
@@ -778,7 +778,7 @@ impl MessageDeletion {
     }
 }
 
-// ─── CallbackQuery ───────────────────────────────────────────────────────────
+// CallbackQuery
 
 /// A user pressed an inline keyboard button on a bot message.
 #[derive(Debug, Clone)]
@@ -791,10 +791,10 @@ pub struct CallbackQuery {
     pub data_raw: Option<Vec<u8>>,
     /// Game short name (if a game button was pressed).
     pub game_short_name: Option<String>,
-    /// G-38: The peer (chat/channel/user) where the button was pressed.
+    /// The peer (chat/channel/user) where the button was pressed.
     /// `None` for inline-message callback queries.
     pub chat_peer: Option<tl::enums::Peer>,
-    /// G-38: For inline-message callbacks — the message ID token.
+    /// For inline-message callbacks: the message ID token.
     pub inline_msg_id: Option<tl::enums::InputBotInlineMessageId>,
 }
 
@@ -815,9 +815,9 @@ impl CallbackQuery {
     /// query.answer().alert("No permission!").send(&client).await?;
     /// query.answer().url("https://example.com/game").send(&client).await?;
     /// query.answer()
-    ///     .text("Cached")
-    ///     .cache_time(std::time::Duration::from_secs(60))
-    ///     .send(&client).await?;
+    /// .text("Cached")
+    /// .cache_time(std::time::Duration::from_secs(60))
+    /// .send(&client).await?;
     /// ```
     pub fn answer(&self) -> Answer<'_> {
         Answer {
@@ -830,7 +830,7 @@ impl CallbackQuery {
         }
     }
 
-    /// Answer the callback query (flat helper — prefer `answer()` builder).
+    /// Answer the callback query (flat helper: prefer `answer()` builder).
     pub async fn answer_flat(&self, client: &Client, text: Option<&str>) -> Result<(), Error> {
         client
             .answer_callback_query(self.query_id, text, false)
@@ -838,7 +838,7 @@ impl CallbackQuery {
             .map(|_| ())
     }
 
-    /// Answer with a popup alert (flat helper — prefer `answer().alert(…)`).
+    /// Answer with a popup alert (flat helper: prefer `answer().alert(…)`).
     pub async fn answer_alert(&self, client: &Client, text: &str) -> Result<(), Error> {
         client
             .answer_callback_query(self.query_id, Some(text), true)
@@ -846,8 +846,6 @@ impl CallbackQuery {
             .map(|_| ())
     }
 }
-
-// ─── Answer builder (G-08) ────────────────────────────────────────────────────
 
 /// Fluent builder returned by [`CallbackQuery::answer`]. Finalize with `.send(&client).await`.
 pub struct Answer<'a> {
@@ -899,7 +897,7 @@ impl<'a> Answer<'a> {
     }
 }
 
-// ─── InlineQuery ─────────────────────────────────────────────────────────────
+// InlineQuery
 
 /// A user is typing an inline query (`@bot something`).
 #[derive(Debug, Clone)]
@@ -919,7 +917,7 @@ impl InlineQuery {
     }
 }
 
-// ─── InlineSend ──────────────────────────────────────────────────────────────
+// InlineSend
 
 /// A user chose an inline result and sent it.
 #[derive(Debug, Clone)]
@@ -932,7 +930,7 @@ pub struct InlineSend {
 }
 
 impl InlineSend {
-    /// G-39: Edit the inline message that was sent as a result of this inline query.
+    /// Edit the inline message that was sent as a result of this inline query.
     ///
     /// Requires that [`msg_id`] is present (i.e. the result had `peer_type` set).
     /// Returns `Err` with a descriptive message if `msg_id` is `None`.
@@ -956,7 +954,7 @@ impl InlineSend {
             match self.msg_id.clone() {
                 Some(id) => id,
                 None => return Err(Error::Deserialize(
-                    "InlineSend::edit_message — msg_id is None (bot_inline_send had no peer_type)"
+                    "InlineSend::edit_message: msg_id is None (bot_inline_send had no peer_type)"
                         .into(),
                 )),
             };
@@ -975,7 +973,7 @@ impl InlineSend {
     }
 }
 
-// ─── RawUpdate ───────────────────────────────────────────────────────────────
+// RawUpdate
 
 /// A TL update that has no dedicated high-level variant yet.
 #[derive(Debug, Clone)]
@@ -983,8 +981,6 @@ pub struct RawUpdate {
     /// Constructor ID of the inner update.
     pub constructor_id: u32,
 }
-
-// ─── UserStatusUpdate (G-22) ─────────────────────────────────────────────────
 
 /// A user's online / offline status changed.
 ///
@@ -995,9 +991,9 @@ pub struct RawUpdate {
 /// # use layer_client::{Update, update::UserStatusUpdate};
 /// # async fn example(mut stream: layer_client::UpdateStream) {
 /// while let Some(upd) = stream.next().await {
-///     if let Update::UserStatus(s) = upd {
-///         println!("user {} status: {:?}", s.user_id, s.status);
-///     }
+/// if let Update::UserStatus(s) = upd {
+///     println!("user {} status: {:?}", s.user_id, s.status);
+/// }
 /// }
 /// # }
 /// ```
@@ -1009,8 +1005,6 @@ pub struct UserStatusUpdate {
     pub status: tl::enums::UserStatus,
 }
 
-// ─── ChatActionUpdate (G-23) ─────────────────────────────────────────────────
-
 /// A user is performing a chat action (typing, uploading, recording…).
 ///
 /// Delivered as [`Update::UserTyping`].  Covers DMs, groups, and channels.
@@ -1020,9 +1014,9 @@ pub struct UserStatusUpdate {
 /// # use layer_client::{Update, update::ChatActionUpdate};
 /// # async fn example(mut stream: layer_client::UpdateStream) {
 /// while let Some(upd) = stream.next().await {
-///     if let Update::UserTyping(a) = upd {
-///         println!("user {} is typing in {:?}", a.user_id, a.peer);
-///     }
+/// if let Update::UserTyping(a) = upd {
+///     println!("user {} is typing in {:?}", a.user_id, a.peer);
+/// }
 /// }
 /// # }
 /// ```
@@ -1053,15 +1047,15 @@ pub enum Update {
     InlineQuery(InlineQuery),
     /// A user chose an inline result and sent it (bots only).
     InlineSend(InlineSend),
-    /// A user's online status changed (G-22).
+    /// A user's online status changed.
     UserStatus(UserStatusUpdate),
-    /// A user is typing / uploading / recording in a chat (G-23).
+    /// A user is typing / uploading / recording in a chat.
     UserTyping(ChatActionUpdate),
     /// A raw TL update not mapped to any of the above variants.
     Raw(RawUpdate),
 }
 
-// ─── MTProto update container IDs ────────────────────────────────────────────
+// MTProto update container IDs
 
 #[allow(dead_code)]
 const ID_UPDATES_TOO_LONG: u32 = 0xe317af7e;
@@ -1078,7 +1072,7 @@ const ID_UPDATES_COMBINED: u32 = 0x725b04c3;
 #[allow(dead_code)]
 const ID_UPDATE_SHORT_SENT_MSG: u32 = 0x9015e101;
 
-// ─── Parser ──────────────────────────────────────────────────────────────────
+// Parser
 
 /// Parse raw update container bytes into high-level [`Update`] values.
 #[allow(dead_code)]
@@ -1091,7 +1085,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
     match cid {
         ID_UPDATES_TOO_LONG => {
             tracing::warn!(
-                "[layer] updatesTooLong — call client.get_difference() to recover missed updates"
+                "[layer] updatesTooLong: call client.get_difference() to recover missed updates"
             );
             vec![]
         }
@@ -1167,7 +1161,7 @@ pub(crate) fn parse_updates(bytes: &[u8]) -> Vec<Update> {
             }
         }
 
-        // updateShortSentMessage — pts is now handled by dispatch_updates/route_frame
+        // updateShortSentMessage: pts is now handled by dispatch_updates/route_frame
         // directly (via EnvelopeResult::Pts or the push branch). parse_updates is only
         // called for the old code path; we absorb here as a safe fallback.
         ID_UPDATE_SHORT_SENT_MSG => vec![],
@@ -1230,18 +1224,18 @@ fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
             id: u.id,
             msg_id: u.msg_id,
         })],
-        // G-22: typed UserStatus variant
+        // typed UserStatus variant
         UserStatus(u) => vec![Update::UserStatus(UserStatusUpdate {
             user_id: u.user_id,
             status: u.status,
         })],
-        // G-23: typed ChatAction variant — DM typing
+        // typed ChatAction variant: DM typing
         UserTyping(u) => vec![Update::UserTyping(ChatActionUpdate {
             peer: tl::enums::Peer::User(tl::types::PeerUser { user_id: u.user_id }),
             user_id: u.user_id,
             action: u.action,
         })],
-        // G-23: group typing
+        // group typing
         ChatUserTyping(u) => vec![Update::UserTyping(ChatActionUpdate {
             peer: tl::enums::Peer::Chat(tl::types::PeerChat { chat_id: u.chat_id }),
             user_id: match u.from_id {
@@ -1251,7 +1245,7 @@ fn from_single_update(upd: tl::enums::Update) -> Vec<Update> {
             },
             action: u.action,
         })],
-        // G-23: channel / supergroup typing
+        // channel / supergroup typing
         ChannelUserTyping(u) => vec![Update::UserTyping(ChatActionUpdate {
             peer: tl::enums::Peer::Channel(tl::types::PeerChannel {
                 channel_id: u.channel_id,
@@ -1433,7 +1427,7 @@ fn tl_constructor_id(upd: &tl::enums::Update) -> u32 {
     }
 }
 
-// ─── Short message helpers ────────────────────────────────────────────────────
+// Short message helpers
 
 pub(crate) fn make_short_dm(m: tl::types::UpdateShortMessage) -> IncomingMessage {
     let msg = tl::types::Message {

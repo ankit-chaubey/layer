@@ -15,7 +15,7 @@ use std::net::TcpStream;
 
 use layer_crypto::ObfuscatedCipher;
 
-// ─── Core trait ───────────────────────────────────────────────────────────────
+// Core trait
 
 /// A full-duplex byte-stream transport.
 pub trait Transport {
@@ -33,7 +33,7 @@ pub trait Tagged {
     fn init_tag(&mut self) -> [u8; 4];
 }
 
-// ─── Abridged framing ─────────────────────────────────────────────────────────
+// Abridged framing
 
 /// Wraps a `Transport` and applies MTProto Abridged framing.
 /// Use [`ObfuscatedAbridged`] instead if your ISP blocks plain Telegram.
@@ -90,7 +90,7 @@ impl<T: Transport> Tagged for AbridgedTransport<T> {
     }
 }
 
-// ─── Obfuscated + Abridged ────────────────────────────────────────────────────
+// Obfuscated + Abridged
 
 const FORBIDDEN: &[[u8; 4]] = &[
     [b'H', b'E', b'A', b'D'],
@@ -105,7 +105,7 @@ const FORBIDDEN: &[[u8; 4]] = &[
 /// Obfuscated + Abridged framing over a raw `TcpStream`.
 ///
 /// **Use this in production** to bypass ISP Deep Packet Inspection.
-/// Drop-in for `AbridgedTransport` — same `send_message` / `recv_message` API.
+/// Drop-in for `AbridgedTransport`: same `send_message` / `recv_message` API.
 ///
 /// ```rust,no_run
 /// let stream = TcpStream::connect("149.154.167.51:443")?;

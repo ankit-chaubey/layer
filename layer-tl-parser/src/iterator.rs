@@ -7,7 +7,7 @@ use crate::tl::{Category, Definition};
 
 pub(crate) struct TlIterator<'a> {
     lines: std::str::Lines<'a>,
-    /// Current category context — flips when we see `---functions---`.
+    /// Current category context: flips when we see `---functions---`.
     category: Category,
     /// Accumulates multi-line definitions (lines without `;` terminator).
     pending: String,
@@ -65,7 +65,7 @@ impl<'a> Iterator for TlIterator<'a> {
                 continue;
             }
 
-            // We have a complete definition — parse it
+            // We have a complete definition: parse it
             let raw = std::mem::take(&mut self.pending);
             let raw = raw.trim();
 

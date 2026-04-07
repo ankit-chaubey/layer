@@ -1,6 +1,6 @@
 # Inline Keyboards & Reply Markup
 
-`layer-client` ships with two high-level keyboard builders — `InlineKeyboard` and `ReplyKeyboard` — so you never have to construct raw TL types by hand.
+`layer-client` ships with two high-level keyboard builders: `InlineKeyboard` and `ReplyKeyboard`: so you never have to construct raw TL types by hand.
 
 Both builders are in `layer_client::keyboard` and re-exported at the crate root:
 
@@ -10,7 +10,7 @@ use layer_client::keyboard::{Button, InlineKeyboard, ReplyKeyboard};
 
 ---
 
-## `InlineKeyboard` — buttons attached to a message
+## `InlineKeyboard`: buttons attached to a message
 
 Inline keyboards appear below a message and trigger `Update::CallbackQuery` when tapped.
 
@@ -47,7 +47,7 @@ client
 
 ---
 
-## `Button` — all button types
+## `Button`: all button types
 
 ### Callback, URL, and common types
 
@@ -111,7 +111,7 @@ let raw = Button::callback("x", b"x").into_raw();
 
 ---
 
-## `ReplyKeyboard` — replacement keyboard
+## `ReplyKeyboard`: replacement keyboard
 
 A reply keyboard replaces the user's text input keyboard until dismissed.
 The user's tap arrives as a plain-text `Update::NewMessage`.
@@ -166,7 +166,7 @@ client
 
 ## Answer callback queries
 
-Always answer every `CallbackQuery` — Telegram shows a loading spinner until you do.
+Always answer every `CallbackQuery`: Telegram shows a loading spinner until you do.
 
 ```rust
 Update::CallbackQuery(cb) => {
@@ -332,12 +332,12 @@ let msg = InputMessage::text("Keyboard removed.").reply_markup(remove);
 Telegram limits callback button data to **64 bytes**. Use compact, parseable formats:
 
 ```rust
-// Good — structured, compact
+// Good: structured, compact
 "vote:yes"
 "page:3"
 "item:42:delete"
 "menu:settings:notifications"
 
-// Bad — verbose
+// Bad: verbose
 "user_clicked_the_settings_button"
 ```

@@ -55,21 +55,21 @@ match client.send_message("@peer", "Hello").await {
 ```rust
 let e: RpcError = /* ... */;
 
-e.code               // i32 — HTTP-like error code (400, 401, 403, 420, etc.)
-e.message            // String — e.g. "FLOOD_WAIT_30"
-e.is("FLOOD_WAIT")   // bool — prefix/substring match
-e.flood_wait_seconds() // Option<u64> — parses the number from FLOOD_WAIT_N
+e.code               // i32: HTTP-like error code (400, 401, 403, 420, etc.)
+e.message            // String: e.g. "FLOOD_WAIT_30"
+e.is("FLOOD_WAIT")   // bool: prefix/substring match
+e.flood_wait_seconds() // Option<u64>: parses the number from FLOOD_WAIT_N
 ```
 
 ### Common error codes
 
 | Code | Meaning |
 |---|---|
-| `400` | Bad request — wrong parameters |
-| `401` | Unauthorized — not logged in |
-| `403` | Forbidden — no permission |
+| `400` | Bad request: wrong parameters |
+| `401` | Unauthorized: not logged in |
+| `403` | Forbidden: no permission |
 | `404` | Not found |
-| `420` | FLOOD_WAIT — too many requests |
+| `420` | FLOOD_WAIT: too many requests |
 | `500` | Internal server error |
 
 ### Common error messages
@@ -99,7 +99,7 @@ match client.sign_in(&token, &code).await {
     Ok(name) => println!("Welcome, {name}!"),
 
     Err(SignInError::PasswordRequired(password_token)) => {
-        // 2FA is enabled — provide the password
+        // 2FA is enabled: provide the password
         println!("2FA hint: {:?}", password_token.hint());
         client.check_password(*password_token, "my_password").await?;
     }
@@ -113,7 +113,7 @@ match client.sign_in(&token, &code).await {
 ### `PasswordToken` methods
 
 ```rust
-password_token.hint()   // Option<&str> — 2FA password hint
+password_token.hint()   // Option<&str>: 2FA password hint
 ```
 
 ---
@@ -137,13 +137,13 @@ match Client::builder().api_id(0).api_hash("").connect().await {
 
 ## FLOOD_WAIT auto-retry
 
-`FLOOD_WAIT` errors are automatically retried by the default `AutoSleep` policy — you don't need to handle them unless you want custom behaviour.
+`FLOOD_WAIT` errors are automatically retried by the default `AutoSleep` policy: you don't need to handle them unless you want custom behaviour.
 
 ```rust
 use layer_client::retry::{AutoSleep, NoRetries};
 use std::sync::Arc;
 
-// Default — retries FLOOD_WAIT automatically
+// Default: retries FLOOD_WAIT automatically
 Client::builder().retry_policy(Arc::new(AutoSleep::default()))
 
 // Disable all retries

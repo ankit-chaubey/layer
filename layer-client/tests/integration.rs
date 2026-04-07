@@ -4,16 +4,16 @@
 //! run against the compiled crate, not the internals).
 //!
 //! Run with:
-//!   cargo test -p layer-client --test integration
+//! cargo test -p layer-client --test integration
 //!
-//! Ported/inspired by grammers' test patterns. Tests are grouped by module:
-//!   - `retry`         — RetryPolicy and RetryLoop behaviour
-//!   - `session`       — SessionBackend implementations
-//!   - `dc_migration`  — fallback addresses, DcAuthTracker
-//!   - `update_state`  — UpdateStateChange application
-//!   - `incoming_msg`  — IncomingMessage accessor coverage
+//! Ported/inspired by ' test patterns. Tests are grouped by module:
+//! - `retry`        : RetryPolicy and RetryLoop behaviour
+//! - `session`      : SessionBackend implementations
+//! - `dc_migration` : fallback addresses, DcAuthTracker
+//! - `update_state` : UpdateStateChange application
+//! - `incoming_msg` : IncomingMessage accessor coverage
 
-// ─── Re-exports needed for tests ─────────────────────────────────────────────
+// Re-exports needed for tests
 // (In real file these would be `use layer_client::...`)
 
 // Stub types matching layer-client internals for compilation in isolation
@@ -226,7 +226,7 @@ mod retry {
         assert!(matches!(p.should_retry(&ctx), ControlFlow::Break(())));
     }
 
-    // ── migrate_dc_id ─────────────────────────────────────────────────────
+    // migrate_dc_id
 
     #[test]
     fn migrate_dc_id_all_variants() {
@@ -267,7 +267,7 @@ mod retry {
 
     #[test]
     fn migrate_dc_id_none_for_wrong_code() {
-        // Right name, wrong code — should NOT match
+        // Right name, wrong code: should NOT match
         let e = RpcError {
             code: 400,
             name: "PHONE_MIGRATE".into(),
@@ -277,11 +277,11 @@ mod retry {
     }
 }
 
-// ─── Session tests ────────────────────────────────────────────────────────────
+// Session tests
 
 #[cfg(test)]
 mod session {
-    // Minimal stub types — replace with real imports in the crate
+    // Minimal stub types: replace with real imports in the crate
     #[derive(Clone, Default, Debug)]
     struct DcEntry {
         dc_id: i32,
@@ -472,7 +472,7 @@ mod session {
     }
 }
 
-// ─── DC migration tests ───────────────────────────────────────────────────────
+// DC migration tests
 
 #[cfg(test)]
 mod dc_migration {
@@ -559,7 +559,7 @@ mod dc_migration {
     }
 }
 
-// ─── IncomingMessage accessor tests ──────────────────────────────────────────
+// IncomingMessage accessor tests
 //
 // These ensure the accessor methods don't regress when the underlying TL
 // type evolves. They work against raw TL values so they don't need a live
@@ -567,7 +567,7 @@ mod dc_migration {
 
 #[cfg(test)]
 mod incoming_message {
-    // Minimal standalone stub — replace with real `layer_tl_types` + `IncomingMessage`
+    // Minimal standalone stub: replace with real `layer_tl_types` + `IncomingMessage`
 
     struct Message {
         id: i32,

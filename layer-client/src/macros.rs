@@ -1,4 +1,4 @@
-//! The [`dispatch!`] macro — ergonomic, pattern-matching update handler.
+//! The [`dispatch!`] macro for pattern-matching over updates.
 //!
 //! Instead of writing giant `match` blocks, `dispatch!` lets you register
 //! named handlers with optional guard clauses:
@@ -9,36 +9,36 @@
 //!
 //! # async fn example(client: Client, update: Update) -> Result<(), Box<dyn std::error::Error>> {
 //! dispatch!(client, update,
-//!     NewMessage(msg) if !msg.outgoing() => {
-//!         println!("Got: {:?}", msg.text());
-//!     },
-//!     MessageEdited(msg) => {
-//!         println!("Edited: {:?}", msg.text());
-//!     },
-//!     CallbackQuery(cb) => {
-//!         client.answer_callback_query(cb.query_id, Some("✓"), false).await?;
-//!     },
-//!     _ => {} // catch-all for unhandled variants
+//! NewMessage(msg) if !msg.outgoing() => {
+//!     println!("Got: {:?}", msg.text());
+//! },
+//! MessageEdited(msg) => {
+//!     println!("Edited: {:?}", msg.text());
+//! },
+//! CallbackQuery(cb) => {
+//!     client.answer_callback_query(cb.query_id, Some("✓"), false).await?;
+//! },
+//! _ => {} // catch-all for unhandled variants
 //! );
 //! # Ok(()) }
 //! ```
 //!
 //! Each arm is `VariantName(binding) [if guard] => { body }`.
-//! The macro expands to a plain `match` statement — zero overhead.
+//! The macro expands to a plain `match` statement: zero overhead.
 
 /// Route a [`crate::update::Update`] to the first matching arm.
 ///
 /// # Syntax
 /// ```text
 /// dispatch!(client, update,
-///     VariantName(binding) [if guard] => { body },
-///     ...
-///     [_ => { fallback }]
+/// VariantName(binding) [if guard] => { body },
+/// ...
+/// [_ => { fallback }]
 /// );
 /// ```
 ///
-/// - `client`  — a `layer_client::Client` (available inside every arm body)
-/// - `update`  — the `Update` value to dispatch
+/// - `client` : a `layer_client::Client` (available inside every arm body)
+/// - `update` : the `Update` value to dispatch
 /// - Each arm mirrors a variant of [`crate::update::Update`]
 /// - Guards (`if expr`) are optional
 /// - A catch-all `_ => {}` arm is optional but recommended to avoid warnings
@@ -52,7 +52,7 @@ macro_rules! dispatch {
     };
 }
 
-/// Internal helper — do not use directly.
+/// Internal helper: do not use directly.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __dispatch_arms {
@@ -79,7 +79,7 @@ macro_rules! __dispatch_arms {
         $( $crate::__dispatch_arms!($client; $( $rest )* ) )?
     };
 
-    // Trailing comma / empty — emit wildcard to ensure exhaustiveness
+    // Trailing comma / empty: emit wildcard to ensure exhaustiveness
     ($client:expr; $(,)?) => {
         _ => {}
     };

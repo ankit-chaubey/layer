@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version       = "0.4.6"
+version       = "0.4.7"
 edition       = "2024"
 license       = "MIT OR Apache-2.0"
 readme        = "README.md"
@@ -25,9 +25,9 @@ homepage      = "https://github.com/ankit-chaubey/layer"
 documentation = "https://docs.rs/layer-client"
 
 [workspace.dependencies]
-layer-tl-parser = { path = "layer-tl-parser", version = "0.4.6" }
-layer-tl-gen    = { path = "layer-tl-gen",    version = "0.4.6" }
-layer-tl-types  = { path = "layer-tl-types",  version = "0.4.6" }
-layer-crypto    = { path = "layer-crypto",     version = "0.4.6" }
-layer-mtproto   = { path = "layer-mtproto",    version = "0.4.6" }
-layer-client    = { path = "layer-client",     version = "0.4.6" }
+layer-tl-parser = { path = "layer-tl-parser", version = "0.4.7" }
+layer-tl-gen    = { path = "layer-tl-gen",    version = "0.4.7" }
+layer-tl-types  = { path = "layer-tl-types",  version = "0.4.7" }
+layer-crypto    = { path = "layer-crypto",     version = "0.4.7" }
+layer-mtproto   = { path = "layer-mtproto",    version = "0.4.7" }
+layer-client    = { path = "layer-client",     version = "0.4.7" }

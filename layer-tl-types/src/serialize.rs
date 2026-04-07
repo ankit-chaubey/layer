@@ -17,7 +17,7 @@ pub trait Serializable {
     }
 }
 
-// ─── bool ────────────────────────────────────────────────────────────────────
+// bool
 
 /// `true`  → `boolTrue#997275b5`
 /// `false` → `boolFalse#bc799737`
@@ -28,7 +28,7 @@ impl Serializable for bool {
     }
 }
 
-// ─── integers ────────────────────────────────────────────────────────────────
+// integers
 
 impl Serializable for i32 {
     fn serialize(&self, buf: &mut impl Extend<u8>) {
@@ -66,7 +66,7 @@ impl Serializable for [u8; 32] {
     }
 }
 
-// ─── strings / bytes ─────────────────────────────────────────────────────────
+// strings / bytes
 
 /// TL string encoding: a length-prefixed, 4-byte aligned byte string.
 ///
@@ -110,9 +110,9 @@ impl Serializable for String {
     }
 }
 
-// ─── vectors ─────────────────────────────────────────────────────────────────
+// vectors
 
-/// Boxed `Vector<T>` — prefixed with constructor ID `0x1cb5c415`.
+/// Boxed `Vector<T>`: prefixed with constructor ID `0x1cb5c415`.
 impl<T: Serializable> Serializable for Vec<T> {
     fn serialize(&self, buf: &mut impl Extend<u8>) {
         0x1cb5c415u32.serialize(buf);
@@ -123,7 +123,7 @@ impl<T: Serializable> Serializable for Vec<T> {
     }
 }
 
-/// Bare `vector<T>` — just a count followed by items, no constructor ID.
+/// Bare `vector<T>`: just a count followed by items, no constructor ID.
 impl<T: Serializable> Serializable for crate::RawVec<T> {
     fn serialize(&self, buf: &mut impl Extend<u8>) {
         (self.0.len() as i32).serialize(buf);
@@ -133,7 +133,7 @@ impl<T: Serializable> Serializable for crate::RawVec<T> {
     }
 }
 
-// ─── Option ──────────────────────────────────────────────────────────────────
+// Option
 
 /// Optional parameters are handled by flags; when `Some`, serialize the value.
 /// When `None`, nothing is written (the flags word already encodes absence).

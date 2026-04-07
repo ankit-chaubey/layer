@@ -7,7 +7,7 @@ The Telegram API evolves continuously. Each new **layer** adds constructors, mod
 `layer-tl-types` is fully **auto-generated at build time**:
 
 ```
-tl/api.tl          (source of truth — the only file you replace)
+tl/api.tl          (source of truth: the only file you replace)
     │
     ▼
 build.rs           (reads api.tl, invokes layer-tl-gen)
@@ -22,7 +22,7 @@ $OUT_DIR/
 
 The `LAYER` constant is extracted from the `// LAYER N` comment on the first line of `api.tl`. Everything else flows from there.
 
-## Step 1 — Replace api.tl
+## Step 1: Replace api.tl
 
 ```bash
 # Get the new schema from Telegram's official sources
@@ -36,7 +36,7 @@ Make sure the first line of the file is:
 // LAYER 224
 ```
 
-## Step 2 — Build
+## Step 2: Build
 
 ```bash
 cargo build 2>&1 | head -40
@@ -49,7 +49,7 @@ The build script automatically:
 
 If there are no breaking type changes in `layer-client`, it compiles cleanly.
 
-## Step 3 — Fix compile errors
+## Step 3: Fix compile errors
 
 New layers commonly add fields to existing structs. These show up as errors like:
 
@@ -82,11 +82,11 @@ Update::NewVariant(_) => { /* handle or ignore */ }
 _ => {}
 ```
 
-## Step 4 — Bump version and publish
+## Step 4: Bump version and publish
 
 ```bash
 # In Cargo.toml workspace section
-version = "0.4.6"
+version = "0.4.7"
 ```
 
 Then publish in dependency order (see [Publishing](../installation.md)).
@@ -100,7 +100,7 @@ Once `api.tl` is updated with the new layer number, these update with **zero add
 | `tl::LAYER` constant | `layer-tl-types/src/lib.rs` | build.rs patches it |
 | `invokeWithLayer` call | `layer-client/src/lib.rs:1847` | reads `tl::LAYER` |
 | `/about` bot command | `layer-bot/src/main.rs:333` | reads `tl::LAYER` at runtime |
-| Badge in README | Manual — update once | String replace |
+| Badge in README | Manual: update once | String replace |
 
 ## Diff the changes
 

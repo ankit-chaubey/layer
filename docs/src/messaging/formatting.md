@@ -1,6 +1,6 @@
 # Message Formatting
 
-Telegram supports rich text formatting through **message entities** — positional markers that indicate bold, italic, code, links, and more.
+Telegram supports rich text formatting through **message entities**: positional markers that indicate bold, italic, code, links, and more.
 
 ## Using parse_markdown
 
@@ -80,7 +80,7 @@ let msg = InputMessage::text(text).entities(entities);
 | `BankCard` | Bank card number |
 | `BlockquoteCollapsible` | Collapsible quote block |
 | `CustomEmoji` | Custom emoji by document ID |
-| `FormattedDate` | ✨ New in Layer 223 — displays a date in local time |
+| `FormattedDate` | ✨ New in Layer 223: displays a date in local time |
 
 ## Pre block with language
 
@@ -102,7 +102,7 @@ tl::enums::MessageEntity::MentionName(tl::types::MessageEntityMentionName {
 })
 ```
 
-## FormattedDate — Layer 224
+## FormattedDate: Layer 224
 
 A new entity that automatically formats a unix timestamp into the user's local timezone and locale:
 

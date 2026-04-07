@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn known_id() {
-        // boolFalse#bc799737 = Bool — id must match when absent
+        // boolFalse#bc799737 = Bool: id must match when absent
         let def = "boolFalse = Bool";
         assert_eq!(tl_id(def), 0xbc799737);
     }

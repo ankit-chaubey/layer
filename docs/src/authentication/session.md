@@ -20,7 +20,7 @@ After login, save to disk:
 client.save_session().await?;
 ```
 
-The file is created at `session_path` and reloaded automatically on the next `Client::connect`. **Keep it in `.gitignore` — it grants full API access to your account.**
+The file is created at `session_path` and reloaded automatically on the next `Client::connect`. **Keep it in `.gitignore`: it grants full API access to your account.**
 
 ---
 
@@ -46,7 +46,7 @@ Login is required on every run since nothing persists.
 ## SQLite (robust, long-running servers)
 
 ```toml
-layer-client = { version = "0.4.6", features = ["sqlite-session"] }
+layer-client = { version = "0.4.7", features = ["sqlite-session"] }
 ```
 
 ```rust
@@ -59,7 +59,7 @@ SQLite is more resilient against crash-corruption than the binary format. Ideal 
 
 ---
 
-## String session — New in v0.4.6
+## String session: New in v0.4.7
 
 Encode the entire session as a portable base64 string. Store it in an env var, a DB column, or CI secrets:
 

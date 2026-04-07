@@ -2,7 +2,7 @@
 
 User login happens in three steps: request code → submit code → (optional) submit 2FA password.
 
-## Step 1 — Request login code
+## Step 1: Request login code
 
 ```rust
 let token = client.request_login_code("+1234567890").await?;
@@ -10,7 +10,7 @@ let token = client.request_login_code("+1234567890").await?;
 
 This sends a verification code to the phone number via SMS or Telegram app notification. The returned `LoginToken` must be passed to the next step.
 
-## Step 2 — Submit the code
+## Step 2: Submit the code
 
 ```rust
 match client.sign_in(&token, "12345").await {
@@ -18,24 +18,24 @@ match client.sign_in(&token, "12345").await {
         println!("Signed in as {name}");
     }
     Err(SignInError::PasswordRequired(password_token)) => {
-        // 2FA is enabled — go to step 3
+        // 2FA is enabled: go to step 3
     }
     Err(e) => return Err(e.into()),
 }
 ```
 
 `sign_in` returns:
-- `Ok(String)` — the user's full name, login complete
-- `Err(SignInError::PasswordRequired(PasswordToken))` — 2FA is enabled, need password
-- `Err(e)` — wrong code, expired code, or network error
+- `Ok(String)`: the user's full name, login complete
+- `Err(SignInError::PasswordRequired(PasswordToken))`: 2FA is enabled, need password
+- `Err(e)`: wrong code, expired code, or network error
 
-## Step 3 — 2FA password (if required)
+## Step 3: 2FA password (if required)
 
 ```rust
 client.check_password(password_token, "my_2fa_password").await?;
 ```
 
-This performs the full SRP (Secure Remote Password) exchange. The password is never sent to Telegram in plain text — only a cryptographic proof is transmitted.
+This performs the full SRP (Secure Remote Password) exchange. The password is never sent to Telegram in plain text: only a cryptographic proof is transmitted.
 
 ## Save the session
 
@@ -102,11 +102,10 @@ This revokes the auth key on Telegram's servers and deletes the local session fi
 
 Under the hood, every new session establishes a shared auth key via a 3-step Diffie-Hellman exchange before any login code is ever sent. This key is what secures the entire session.
 
-<img src="../images/mtproto-dh-flow.svg" alt="MTProto DH key exchange flow diagram" width="100%" style="margin: 0.75rem 0 1.25rem 0;" />
 
-1. Client sends `req_pq_multi` — server responds with a `pq` product
+1. Client sends `req_pq_multi`: server responds with a `pq` product
 2. Client factorises `pq` into primes (Pollard's rho), encrypts its DH parameters with the server's RSA key
-3. Server responds with `server_DH_params_ok` — client completes `g^ab mod p`
-4. Both sides now share a 2048-bit auth key — login code is sent encrypted using this key
+3. Server responds with `server_DH_params_ok`: client completes `g^ab mod p`
+4. Both sides now share a 2048-bit auth key: login code is sent encrypted using this key
 
 See [Crate Architecture](../crates.md#layer-mtproto) for more on the MTProto internals.

@@ -7,8 +7,8 @@
 # Getting Started
 
 - [Installation](./installation.md)
-- [Quick Start — User Account](./quickstart-user.md)
-- [Quick Start — Bot](./quickstart-bot.md)
+- [Quick Start: User Account](./quickstart-user.md)
+- [Quick Start: Bot](./quickstart-bot.md)
 
 ---
 

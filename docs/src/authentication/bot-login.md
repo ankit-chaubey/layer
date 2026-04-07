@@ -1,6 +1,6 @@
 # Bot Login
 
-Bot login is simpler than user login — just a single call with a bot token.
+Bot login is simpler than user login: just a single call with a bot token.
 
 ## Getting a bot token
 

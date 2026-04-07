@@ -2,14 +2,14 @@
 
 `layer-client` provides two fluent search builders:
 
-- **`SearchBuilder`** — search within a single peer (`client.search()`)
-- **`GlobalSearchBuilder`** — search across all dialogs (`client.search_global_builder()`)
+- **`SearchBuilder`**: search within a single peer (`client.search()`)
+- **`GlobalSearchBuilder`**: search across all dialogs (`client.search_global_builder()`)
 
 Both builders return `Vec<IncomingMessage>` from `.fetch(&client).await?`.
 
 ---
 
-## `SearchBuilder` — in-chat search
+## `SearchBuilder`: in-chat search
 
 ```rust
 use layer_tl_types::enums::MessagesFilter;
@@ -25,7 +25,7 @@ for msg in &results {
 }
 ```
 
-`client.search(peer, query)` accepts any `impl Into<PeerRef>` — a `&str` username, a `tl::enums::Peer`, or a numeric `i64` ID.
+`client.search(peer, query)` accepts any `impl Into<PeerRef>`: a `&str` username, a `tl::enums::Peer`, or a numeric `i64` ID.
 
 ### All `SearchBuilder` methods
 
@@ -39,10 +39,10 @@ for msg in &results {
 | `.max_id(id: i32)` | `0` | Only messages with ID ≤ `max_id` |
 | `.min_id(id: i32)` | `0` | Only messages with ID ≥ `min_id` |
 | `.filter(f: MessagesFilter)` | `Empty` | Filter by media type |
-| `.sent_by_self()` | — | Only messages sent by the logged-in user |
+| `.sent_by_self()` |: | Only messages sent by the logged-in user |
 | `.from_peer(peer: InputPeer)` | `None` | Only messages from this specific sender |
 | `.top_msg_id(id: i32)` | `None` | Restrict search to a forum topic thread |
-| `.fetch(&client)` | — | Execute — returns `Vec<IncomingMessage>` |
+| `.fetch(&client)` |: | Execute: returns `Vec<IncomingMessage>` |
 
 ### Filter by media type
 
@@ -164,7 +164,7 @@ loop {
 
 ---
 
-## `GlobalSearchBuilder` — search all chats
+## `GlobalSearchBuilder`: search all chats
 
 ```rust
 let results = client
@@ -192,7 +192,7 @@ for msg in &results {
 | `.groups_only(v: bool)` | `false` | Only search groups / supergroups |
 | `.users_only(v: bool)` | `false` | Only search private chats / bots |
 | `.filter(f: MessagesFilter)` | `Empty` | Filter by media type |
-| `.fetch(&client)` | — | Execute — returns `Vec<IncomingMessage>` |
+| `.fetch(&client)` |: | Execute: returns `Vec<IncomingMessage>` |
 
 ### Filter by chat type
 
@@ -243,9 +243,9 @@ let photos = client
 For quick lookups that don't need date/filter options:
 
 ```rust
-// Per-chat search — returns Vec<IncomingMessage>
+// Per-chat search: returns Vec<IncomingMessage>
 let results = client.search_messages(peer.clone(), "query", 20).await?;
 
-// Global search — returns Vec<IncomingMessage>
+// Global search: returns Vec<IncomingMessage>
 let results = client.search_global("layer rust", 10).await?;
 ```

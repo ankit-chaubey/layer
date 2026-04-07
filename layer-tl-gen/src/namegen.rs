@@ -2,7 +2,7 @@
 
 use layer_tl_parser::tl::{Definition, Parameter, ParameterType, Type};
 
-// ─── primitive → Rust type ───────────────────────────────────────────────────
+// primitive → Rust type
 
 /// Map a TL primitive name to a Rust built-in type string, if applicable.
 pub(crate) fn builtin_type(name: &str) -> Option<&'static str> {
@@ -22,7 +22,7 @@ pub(crate) fn builtin_type(name: &str) -> Option<&'static str> {
     })
 }
 
-// ─── PascalCase conversion ────────────────────────────────────────────────────
+// PascalCase conversion
 
 /// Converts `some_ok_name` or `SomeOKName` into `SomeOkName` (PascalCase).
 pub(crate) fn to_pascal(name: &str) -> String {
@@ -71,7 +71,7 @@ pub(crate) fn to_pascal(name: &str) -> String {
     out
 }
 
-// ─── Definition helpers ───────────────────────────────────────────────────────
+// Definition helpers
 
 /// `struct` / `fn` name for a definition (PascalCase).
 pub(crate) fn def_type_name(def: &Definition) -> String {
@@ -109,7 +109,7 @@ pub(crate) fn def_variant_name(def: &Definition) -> String {
                 .unwrap_or(0);
             full[pos..].to_owned()
         }
-        // All-numeric suffix — use from last uppercase
+        // All-numeric suffix: use from last uppercase
         v if !v.is_empty() && v.chars().all(char::is_numeric) => {
             let pos = full
                 .as_bytes()
@@ -118,13 +118,13 @@ pub(crate) fn def_variant_name(def: &Definition) -> String {
                 .unwrap_or(0);
             full[pos..].to_owned()
         }
-        // Empty — fall back to full name
+        // Empty: fall back to full name
         "" => full,
         v => v.to_owned(),
     }
 }
 
-// ─── Type helpers ─────────────────────────────────────────────────────────────
+// Type helpers
 
 /// PascalCase name for a TL type.
 pub(crate) fn type_name(ty: &Type) -> String {
@@ -151,18 +151,18 @@ fn type_path(ty: &Type, turbofish: bool) -> String {
         // two classes of builtin need special treatment:
         //
         // 1. Builtins that already carry a generic arg baked into the string
-        //    (e.g. `"Vec<u8>"`): insert `::` before the `<`.
-        //    Without it rustc parses `Vec<u8>::` as a comparison expression.
+        //  (e.g. `"Vec<u8>"`): insert `::` before the `<`.
+        //  Without it rustc parses `Vec<u8>::` as a comparison expression.
         //
         // 2. Array builtins (`"[u8; 16]"`, `"[u8; 32]"`): the type is not a
-        //    named path, so `[u8; 16]::deserialize` is a hard syntax error.
-        //    Wrap in `<…>` to get `<[u8; 16]>::deserialize`.
+        //  named path, so `[u8; 16]::deserialize` is a hard syntax error.
+        //  Wrap in `<…>` to get `<[u8; 16]>::deserialize`.
         if turbofish {
             if b.starts_with('[') {
-                // Array type — wrap in angle brackets for path syntax.
+                // Array type: wrap in angle brackets for path syntax.
                 format!("<{b}>")
             } else if let Some(pos) = b.find('<') {
-                // Generic builtin — insert `::` before the `<`.
+                // Generic builtin: insert `::` before the `<`.
                 let mut out = b[..pos].to_owned();
                 out.push_str("::");
                 out.push_str(&b[pos..]);
@@ -203,7 +203,7 @@ fn type_path(ty: &Type, turbofish: bool) -> String {
     s
 }
 
-// ─── Parameter helpers ────────────────────────────────────────────────────────
+// Parameter helpers
 
 /// The Rust attribute name for a parameter (handles reserved keywords).
 pub(crate) fn param_attr_name(param: &Parameter) -> String {

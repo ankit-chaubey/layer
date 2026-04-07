@@ -46,7 +46,7 @@ boolFalse#bc799737 = Bool;
 
 #[test]
 fn crc32_derived_id() {
-    // boolFalse#bc799737 — omit #id, parser must derive same value via CRC32
+    // boolFalse#bc799737: omit #id, parser must derive same value via CRC32
     let src = "boolFalse = Bool;";
     let defs: Vec<_> = parse_tl_file(src).collect::<Result<_, _>>().unwrap();
     assert_eq!(defs[0].id, 0xbc799737);

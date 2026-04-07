@@ -12,7 +12,7 @@
 //!
 //! let src = "user#12345 id:long name:string = User;";
 //! for def in parse_tl_file(src) {
-//!     println!("{:#?}", def.unwrap());
+//! println!("{:#?}", def.unwrap());
 //! }
 //! ```
 //!

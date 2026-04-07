@@ -1,4 +1,4 @@
-//! Telegram `AuthKey` — 256-byte key derived from the DH handshake.
+//! Telegram `AuthKey`: 256-byte key derived from the DH handshake.
 
 use crate::sha1;
 

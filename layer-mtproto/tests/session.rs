@@ -39,7 +39,7 @@ fn message_plaintext_bytes_layout() {
     assert_eq!(&wire[20..], &[0xAA, 0xBB]);
 }
 
-// ── AbridgedTransport ─────────────────────────────────────────────────────────
+// AbridgedTransport
 
 struct MemTransport {
     inbox: Vec<u8>,

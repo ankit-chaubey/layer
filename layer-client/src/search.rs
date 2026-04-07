@@ -1,39 +1,37 @@
-//! G-31 / G-32 — Fluent search builders.
+//! Fluent search builders.
 //!
-//! # In-chat search (G-31)
+//! # In-chat search
 //! ```rust,no_run
 //! # async fn f(client: layer_client::Client, peer: layer_tl_types::enums::Peer)
 //! # -> Result<(), Box<dyn std::error::Error>> {
 //! let results = client
-//!     .search(peer, "hello world")
-//!     .min_date(1_700_000_000)
-//!     .max_date(1_720_000_000)
-//!     .filter(layer_tl_types::enums::MessagesFilter::InputMessagesFilterPhotos)
-//!     .limit(50)
-//!     .fetch(&client)
-//!     .await?;
+//! .search(peer, "hello world")
+//! .min_date(1_700_000_000)
+//! .max_date(1_720_000_000)
+//! .filter(layer_tl_types::enums::MessagesFilter::InputMessagesFilterPhotos)
+//! .limit(50)
+//! .fetch(&client)
+//! .await?;
 //! # Ok(()) }
 //! ```
 //!
-//! # Global search (G-32)
+//! # Global search
 //! ```rust,no_run
 //! # async fn f(client: layer_client::Client)
 //! # -> Result<(), Box<dyn std::error::Error>> {
 //! let results = client
-//!     .search_global_builder("rust async")
-//!     .broadcasts_only(true)
-//!     .min_date(1_700_000_000)
-//!     .limit(30)
-//!     .fetch(&client)
-//!     .await?;
+//! .search_global_builder("rust async")
+//! .broadcasts_only(true)
+//! .min_date(1_700_000_000)
+//! .limit(30)
+//! .fetch(&client)
+//! .await?;
 //! # Ok(()) }
 //! ```
 
 use layer_tl_types::{self as tl, Cursor, Deserializable};
 
 use crate::{Client, InvocationError, PeerRef, update};
-
-// ─── SearchBuilder (G-31) ─────────────────────────────────────────────────────
 
 /// Fluent builder for `messages.search` (in-chat message search).
 ///
@@ -179,8 +177,6 @@ impl SearchBuilder {
             .collect())
     }
 }
-
-// ─── GlobalSearchBuilder (G-32) ───────────────────────────────────────────────
 
 /// Fluent builder for `messages.searchGlobal` (cross-chat search).
 ///

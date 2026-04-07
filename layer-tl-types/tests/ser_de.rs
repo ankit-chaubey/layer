@@ -1,6 +1,6 @@
 use layer_tl_types::{Cursor, Deserializable, Serializable};
 
-// ── Primitive round-trips ─────────────────────────────────────────────────────
+// Primitive round-trips
 
 #[test]
 fn roundtrip_i32() {
@@ -32,7 +32,7 @@ fn roundtrip_bool_false() {
     assert_eq!(bool::from_bytes(&bytes).unwrap(), false);
 }
 
-// ── String / bytes ────────────────────────────────────────────────────────────
+// String / bytes
 
 #[test]
 fn roundtrip_empty_string() {
@@ -64,7 +64,7 @@ fn roundtrip_bytes_vec() {
     assert_eq!(Vec::<u8>::from_bytes(&bytes).unwrap(), v);
 }
 
-// ── Vectors ───────────────────────────────────────────────────────────────────
+// Vectors
 
 #[test]
 fn roundtrip_vec_i32() {
@@ -80,7 +80,7 @@ fn roundtrip_empty_vec() {
     assert_eq!(Vec::<i64>::from_bytes(&bytes).unwrap(), Vec::<i64>::new());
 }
 
-// ── Fixed-size arrays ─────────────────────────────────────────────────────────
+// Fixed-size arrays
 
 #[test]
 fn roundtrip_int128() {
@@ -94,7 +94,7 @@ fn roundtrip_int256() {
     assert_eq!(<[u8; 32]>::from_bytes(&v.to_bytes()).unwrap(), v);
 }
 
-// ── Cursor EOF detection ──────────────────────────────────────────────────────
+// Cursor EOF detection
 
 #[test]
 fn deserialize_truncated_returns_eof() {
@@ -103,7 +103,7 @@ fn deserialize_truncated_returns_eof() {
     assert_eq!(result, Err(Error::UnexpectedEof));
 }
 
-// ── Option passthrough ────────────────────────────────────────────────────────
+// Option passthrough
 
 #[test]
 fn option_none_writes_nothing() {

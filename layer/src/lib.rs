@@ -1,6 +1,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![doc(html_root_url = "https://docs.rs/layer/0.4.6")]
-//! # layer — Telegram MTProto library
+//! # layer: Telegram MTProto library
 //!
 //! `layer` is a modular Rust library for the Telegram MTProto protocol.
 //! It consists of four focused sub-crates wired together here for convenience:
@@ -38,13 +38,13 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-/// Re-export of [`layer_tl_types`] — generated constructors, functions and enums.
+/// Re-export of [`layer_tl_types`]: generated constructors, functions and enums.
 pub use layer_tl_types as tl;
 
-/// Re-export of [`layer_mtproto`] — session, encrypted session, transport, and authentication.
+/// Re-export of [`layer_mtproto`]: session, encrypted session, transport, and authentication.
 pub use layer_mtproto as mtproto;
 
-/// Re-export of [`layer_crypto`] — AES-IGE, SHA, RSA, factorize, AuthKey.
+/// Re-export of [`layer_crypto`]: AES-IGE, SHA, RSA, factorize, AuthKey.
 pub use layer_crypto as crypto;
 
 /// Re-export of [`layer_tl_parser`] (requires `feature = "parser"`).
@@ -55,7 +55,7 @@ pub use layer_tl_parser as parser;
 #[cfg(feature = "codegen")]
 pub use layer_tl_gen as codegen;
 
-// ─── Convenience re-exports ───────────────────────────────────────────────────
+// Convenience re-exports
 
 pub use layer_tl_types::{Deserializable, Identifiable, LAYER, RemoteCall, Serializable};
 

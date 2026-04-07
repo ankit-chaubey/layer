@@ -1,6 +1,6 @@
 [package]
 name        = "layer-tl-types"
-description = "Auto-generated Telegram TL types — constructors, functions, enums (Layer 224)"
+description = "Auto-generated Telegram TL types: constructors, functions, enums (Layer 224)"
 readme = "README.md"
 version.workspace    = true
 edition.workspace    = true
@@ -39,5 +39,5 @@ tl-mtproto               = []
 impl-serde               = []
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["impl-debug", "impl-from-type", "impl-from-enum", "tl-api", "tl-mtproto", "deserializable-functions", "name-for-id"]
 rustdoc-args = ["--cfg", "docsrs"]

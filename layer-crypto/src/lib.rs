@@ -7,7 +7,7 @@
 //! - SHA-1 / SHA-256 hash macros
 //! - Pollard-rho PQ factorization
 //! - RSA padding (MTProto RSA-PAD scheme)
-//! - `AuthKey` — 256-byte session key
+//! - `AuthKey`: 256-byte session key
 //! - MTProto 2.0 message encryption / decryption
 //! - DH nonce→key derivation
 
@@ -26,7 +26,7 @@ pub use deque_buffer::DequeBuffer;
 pub use factorize::factorize;
 pub use obfuscated::ObfuscatedCipher;
 
-// ─── MTProto 2.0 encrypt / decrypt ───────────────────────────────────────────
+// MTProto 2.0 encrypt / decrypt
 
 /// Errors from [`decrypt_data_v2`].
 #[derive(Clone, Debug, PartialEq)]
@@ -163,7 +163,7 @@ pub fn generate_key_data_from_nonce(
     (key, iv)
 }
 
-// ─── DH parameter validation (G-53) ──────────────────────────────────────────
+// DH parameter validation
 
 /// Telegram's published 2048-bit safe DH prime (big-endian, 256 bytes).
 ///
@@ -254,18 +254,18 @@ fn prime_residue(bytes: &[u8], modulus: u64) -> u64 {
 /// Checks performed (per MTProto spec §4.5):
 ///
 /// 1. `dh_prime` is exactly 256 bytes (2048 bits).
-/// 2. The most-significant bit is set — the number is truly 2048 bits.
+/// 2. The most-significant bit is set: the number is truly 2048 bits.
 /// 3. `dh_prime` matches Telegram's published safe prime exactly.
 /// 4. `g` ∈ {2, 3, 4, 5, 6, 7}.
 /// 5. The residue condition for `g` and the prime holds:
-///    | g | condition           |
-///    |---|---------------------|
-///    | 2 | p mod 8 = 7         |
-///    | 3 | p mod 3 = 2         |
-///    | 4 | always valid        |
-///    | 5 | p mod 5 ∈ {1, 4}    |
-///    | 6 | p mod 24 ∈ {19, 23} |
-///    | 7 | p mod 7 ∈ {3, 5, 6} |
+///| g | condition           |
+///|---|---------------------|
+///| 2 | p mod 8 = 7         |
+///| 3 | p mod 3 = 2         |
+///| 4 | always valid        |
+///| 5 | p mod 5 ∈ {1, 4}    |
+///| 6 | p mod 24 ∈ {19, 23} |
+///| 7 | p mod 7 ∈ {3, 5, 6} |
 pub fn check_p_and_g(dh_prime: &[u8], g: u32) -> Result<(), DhError> {
     // 1. Length
     if dh_prime.len() != 256 {
@@ -277,8 +277,8 @@ pub fn check_p_and_g(dh_prime: &[u8], g: u32) -> Result<(), DhError> {
         return Err(DhError::PrimeTooSmall);
     }
 
-    // 3. Known prime — exact match guarantees the residue conditions below
-    //    are deterministic constants, so check 5 is redundant after this.
+    // 3. Known prime: exact match guarantees the residue conditions below
+    //  are deterministic constants, so check 5 is redundant after this.
     if dh_prime != &TELEGRAM_DH_PRIME[..] {
         return Err(DhError::PrimeUnknown);
     }
@@ -288,8 +288,8 @@ pub fn check_p_and_g(dh_prime: &[u8], g: u32) -> Result<(), DhError> {
         return Err(DhError::GeneratorOutOfRange);
     }
 
-    // 5. Residue condition — deterministic for the known Telegram prime, but
-    //    kept for clarity and future-proofing against prime rotation.
+    // 5. Residue condition: deterministic for the known Telegram prime, but
+    //  kept for clarity and future-proofing against prime rotation.
     let valid = match g {
         2 => true, // p mod 8 = 7 is a fixed property of TELEGRAM_DH_PRIME
         3 => true, // p mod 3 = 2

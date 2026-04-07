@@ -16,7 +16,7 @@ let members: Vec<Participant> = client
 
 for p in &members {
     println!(
-        "{} — admin: {}, banned: {}",
+        "{}: admin: {}, banned: {}",
         p.user.first_name.as_deref().unwrap_or("?"),
         p.is_admin(),
         p.is_banned(),
@@ -45,11 +45,11 @@ let results: Vec<tl::enums::Peer> = client.search_peer("John").await?;
 ## `Participant` fields
 
 ```rust
-p.user          // tl::types::User — raw user data
-p.is_creator()  // bool — is the channel/group creator
-p.is_admin()    // bool — has any admin rights
-p.is_banned()   // bool — is banned/restricted
-p.is_member()   // bool — active member (not banned, not left)
+p.user          // tl::types::User: raw user data
+p.is_creator()  // bool: is the channel/group creator
+p.is_admin()    // bool: has any admin rights
+p.is_banned()   // bool: is banned/restricted
+p.is_member()   // bool: active member (not banned, not left)
 ```
 
 ---
@@ -64,7 +64,7 @@ client.kick_participant(peer.clone(), user_id).await?;
 
 ---
 
-## Ban participant — `BannedRightsBuilder`
+## Ban participant: `BannedRightsBuilder`
 
 Use the fluent `BannedRightsBuilder` for granular bans:
 
@@ -76,7 +76,7 @@ client
     .ban_participant(peer.clone(), user_id, BannedRightsBuilder::full_ban())
     .await?;
 
-// Partial restriction — no media, no stickers, expires in 24 h
+// Partial restriction: no media, no stickers, expires in 24 h
 let expires = (std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 86400) as i32;
 
@@ -92,7 +92,7 @@ client
     )
     .await?;
 
-// Unban — pass an empty builder to restore full permissions
+// Unban: pass an empty builder to restore full permissions
 client
     .ban_participant(peer.clone(), user_id, BannedRightsBuilder::new())
     .await?;
@@ -120,7 +120,7 @@ client
 
 ---
 
-## Promote admin — `AdminRightsBuilder`
+## Promote admin: `AdminRightsBuilder`
 
 ```rust
 use layer_client::participants::AdminRightsBuilder;
@@ -145,7 +145,7 @@ client
     .promote_participant(peer.clone(), user_id, AdminRightsBuilder::full_admin())
     .await?;
 
-// Demote — pass an empty builder to remove all admin rights
+// Demote: pass an empty builder to remove all admin rights
 client
     .promote_participant(peer.clone(), user_id, AdminRightsBuilder::new())
     .await?;
@@ -260,7 +260,7 @@ for p in &members {
 
 ---
 
-## `ProfilePhotoIter` — extended methods
+## `ProfilePhotoIter`: extended methods
 
 ```rust
 let mut iter = client.iter_profile_photos(user_id);
@@ -277,8 +277,8 @@ let all_photos = iter.collect().await?;
 | Method | Description |
 |---|---|
 | `iter.next()` | `async → Option<tl::enums::Photo>` |
-| `iter.collect()` | `async → Vec<tl::enums::Photo>` — all photos |
-| `iter.total_count()` | `Option<i32>` — total count after first fetch |
+| `iter.collect()` | `async → Vec<tl::enums::Photo>`: all photos |
+| `iter.total_count()` | `Option<i32>`: total count after first fetch |
 
 ---
 

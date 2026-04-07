@@ -68,7 +68,7 @@ impl FromStr for ParameterType {
             });
         }
 
-        // Plain type — must not contain `?`
+        // Plain type: must not contain `?`
         if s.contains('?') {
             return Err(ParamParseError::InvalidFlag);
         }

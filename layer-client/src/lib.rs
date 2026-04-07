@@ -2,20 +2,20 @@
 #![doc(html_root_url = "https://docs.rs/layer-client/0.4.6")]
 //! # layer-client
 //!
-//! Production-grade async Telegram client built on MTProto.
+//! Async Telegram client built on MTProto.
 //!
 //! ## Features
 //! - User login (phone + code + 2FA SRP) and bot token login
-//! - Peer access-hash caching — API calls always carry correct access hashes
+//! - Peer access-hash caching: API calls always carry correct access hashes
 //! - `FLOOD_WAIT` auto-retry with configurable policy
 //! - Typed async update stream: `NewMessage`, `MessageEdited`, `MessageDeleted`,
-//!   `CallbackQuery`, `InlineQuery`, `InlineSend`, `Raw`
+//! `CallbackQuery`, `InlineQuery`, `InlineSend`, `Raw`
 //! - Send / edit / delete / forward / pin messages
 //! - Search messages (per-chat and global)
 //! - Mark as read, delete dialogs, clear mentions
 //! - Join chat / accept invite links
 //! - Chat action (typing, uploading, …)
-//! - `get_me()` — fetch own User info
+//! - `get_me()`: fetch own User info
 //! - Paginated dialog and message iterators
 //! - DC migration, session persistence, reconnect
 
@@ -33,7 +33,6 @@ mod transport;
 mod two_factor_auth;
 pub mod update;
 
-// ── New feature modules ───────────────────────────────────────────────────────
 pub mod dc_pool;
 pub mod inline_iter;
 pub mod keyboard;
@@ -80,7 +79,7 @@ pub use typing_guard::TypingGuard;
 pub use update::Update;
 pub use update::{ChatActionUpdate, UserStatusUpdate};
 
-/// Re-export of `layer_tl_types` — generated TL constructors, functions, and enums.
+/// Re-export of `layer_tl_types`: generated TL constructors, functions, and enums.
 /// Users can write `use layer_client::tl` instead of adding a separate `layer-tl-types` dep.
 pub use layer_tl_types as tl;
 
@@ -102,7 +101,7 @@ use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-// ─── MTProto envelope constructor IDs ────────────────────────────────────────
+// MTProto envelope constructor IDs
 
 const ID_RPC_RESULT: u32 = 0xf35c6d01;
 const ID_RPC_ERROR: u32 = 0x2144ca19;
@@ -113,12 +112,12 @@ const ID_MSGS_ACK: u32 = 0x62d6b459;
 const ID_BAD_SERVER_SALT: u32 = 0xedab447b;
 const ID_NEW_SESSION: u32 = 0x9ec20908;
 const ID_BAD_MSG_NOTIFY: u32 = 0xa7eff811;
-// G-09: FutureSalts arrives as a bare frame (not inside rpc_result)
+// FutureSalts arrives as a bare frame (not inside rpc_result)
 const ID_FUTURE_SALTS: u32 = 0xae500895;
-// G-11: server confirms our message was received; we must ack its answer_msg_id
+// server confirms our message was received; we must ack its answer_msg_id
 const ID_MSG_DETAILED_INFO: u32 = 0x276d3ec6;
 const ID_MSG_NEW_DETAIL_INFO: u32 = 0x809db6df;
-// G-14: server asks us to re-send a specific message
+// server asks us to re-send a specific message
 const ID_MSG_RESEND_REQ: u32 = 0x7d861a08;
 const ID_UPDATES: u32 = 0x74ae4240;
 const ID_UPDATE_SHORT: u32 = 0x78d4dec1;
@@ -128,23 +127,23 @@ const ID_UPDATE_SHORT_CHAT_MSG: u32 = 0x4d6deea5;
 const ID_UPDATE_SHORT_SENT_MSG: u32 = 0x9015e101;
 const ID_UPDATES_TOO_LONG: u32 = 0xe317af7e;
 
-// ─── Keepalive / reconnect tuning ─────────────────────────────────────────────
+// Keepalive / reconnect tuning
 
 /// How often to send a keepalive ping.
-/// 60 s matches grammers and Telegram Desktop long-poll cadence.
+/// 60 s matches  and Telegram Desktop long-poll cadence.
 /// At 1 M connections this is 4× less keepalive traffic than 15 s.
 const PING_DELAY_SECS: u64 = 60;
 
 /// Tell Telegram to close the connection if it hears nothing for this many
 /// seconds.  Must be > PING_DELAY_SECS so a single missed ping doesn't drop us.
-/// 75 s = 60 s interval + 15 s slack, matching grammers.
+/// 75 s = 60 s interval + 15 s slack, matching .
 const NO_PING_DISCONNECT: i32 = 75;
 
 /// Initial backoff before the first reconnect attempt.
 const RECONNECT_BASE_MS: u64 = 500;
 
 /// Maximum backoff between reconnect attempts.
-/// 5 s cap instead of 30 s — on mobile, network outages are brief and a 30 s
+/// 5 s cap instead of 30 s: on mobile, network outages are brief and a 30 s
 /// sleep means the bot stays dead for up to 30 s after the network returns.
 /// Official Telegram mobile clients use a short cap for the same reason.
 const RECONNECT_MAX_SECS: u64 = 5;
@@ -156,7 +155,7 @@ const TCP_KEEPALIVE_INTERVAL_SECS: u64 = 5;
 /// Number of failed probes before the OS declares the connection dead.
 const TCP_KEEPALIVE_PROBES: u32 = 3;
 
-// ─── PeerCache ────────────────────────────────────────────────────────────────
+// PeerCache
 
 /// Caches access hashes for users and channels so every API call carries the
 /// correct hash without re-resolving peers.
@@ -211,7 +210,7 @@ impl PeerCache {
             return tl::enums::InputPeer::PeerSelf;
         }
         let hash = self.users.get(&user_id).copied().unwrap_or_else(|| {
-            tracing::warn!("[layer] PeerCache: no access_hash for user {user_id}, using 0 — may cause USER_ID_INVALID");
+            tracing::warn!("[layer] PeerCache: no access_hash for user {user_id}, using 0: may cause USER_ID_INVALID");
             0
         });
         tl::enums::InputPeer::User(tl::types::InputPeerUser {
@@ -222,7 +221,7 @@ impl PeerCache {
 
     fn channel_input_peer(&self, channel_id: i64) -> tl::enums::InputPeer {
         let hash = self.channels.get(&channel_id).copied().unwrap_or_else(|| {
-            tracing::warn!("[layer] PeerCache: no access_hash for channel {channel_id}, using 0 — may cause CHANNEL_INVALID");
+            tracing::warn!("[layer] PeerCache: no access_hash for channel {channel_id}, using 0: may cause CHANNEL_INVALID");
             0
         });
         tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
@@ -242,7 +241,7 @@ impl PeerCache {
     }
 }
 
-// ─── InputMessage builder ─────────────────────────────────────────────────────
+// InputMessage builder
 
 /// Builder for composing outgoing messages.
 ///
@@ -250,8 +249,8 @@ impl PeerCache {
 /// use layer_client::InputMessage;
 ///
 /// let msg = InputMessage::text("Hello, *world*!")
-///     .silent(true)
-///     .reply_to(Some(42));
+/// .silent(true)
+/// .reply_to(Some(42));
 /// ```
 #[derive(Clone, Default)]
 pub struct InputMessage {
@@ -268,7 +267,7 @@ pub struct InputMessage {
     pub entities: Option<Vec<tl::enums::MessageEntity>>,
     pub reply_markup: Option<tl::enums::ReplyMarkup>,
     pub schedule_date: Option<i32>,
-    /// Attached media to send alongside the message (G-45).
+    /// Attached media to send alongside the message.
     /// Use [`InputMessage::copy_media`] to attach media copied from an existing message.
     pub media: Option<tl::enums::InputMedia>,
 }
@@ -326,7 +325,7 @@ impl InputMessage {
 
     /// Schedule the message to be sent when the recipient comes online.
     ///
-    /// Mutually exclusive with `schedule_date` — calling this last wins.
+    /// Mutually exclusive with `schedule_date`: calling this last wins.
     /// Uses the Telegram magic value `0x7FFFFFFE`.
     pub fn schedule_once_online(mut self) -> Self {
         self.schedule_once_online = true;
@@ -352,8 +351,8 @@ impl InputMessage {
     /// use layer_client::{InputMessage, keyboard::{InlineKeyboard, Button}};
     ///
     /// let msg = InputMessage::text("Pick one:")
-    ///     .keyboard(InlineKeyboard::new()
-    ///         .row([Button::callback("A", b"a"), Button::callback("B", b"b")]));
+    /// .keyboard(InlineKeyboard::new()
+    ///     .row([Button::callback("A", b"a"), Button::callback("B", b"b")]));
     /// ```
     pub fn keyboard(mut self, kb: impl Into<tl::enums::ReplyMarkup>) -> Self {
         self.reply_markup = Some(kb.into());
@@ -366,7 +365,7 @@ impl InputMessage {
         self
     }
 
-    /// Attach media copied from an existing message (G-45).
+    /// Attach media copied from an existing message.
     ///
     /// Pass the `InputMedia` obtained from [`crate::media::Photo`],
     /// [`crate::media::Document`], or directly from a raw `MessageMedia`.
@@ -378,7 +377,7 @@ impl InputMessage {
     /// # use layer_client::{InputMessage, tl};
     /// # fn example(media: tl::enums::InputMedia) {
     /// let msg = InputMessage::text("Here is the file again")
-    ///     .copy_media(media);
+    /// .copy_media(media);
     /// # }
     /// ```
     pub fn copy_media(mut self, media: tl::enums::InputMedia) -> Self {
@@ -421,7 +420,7 @@ impl From<String> for InputMessage {
     }
 }
 
-// ─── TransportKind ────────────────────────────────────────────────────────────
+// TransportKind
 
 /// Which MTProto transport framing to use for all connections.
 ///
@@ -430,24 +429,24 @@ impl From<String> for InputMessage {
 /// | `Abridged` | `0xef` | Default, smallest overhead |
 /// | `Intermediate` | `0xeeeeeeee` | Better proxy compat |
 /// | `Full` | none | Adds seqno + CRC32 |
-/// | `Obfuscated` | random 64B | Bypasses DPI / MTProxy — **default** |
+/// | `Obfuscated` | random 64B | Bypasses DPI / MTProxy: **default** |
 #[derive(Clone, Debug)]
 pub enum TransportKind {
-    /// MTProto [Abridged] transport — length prefix is 1 or 4 bytes.
+    /// MTProto [Abridged] transport: length prefix is 1 or 4 bytes.
     ///
     /// [Abridged]: https://core.telegram.org/mtproto/mtproto-transports#abridged
     Abridged,
-    /// MTProto [Intermediate] transport — 4-byte LE length prefix.
+    /// MTProto [Intermediate] transport: 4-byte LE length prefix.
     ///
     /// [Intermediate]: https://core.telegram.org/mtproto/mtproto-transports#intermediate
     Intermediate,
-    /// MTProto [Full] transport — 4-byte length + seqno + CRC32.
+    /// MTProto [Full] transport: 4-byte length + seqno + CRC32.
     ///
     /// [Full]: https://core.telegram.org/mtproto/mtproto-transports#full
     Full,
-    /// [Obfuscated2] transport — AES-256-CTR over Abridged framing.
+    /// [Obfuscated2] transport: AES-256-CTR over Abridged framing.
     /// Required for MTProxy and networks with deep-packet inspection.
-    /// **Default** — works on all networks, bypasses DPI, negligible CPU cost.
+    /// **Default**: works on all networks, bypasses DPI, negligible CPU cost.
     ///
     /// `secret` is the 16-byte MTProxy secret, or `None` for keyless obfuscation.
     ///
@@ -466,11 +465,11 @@ impl Default for TransportKind {
     }
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
+// Config
 
 /// A token that can be used to gracefully shut down a [`Client`].
 ///
-/// Obtained from [`Client::connect`] — call [`ShutdownToken::cancel`] to begin
+/// Obtained from [`Client::connect`]: call [`ShutdownToken::cancel`] to begin
 /// graceful shutdown. All pending requests will finish and the reader task will
 /// exit cleanly.
 ///
@@ -494,7 +493,7 @@ pub struct Config {
     pub api_hash: String,
     pub dc_addr: Option<String>,
     pub retry_policy: Arc<dyn RetryPolicy>,
-    /// Optional SOCKS5 proxy — every Telegram connection is tunnelled through it.
+    /// Optional SOCKS5 proxy: every Telegram connection is tunnelled through it.
     pub socks5: Option<crate::socks5::Socks5Config>,
     /// Allow IPv6 DC addresses when populating the DC table (default: false).
     pub allow_ipv6: bool,
@@ -503,7 +502,7 @@ pub struct Config {
     /// Session persistence backend (default: binary file `"layer.session"`).
     pub session_backend: Arc<dyn crate::session_backend::SessionBackend>,
     /// If `true`, replay missed updates via `updates.getDifference` immediately
-    /// after connecting. Mirrors grammers' `UpdatesConfiguration { catch_up: true }`.
+    /// after connecting.
     /// Default: `false`.
     pub catch_up: bool,
 }
@@ -517,10 +516,10 @@ impl Config {
     /// # Example
     /// ```rust,no_run
     /// let cfg = Config {
-    ///     api_id:   12345,
-    ///     api_hash: "abc".into(),
-    ///     catch_up: true,
-    ///     ..Config::with_string_session(std::env::var("SESSION").unwrap_or_default())
+    /// api_id:   12345,
+    /// api_hash: "abc".into(),
+    /// catch_up: true,
+    /// ..Config::with_string_session(std::env::var("SESSION").unwrap_or_default())
     /// };
     /// ```
     pub fn with_string_session(s: impl Into<String>) -> Self {
@@ -549,8 +548,8 @@ impl Default for Config {
     }
 }
 
-// ─── UpdateStream ─────────────────────────────────────────────────────────────
-// G-56: UpdateStream lives here; next_raw() added.
+// UpdateStream
+// UpdateStream lives here; next_raw() added.
 
 /// Asynchronous stream of [`Update`]s.
 pub struct UpdateStream {
@@ -565,7 +564,7 @@ impl UpdateStream {
 
     /// Wait for the next **raw** (unrecognised) update frame, skipping all
     /// typed high-level variants. Useful for handling constructor IDs that
-    /// `layer-client` does not yet wrap — dispatch on `constructor_id` yourself.
+    /// `layer-client` does not yet wrap: dispatch on `constructor_id` yourself.
     ///
     /// Returns `None` when the client has disconnected.
     pub async fn next_raw(&mut self) -> Option<update::RawUpdate> {
@@ -578,7 +577,7 @@ impl UpdateStream {
     }
 }
 
-// ─── Dialog ───────────────────────────────────────────────────────────────────
+// Dialog
 
 /// A Telegram dialog (chat, user, channel).
 #[derive(Debug, Clone)]
@@ -637,10 +636,10 @@ impl Dialog {
     }
 }
 
-// ─── ClientInner ─────────────────────────────────────────────────────────────
+// ClientInner
 
 struct ClientInner {
-    /// Write half of the connection — holds the EncryptedSession (for packing)
+    /// Write half of the connection: holds the EncryptedSession (for packing)
     /// and the send half of the TCP stream. The read half is owned by the
     /// reader task started in connect().
     writer: Mutex<ConnectionWriter>,
@@ -665,7 +664,7 @@ struct ClientInner {
     dc_options: Mutex<HashMap<i32, DcEntry>>,
     pub peer_cache: RwLock<PeerCache>,
     pub pts_state: Mutex<pts::PtsState>,
-    /// G-17: Buffer for updates received during a possible-gap window.
+    /// Buffer for updates received during a possible-gap window.
     pub possible_gap: Mutex<pts::PossibleGapBuffer>,
     api_id: i32,
     api_hash: String,
@@ -692,7 +691,7 @@ struct ClientInner {
     dh_in_progress: std::sync::atomic::AtomicBool,
 }
 
-/// The main Telegram client. Cheap to clone — internally Arc-wrapped.
+/// The main Telegram client. Cheap to clone: internally Arc-wrapped.
 #[derive(Clone)]
 pub struct Client {
     pub(crate) inner: Arc<ClientInner>,
@@ -700,8 +699,6 @@ pub struct Client {
 }
 
 impl Client {
-    // ── Builder (G-20) ────────────────────────────────────────────────────
-
     /// Return a fluent [`ClientBuilder`] for constructing and connecting a client.
     ///
     /// # Example
@@ -709,18 +706,18 @@ impl Client {
     /// # use layer_client::Client;
     /// # #[tokio::main] async fn main() -> anyhow::Result<()> {
     /// let (client, _shutdown) = Client::builder()
-    ///     .api_id(12345)
-    ///     .api_hash("abc123")
-    ///     .session("my.session")
-    ///     .catch_up(true)
-    ///     .connect().await?;
+    /// .api_id(12345)
+    /// .api_hash("abc123")
+    /// .session("my.session")
+    /// .catch_up(true)
+    /// .connect().await?;
     /// # Ok(()) }
     /// ```
     pub fn builder() -> crate::builder::ClientBuilder {
         crate::builder::ClientBuilder::default()
     }
 
-    // ── Connect ────────────────────────────────────────────────────────────
+    // Connect
 
     pub async fn connect(config: Config) -> Result<(Self, ShutdownToken), InvocationError> {
         // Validate required config fields up-front with clear error messages.
@@ -739,7 +736,7 @@ impl Client {
         // are dropped with a warning rather than growing RAM without bound.
         let (update_tx, update_rx) = mpsc::channel(2048);
 
-        // ── Load or fresh-connect ───────────────────────────────────────
+        // Load or fresh-connect
         let socks5 = config.socks5.clone();
         let transport = config.transport.clone();
 
@@ -781,13 +778,13 @@ impl Client {
                                     (c, s.home_dc_id, opts, Some(s))
                                 }
                                 Err(e) => {
-                                    // S1 fix: never call fresh_connect on a TCP blip during
-                                    // startup — that would silently destroy the saved session
+                                    // never call fresh_connect on a TCP blip during
+                                    // startup: that would silently destroy the saved session
                                     // by switching to DC2 with a fresh key.  Return the error
                                     // so the caller gets a clear failure and can retry or
                                     // prompt for re-auth without corrupting the session file.
                                     tracing::warn!(
-                                        "[layer] Session connect failed ({e}) — \
+                                        "[layer] Session connect failed ({e}): \
                                          returning error (delete session file to reset)"
                                     );
                                     return Err(e);
@@ -810,7 +807,7 @@ impl Client {
                 }
             };
 
-        // ── Build DC pool ───────────────────────────────────────────────
+        // Build DC pool
         let pool = dc_pool::DcPool::new(home_dc_id, &dc_opts.values().cloned().collect::<Vec<_>>());
 
         // Split the TCP stream immediately.
@@ -830,11 +827,11 @@ impl Client {
         let (reconnect_tx, reconnect_rx) =
             mpsc::unbounded_channel::<(OwnedReadHalf, FrameKind, [u8; 256], i64)>();
 
-        // Channel for external "network restored" hints — lets Android/iOS callbacks
+        // Channel for external "network restored" hints: lets Android/iOS callbacks
         // skip the reconnect backoff and attempt immediately.
         let (network_hint_tx, network_hint_rx) = mpsc::unbounded_channel::<()>();
 
-        // Graceful shutdown token — cancel this to stop the reader task cleanly.
+        // Graceful shutdown token: cancel this to stop the reader task cleanly.
         let shutdown_token = CancellationToken::new();
         let catch_up = config.catch_up;
 
@@ -892,12 +889,12 @@ impl Client {
 
         // Only clear the auth key on definitive bad-key signals from Telegram.
         // Network errors (EOF mid-session, ConnectionReset, Rpc(-404)) mean the
-        // server rejected our key. Any other error (I/O, etc.) is left intact —
+        // server rejected our key. Any other error (I/O, etc.) is left intact
         // no RPC timeout exists anymore, so there is no "timed out = stale key" case.
         if let Err(e) = client.init_connection().await {
             let key_is_stale = match &e {
                 InvocationError::Rpc(r) if r.code == -404 => true,
-                // -429 = TRANSPORT_FLOOD (rate limit). The auth key is valid —
+                // -429 = TRANSPORT_FLOOD (rate limit). The auth key is valid
                 // Telegram is just throttling us. Do NOT do fresh DH here; it
                 // would race with the reader task's error handler and produce two
                 // concurrent DH handshakes whose keys clobber each other, leading
@@ -947,7 +944,7 @@ impl Client {
                 let socks5_r = client.inner.socks5.clone();
                 let transport_r = client.inner.transport.clone();
 
-                // S1 fix: reconnect to the HOME DC with fresh DH, not DC2.
+                // reconnect to the HOME DC with fresh DH, not DC2.
                 // fresh_connect() was hardcoded to DC2 and wiped all learned DC state,
                 // which is why sessions on DC3/DC4/DC5 were corrupted on every -404.
                 let home_dc_id_r = *client.inner.home_dc_id.lock().await;
@@ -964,7 +961,7 @@ impl Client {
 
                 // Split first so we can read the new key/salt from the writer.
                 let (new_writer, new_read, new_fk) = new_conn.into_writer();
-                // Update ONLY the home DC entry — all other DC keys are preserved.
+                // Update ONLY the home DC entry: all other DC keys are preserved.
                 {
                     let mut opts_guard = client.inner.dc_options.lock().await;
                     if let Some(entry) = opts_guard.get_mut(&home_dc_id_r) {
@@ -973,7 +970,7 @@ impl Client {
                         entry.time_offset = new_writer.time_offset();
                     }
                 }
-                // home_dc_id stays unchanged — we reconnected to the same DC.
+                // home_dc_id stays unchanged: we reconnected to the same DC.
                 let new_ak = new_writer.enc.auth_key_bytes();
                 let new_sid = new_writer.enc.session_id();
                 *client.inner.writer.lock().await = new_writer;
@@ -984,7 +981,7 @@ impl Client {
                 tokio::task::yield_now().await;
 
                 // Brief pause so the new key propagates to all of Telegram's
-                // app servers before we send getDifference (same reason grammers
+                // app servers before we send getDifference (same reason
                 // does a yield after fresh DH before any RPCs).
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
@@ -1005,7 +1002,7 @@ impl Client {
             }
         }
 
-        // ── Restore peer access-hash cache from session ─────────────────
+        // Restore peer access-hash cache from session
         if let Some(ref s) = loaded_session
             && !s.peers.is_empty()
         {
@@ -1024,15 +1021,15 @@ impl Client {
             );
         }
 
-        // ── Restore update state / catch-up ─────────────────────────────
+        // Restore update state / catch-up
         //
         // Two modes:
-        //   catch_up=false → always call sync_pts_state() so we start from
-        //                    the current server state (ignore saved pts).
-        //   catch_up=true  → if we have a saved pts > 0, restore it and let
-        //                    get_difference() fetch what we missed.  Only fall
-        //                    back to sync_pts_state() when there is no saved
-        //                    state (first boot, or fresh session).
+        // catch_up=false → always call sync_pts_state() so we start from
+        //                the current server state (ignore saved pts).
+        // catch_up=true  → if we have a saved pts > 0, restore it and let
+        //                get_difference() fetch what we missed.  Only fall
+        //                back to sync_pts_state() when there is no saved
+        //                state (first boot, or fresh session).
         let has_saved_state = loaded_session
             .as_ref()
             .is_some_and(|s| s.updates_state.is_initialised());
@@ -1056,17 +1053,17 @@ impl Client {
             );
             drop(state);
 
-            // Capture channel list before spawn — get_difference() resets
+            // Capture channel list before spawn: get_difference() resets
             // PtsState via from_server_state (channel_pts preserved now, but
             // we need the IDs to drive per-channel catch-up regardless).
             let channel_ids: Vec<i64> = snap.channels.iter().map(|&(cid, _)| cid).collect();
 
-            // Now spawn the catch-up diff — pts is the *old* value, so
+            // Now spawn the catch-up diff: pts is the *old* value, so
             // getDifference will return exactly what we missed.
             let c = client.clone();
             let utx = client.inner.update_tx.clone();
             tokio::spawn(async move {
-                // ── 1. Global getDifference ───────────────────────────────
+                // 1. Global getDifference
                 match c.get_difference().await {
                     Ok(missed) => {
                         tracing::info!(
@@ -1076,7 +1073,7 @@ impl Client {
                         for u in missed {
                             if utx.try_send(attach_client_to_update(u, &c)).is_err() {
                                 tracing::warn!(
-                                    "[layer] update channel full — dropping catch-up update"
+                                    "[layer] update channel full: dropping catch-up update"
                                 );
                                 break;
                             }
@@ -1085,7 +1082,7 @@ impl Client {
                     Err(e) => tracing::warn!("[layer] catch_up getDifference: {e}"),
                 }
 
-                // ── 2. Per-channel getChannelDifference ───────────────────
+                // 2. Per-channel getChannelDifference
                 // Limit concurrency to avoid FLOOD_WAIT from spawning one task
                 // per channel with no cap (a session with 500 channels would
                 // fire 500 simultaneous API calls).
@@ -1112,7 +1109,7 @@ impl Client {
                                     for u in updates {
                                         if utx2.try_send(u).is_err() {
                                             tracing::warn!(
-                                                "[layer] update channel full — dropping channel diff update"
+                                                "[layer] update channel full: dropping channel diff update"
                                             );
                                             break;
                                         }
@@ -1127,7 +1124,7 @@ impl Client {
                 }
             });
         } else {
-            // No saved state or catch_up disabled — sync from server.
+            // No saved state or catch_up disabled: sync from server.
             let _ = client.sync_pts_state().await;
         }
 
@@ -1160,12 +1157,12 @@ impl Client {
         Ok((conn, 2, opts))
     }
 
-    // ── Session ────────────────────────────────────────────────────────────
+    // Session
 
     /// Build a [`PersistedSession`] snapshot from current client state.
     ///
     /// Single source of truth used by both [`save_session`] and
-    /// [`export_session_string`] — any serialisation change only needs
+    /// [`export_session_string`]: any serialisation change only needs
     /// to be made here.
     async fn build_persisted_session(&self) -> PersistedSession {
         use session::{CachedPeer, UpdatesStateSnap};
@@ -1419,9 +1416,9 @@ impl Client {
         }
     }
 
-    // ── Get self ───────────────────────────────────────────────────────────
+    // Get self
 
-    // ── Get users ──────────────────────────────────────────────────────────
+    // Get users
 
     /// Fetch user info by ID. Returns `None` for each ID that is not found.
     ///
@@ -1475,13 +1472,13 @@ impl Client {
             .ok_or_else(|| InvocationError::Deserialize("getUsers returned no user".into()))
     }
 
-    // ── Updates ────────────────────────────────────────────────────────────
+    // Updates
 
     /// Return an [`UpdateStream`] that yields incoming [`Update`]s.
     ///
     /// The reader task (started inside `connect()`) sends all updates to
     /// `inner.update_tx`. This method proxies those updates into a fresh
-    /// caller-owned channel — typically called once per bot/app loop.
+    /// caller-owned channel: typically called once per bot/app loop.
     pub fn stream_updates(&self) -> UpdateStream {
         // Guard: only one UpdateStream is supported per Client clone group.
         // A second call would compete with the first for updates, causing
@@ -1492,7 +1489,7 @@ impl Client {
             .swap(true, std::sync::atomic::Ordering::SeqCst)
         {
             panic!(
-                "stream_updates() called twice on the same Client — only one UpdateStream is supported per client"
+                "stream_updates() called twice on the same Client: only one UpdateStream is supported per client"
             );
         }
         let (caller_tx, rx) = mpsc::unbounded_channel::<update::Update>();
@@ -1508,12 +1505,12 @@ impl Client {
         UpdateStream { rx }
     }
 
-    // ── Network hint ───────────────────────────────────────────────────────
+    // Network hint
 
     /// Signal that network connectivity has been restored.
     ///
-    /// Call this from platform network-change callbacks — Android's
-    /// `ConnectivityManager`, iOS `NWPathMonitor`, or any other OS hook —
+    /// Call this from platform network-change callbacks: Android's
+    /// `ConnectivityManager`, iOS `NWPathMonitor`, or any other OS hook
     /// to make the client attempt an immediate reconnect instead of waiting
     /// for the exponential backoff timer to expire.
     ///
@@ -1524,11 +1521,11 @@ impl Client {
         let _ = self.inner.network_hint_tx.send(());
     }
 
-    // ── Reader task ────────────────────────────────────────────────────────
+    // Reader task
     // Decrypts frames without holding any lock, then routes:
-    //   rpc_result  → pending map (oneshot to waiting RPC caller)
-    //   update      → update_tx  (delivered to stream_updates consumers)
-    //   bad_server_salt → updates writer salt
+    // rpc_result  → pending map (oneshot to waiting RPC caller)
+    // update      → update_tx  (delivered to stream_updates consumers)
+    // bad_server_salt → updates writer salt
     //
     // On error: drains pending with Io errors (so AutoSleep retries callers),
     // then loops with exponential backoff until reconnect succeeds.
@@ -1539,7 +1536,7 @@ impl Client {
     // switch to the new connection immediately, without waiting for the next
     // frame on the old (now stale) connection.
 
-    // ── Reader task supervisor ────────────────────────────────────────────────
+    // Reader task supervisor
     //
     // run_reader_task is the outer supervisor. It wraps reader_loop in a
     // restart loop so that if reader_loop ever exits for any reason other than
@@ -1549,14 +1546,14 @@ impl Client {
     // infrastructure and is never allowed to die permanently.
     //
     // Restart sequence on unexpected exit:
-    //   1. Drain all pending RPCs with ConnectionReset so callers unblock.
-    //   2. Exponential-backoff reconnect loop (500 ms → 30 s cap) until TCP
-    //      succeeds, respecting the shutdown token at every sleep point.
-    //   3. Spawn init_connection in a background task (same deadlock-safe
-    //      pattern as do_reconnect_loop) and pass the oneshot receiver as the
-    //      initial_init_rx to the restarted reader_loop.
-    //   4. reader_loop picks up init_rx immediately on its first iteration and
-    //      handles success/failure exactly like a mid-session reconnect.
+    // 1. Drain all pending RPCs with ConnectionReset so callers unblock.
+    // 2. Exponential-backoff reconnect loop (500 ms → 30 s cap) until TCP
+    //  succeeds, respecting the shutdown token at every sleep point.
+    // 3. Spawn init_connection in a background task (same deadlock-safe
+    //  pattern as do_reconnect_loop) and pass the oneshot receiver as the
+    //  initial_init_rx to the restarted reader_loop.
+    // 4. reader_loop picks up init_rx immediately on its first iteration and
+    //  handles success/failure exactly like a mid-session reconnect.
     #[allow(clippy::too_many_arguments)]
     async fn run_reader_task(
         &self,
@@ -1579,7 +1576,7 @@ impl Client {
 
         loop {
             tokio::select! {
-                // ── Clean shutdown ────────────────────────────────────────────
+                // Clean shutdown
                 _ = shutdown_token.cancelled() => {
                     tracing::info!("[layer] Reader task: shutdown requested, exiting cleanly.");
                     let mut pending = self.inner.pending.lock().await;
@@ -1589,7 +1586,7 @@ impl Client {
                     return;
                 }
 
-                // ── reader_loop ───────────────────────────────────────────────
+                // reader_loop
                 _ = self.reader_loop(
                         rh, fk, ak, sid,
                         restart_init_rx.take(),
@@ -1598,7 +1595,7 @@ impl Client {
             }
 
             // If we reach here, reader_loop returned without a shutdown signal.
-            // This should never happen in normal operation — treat it as a fault.
+            // This should never happen in normal operation: treat it as a fault.
             if shutdown_token.is_cancelled() {
                 tracing::debug!("[layer] Reader task: exiting after loop (shutdown).");
                 return;
@@ -1606,7 +1603,7 @@ impl Client {
 
             restart_count += 1;
             tracing::error!(
-                "[layer] Reader loop exited unexpectedly (restart #{restart_count}) —                  supervisor reconnecting …"
+                "[layer] Reader loop exited unexpectedly (restart #{restart_count}):                  supervisor reconnecting …"
             );
 
             // Step 1: drain all pending RPCs so callers don't hang.
@@ -1619,7 +1616,7 @@ impl Client {
                     ))));
                 }
             }
-            // Fix #9: drain sent_bodies alongside pending to prevent unbounded growth.
+            // drain sent_bodies alongside pending to prevent unbounded growth.
             self.inner.writer.lock().await.sent_bodies.clear();
 
             // Step 2: reconnect with exponential backoff, honouring shutdown.
@@ -1634,7 +1631,7 @@ impl Client {
                     _ = sleep(Duration::from_millis(delay_ms)) => {}
                 }
 
-                // do_reconnect ignores both params (_old_auth_key, _old_frame_kind) —
+                // do_reconnect ignores both params (_old_auth_key, _old_frame_kind)
                 // it re-reads everything from ClientInner. rh/fk/ak/sid were moved
                 // into reader_loop, so we pass dummies here; fresh values come back
                 // from the Ok result and replace them below.
@@ -1656,7 +1653,7 @@ impl Client {
             ak = new_ak;
             sid = new_sid;
 
-            // Step 3: spawn init_connection (cannot await inline — reader must
+            // Step 3: spawn init_connection (cannot await inline: reader must
             // be running to route the RPC response, or we deadlock).
             let (init_tx, init_rx) = oneshot::channel();
             let c = self.clone();
@@ -1669,7 +1666,7 @@ impl Client {
                         Err(InvocationError::Rpc(ref r)) if r.flood_wait_seconds().is_some() => {
                             let secs = r.flood_wait_seconds().unwrap();
                             tracing::warn!(
-                                "[layer] Supervisor init_connection FLOOD_WAIT_{secs} — waiting"
+                                "[layer] Supervisor init_connection FLOOD_WAIT_{secs}: waiting"
                             );
                             sleep(Duration::from_secs(secs + 1)).await;
                         }
@@ -1692,7 +1689,7 @@ impl Client {
                         {
                             tracing::warn!(
                                 "[layer] getDifference AUTH_KEY_UNREGISTERED after \
-                                 fresh DH — falling back to sync_pts_state"
+                                 fresh DH: falling back to sync_pts_state"
                             );
                             let _ = c.sync_pts_state().await;
                             vec![]
@@ -1704,9 +1701,7 @@ impl Client {
                     };
                     for u in missed {
                         if utx.try_send(u).is_err() {
-                            tracing::warn!(
-                                "[layer] update channel full — dropping catch-up update"
-                            );
+                            tracing::warn!("[layer] update channel full: dropping catch-up update");
                             break;
                         }
                     }
@@ -1748,7 +1743,7 @@ impl Client {
 
         loop {
             tokio::select! {
-                // ── Normal frame (or application-level keepalive timeout) ─────
+                // Normal frame (or application-level keepalive timeout)
                 outcome = recv_frame_with_keepalive(&mut rh, &fk, self, &ak) => {
                     match outcome {
                         FrameOutcome::Frame(mut raw) => {
@@ -1758,9 +1753,9 @@ impl Client {
                                     // A decrypt failure (e.g. Crypto(InvalidBuffer) from a
                                     // 4-byte transport error that slipped through) means our
                                     // auth key is stale or the framing is broken. Treat it as
-                                    // fatal — same path as FrameOutcome::Error — so pending RPCs
+                                    // fatal: same path as FrameOutcome::Error: so pending RPCs
                                     // unblock immediately instead of hanging for 30 s.
-                                    tracing::warn!("[layer] Decrypt error: {e:?} — failing pending waiters and reconnecting");
+                                    tracing::warn!("[layer] Decrypt error: {e:?}: failing pending waiters and reconnecting");
                                     drop(init_rx.take());
                                     {
                                         let mut pending = self.inner.pending.lock().await;
@@ -1785,15 +1780,15 @@ impl Client {
                                     continue;
                                 }
                             };
-                            // DIFF-08: grammers discards the frame-level salt entirely
-                            // (it's not the "server salt" we should use — that only comes
+                            //  discards the frame-level salt entirely
+                            // (it's not the "server salt" we should use: that only comes
                             // from new_session_created, bad_server_salt, or future_salts).
                             // Overwriting enc.salt here would clobber the managed salt pool.
                             self.route_frame(msg.body, msg.msg_id).await;
 
-                            // G-04/G-07: Acks are NOT flushed here standalone.
+                            //: Acks are NOT flushed here standalone.
                             // They accumulate in pending_ack and are bundled into the next
-                            // outgoing request container, matching grammers' behavior and
+                            // outgoing request container
                             // avoiding an extra standalone frame (and extra RTT exposure).
                         }
 
@@ -1808,7 +1803,7 @@ impl Client {
                             // connect_raw (fresh DH) rather than reconnecting with the same
                             // expired key and getting -404 forever.
                             //
-                            // -429 = TRANSPORT_FLOOD (rate limit). The key is fine — do NOT
+                            // -429 = TRANSPORT_FLOOD (rate limit). The key is fine: do NOT
                             // clear it. Clearing on -429 causes a double-DH race with the
                             // startup path, producing AUTH_KEY_UNREGISTERED post-reconnect.
                             let key_is_stale = match &e {
@@ -1834,7 +1829,7 @@ impl Client {
                                 if let Some(entry) = opts.get_mut(&home_dc_id) {
                                     tracing::warn!(
                                         "[layer] Stale auth key on DC{home_dc_id} ({e}) \
-                                         — clearing for fresh DH"
+                                        : clearing for fresh DH"
                                     );
                                     entry.auth_key = None;
                                 }
@@ -1851,11 +1846,11 @@ impl Client {
                                             std::io::ErrorKind::ConnectionReset, msg.clone()))));
                                 }
                             }
-                            // Fix #9: drain sent_bodies so it doesn't grow unbounded under loss.
+                            // drain sent_bodies so it doesn't grow unbounded under loss.
                             self.inner.writer.lock().await.sent_bodies.clear();
 
                             // Skip backoff when the key is stale: no point waiting before
-                            // fresh DH — the server told us directly to renegotiate.
+                            // fresh DH: the server told us directly to renegotiate.
                             let reconnect_delay = if clear_key { 0 } else { RECONNECT_BASE_MS };
                             match self.do_reconnect_loop(
                                 reconnect_delay, &mut rh, &mut fk, &mut ak, &mut sid,
@@ -1880,7 +1875,7 @@ impl Client {
                     }
                 }
 
-                // ── DC migration / deliberate reconnect ──────────────────────
+                // DC migration / deliberate reconnect
                 maybe = new_conn_rx.recv() => {
                     if let Some((new_rh, new_fk, new_ak, new_sid)) = maybe {
                         rh = new_rh; fk = new_fk; ak = new_ak; sid = new_sid;
@@ -1891,27 +1886,27 @@ impl Client {
                 }
 
 
-                // ── init_connection result (polled only when Some) ────────────
+                // init_connection result (polled only when Some)
                 init_result = async { init_rx.as_mut().unwrap().await }, if init_rx.is_some() => {
                     init_rx = None;
                     match init_result {
                         Ok(Ok(())) => {
                             init_fail_count = 0;
-                            // S3 fix: do NOT save_session here.
+                            // do NOT save_session here.
                             // Grammers never persists the session after a plain TCP
-                            // reconnect — only when a genuinely new auth key is
+                            // reconnect: only when a genuinely new auth key is
                             // generated (fresh DH).  Writing here was the mechanism
                             // by which bugs S1 and S2 corrupted the on-disk session:
                             // if fresh DH ran with the wrong DC, the bad key was
                             // then immediately flushed to disk.  Without the write
                             // there is nothing to corrupt.
-                            tracing::info!("[layer] Reconnected to Telegram ✓ — session live, replaying missed updates …");
+                            tracing::info!("[layer] Reconnected to Telegram ✓: session live, replaying missed updates …");
                         }
 
                         Ok(Err(e)) => {
                             // TCP connected but init RPC failed.
                             // Only clear auth key on definitive bad-key signals from Telegram.
-                            // -429 = TRANSPORT_FLOOD: key is valid, just throttled — do NOT clear.
+                            // -429 = TRANSPORT_FLOOD: key is valid, just throttled: do NOT clear.
                             let key_is_stale = match &e {
                                 InvocationError::Rpc(r) if r.code == -404 => true,
                                 InvocationError::Rpc(r) if r.code == -429 => false,
@@ -1930,7 +1925,7 @@ impl Client {
                             if dh_claimed {
                                 tracing::warn!(
                                     "[layer] init_connection: definitive bad-key ({e}) \
-                                     — clearing auth key for fresh DH …"
+                                    : clearing auth key for fresh DH …"
                                 );
                                 init_fail_count = 0;
                                 let home_dc_id = *self.inner.home_dc_id.lock().await;
@@ -1943,7 +1938,7 @@ impl Client {
                                 init_fail_count += 1;
                                 tracing::warn!(
                                     "[layer] init_connection failed (attempt {init_fail_count}, {e}) \
-                                     — retrying with same key …"
+                                    : retrying with same key …"
                                 );
                             }
                             {
@@ -1994,11 +1989,11 @@ impl Client {
                 }
                 let req_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
                 let inner = body[12..].to_vec();
-                // G-04: ack the rpc_result container message
+                // ack the rpc_result container message
                 self.inner.writer.lock().await.pending_ack.push(msg_id);
                 let result = unwrap_envelope(inner);
                 if let Some(tx) = self.inner.pending.lock().await.remove(&req_msg_id) {
-                    // G-02: request resolved — remove from sent_bodies and container_map
+                    // request resolved: remove from sent_bodies and container_map
                     self.inner
                         .writer
                         .lock()
@@ -2015,7 +2010,7 @@ impl Client {
                     let to_send = match result {
                         Ok(EnvelopeResult::Payload(p)) => Ok(p),
                         Ok(EnvelopeResult::RawUpdates(bodies)) => {
-                            // BUG-FIX: route through dispatch_updates so pts/seq is
+                            // route through dispatch_updates so pts/seq is
                             // properly tracked. Previously updates were sent directly
                             // to update_tx, skipping pts tracking -> false gap ->
                             // getDifference -> duplicate deliveries.
@@ -2085,7 +2080,7 @@ impl Client {
             ID_GZIP_PACKED => {
                 let bytes = tl_read_bytes(&body[4..]).unwrap_or_default();
                 if let Ok(inflated) = gz_inflate(&bytes) {
-                    // pass same outer msg_id — gzip has no msg_id of its own
+                    // pass same outer msg_id: gzip has no msg_id of its own
                     Box::pin(self.route_frame(inflated, msg_id)).await;
                 }
             }
@@ -2100,9 +2095,8 @@ impl Client {
                     let bad_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
                     let new_salt = i64::from_le_bytes(body[20..28].try_into().unwrap());
 
-                    // DIFF-03: grammers clears the salt pool and inserts new_server_salt
+                    // clear the salt pool and insert new_server_salt
                     // with valid_until=i32::MAX, then updates the active session salt.
-                    // grammers ref: handle_bad_server_salt() salts.clear() + push.
                     {
                         let mut w = self.inner.writer.lock().await;
                         w.salts.clear();
@@ -2118,10 +2112,9 @@ impl Client {
                     );
 
                     // Re-transmit the original request under the new salt.
-                    // DIFF-11: if bad_msg_id is not in sent_bodies directly, check
-                    // container_map — the server may have sent the notification for
+                    // if bad_msg_id is not in sent_bodies directly, check
+                    // container_map: the server may have sent the notification for
                     // the outer container msg_id rather than the inner request msg_id.
-                    // grammers ref: process_bad_message() pair.container_msg_id check.
                     {
                         let mut w = self.inner.writer.lock().await;
 
@@ -2170,17 +2163,16 @@ impl Client {
                         }
                     }
 
-                    // Reactive refresh after bad_server_salt — reuses the extracted helper.
+                    // Reactive refresh after bad_server_salt: reuses the extracted helper.
                     self.spawn_salt_fetch_if_needed();
                 }
             }
             ID_PONG => {
-                // Pong is the server's reply to Ping — NOT inside rpc_result.
+                // Pong is the server's reply to Ping: NOT inside rpc_result.
                 // pong#347773c5  msg_id:long  ping_id:long
                 // body[4..12] = msg_id of the original Ping → key in pending map
                 //
-                // DIFF-05: pong has odd seq_no (content-related) → must ack it.
-                // grammers: process_message() pushes every message with seq_no%2==1.
+                // pong has odd seq_no (content-related), must ack it.
                 if body.len() >= 20 {
                     let ping_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
                     // Ack the pong frame itself (outer msg_id, not the ping msg_id).
@@ -2194,22 +2186,21 @@ impl Client {
                     }
                 }
             }
-            // ── DIFF-03/09/05: FutureSalts — full grammers-style salt pool ──────
+            // FutureSalts: maintain the full server-provided salt pool.
             ID_FUTURE_SALTS => {
                 // future_salts#ae500895
-                //   [0..4]   constructor
-                //   [4..12]  req_msg_id (long)
-                //   [12..16] now (int)  — server's current Unix time
-                //   [16..20] vector constructor 0x1cb5c415
-                //   [20..24] count (int)
-                //   per entry (bare FutureSalt, no constructor):
-                //     [+0..+4]  valid_since (int)
-                //     [+4..+8]  valid_until (int)
-                //     [+8..+16] salt (long)
-                //   first entry starts at byte 24
+                // [0..4]   constructor
+                // [4..12]  req_msg_id (long)
+                // [12..16] now (int) : server's current Unix time
+                // [16..20] vector constructor 0x1cb5c415
+                // [20..24] count (int)
+                // per entry (bare FutureSalt, no constructor):
+                // [+0..+4]  valid_since (int)
+                // [+4..+8]  valid_until (int)
+                // [+8..+16] salt (long)
+                // first entry starts at byte 24
                 //
-                // DIFF-05: FutureSalts has odd seq_no → must ack.
-                // grammers: process_message() pushes every msg with seq_no%2==1.
+                // FutureSalts has odd seq_no, must ack it.
                 self.inner.writer.lock().await.pending_ack.push(msg_id);
 
                 if body.len() >= 24 {
@@ -2217,7 +2208,7 @@ impl Client {
                     let server_now = i32::from_le_bytes(body[12..16].try_into().unwrap());
                     let count = u32::from_le_bytes(body[20..24].try_into().unwrap()) as usize;
 
-                    // DIFF-03/09: Parse ALL returned salts (grammers stores the full Vec).
+                    // Parse ALL returned salts ( stores the full Vec).
                     // Each FutureSalt entry is 16 bytes starting at offset 24.
                     let mut new_salts: Vec<FutureSalt> = Vec::with_capacity(count);
                     for i in 0..count {
@@ -2242,7 +2233,7 @@ impl Client {
                     }
 
                     if !new_salts.is_empty() {
-                        // Sort newest-last (mirrors grammers sort_by_key(|s| -s.valid_since)
+                        // Sort newest-last (mirrors  sort_by_key(|s| -s.valid_since)
                         // which in ascending order puts highest valid_since at the end).
                         new_salts.sort_by_key(|s| s.valid_since);
                         let mut w = self.inner.writer.lock().await;
@@ -2253,7 +2244,6 @@ impl Client {
                         // A salt is usable after valid_since + SALT_USE_DELAY (60 s).
                         // Walk newest-to-oldest (end of vec to start) and pick the
                         // first one whose use-delay window has already opened.
-                        // grammers reference: Sender::get_salt() logic.
                         let use_salt = w
                             .salts
                             .iter()
@@ -2264,7 +2254,7 @@ impl Client {
                         if let Some(salt) = use_salt {
                             w.enc.salt = salt;
                             tracing::debug!(
-                                "[layer] DIFF-09 FutureSalts: stored {} salts, \
+                                "[layer] FutureSalts: stored {} salts, \
                                  active salt={salt:#x}",
                                 w.salts.len()
                             );
@@ -2288,12 +2278,10 @@ impl Client {
                 if body.len() >= 28 {
                     let server_salt = i64::from_le_bytes(body[20..28].try_into().unwrap());
                     let mut w = self.inner.writer.lock().await;
-                    // DIFF-05: new_session_created has odd seq_no → must ack.
-                    // grammers: process_message() pushes every msg with seq_no%2==1.
+                    // new_session_created has odd seq_no → must ack.
                     w.pending_ack.push(msg_id);
-                    // DIFF-03: grammers clears the salt pool and inserts the fresh
+                    //  clears the salt pool and inserts the fresh
                     // server_salt with valid_until=i32::MAX (permanently valid).
-                    // grammers ref: handle_new_session_created() salts.clear() + push.
                     w.salts.clear();
                     w.salts.push(FutureSalt {
                         valid_since: 0,
@@ -2302,11 +2290,11 @@ impl Client {
                     });
                     w.enc.salt = server_salt;
                     tracing::debug!(
-                        "[layer] new_session_created — salt pool reset to {server_salt:#x}"
+                        "[layer] new_session_created: salt pool reset to {server_salt:#x}"
                     );
                 }
             }
-            // ── G-02 + G-03 + G-12: bad_msg_notification ────────────────────
+            // +: bad_msg_notification
             ID_BAD_MSG_NOTIFY => {
                 // bad_msg_notification#a7eff811 bad_msg_id:long bad_msg_seqno:int error_code:int
                 if body.len() < 20 {
@@ -2315,7 +2303,7 @@ impl Client {
                 let bad_msg_id = i64::from_le_bytes(body[4..12].try_into().unwrap());
                 let error_code = u32::from_le_bytes(body[16..20].try_into().unwrap());
 
-                // grammers description strings for each code
+                //  description strings for each code
                 let description = match error_code {
                     16 => "msg_id too low",
                     17 => "msg_id too high",
@@ -2331,19 +2319,19 @@ impl Client {
                     _ => "unknown bad_msg code",
                 };
 
-                // grammers: retryable=[16,17,48], non-fatal-non-retryable=[32,33], fatal=rest
+                // codes 16/17/48 are retryable; 32/33 are non-fatal seq corrections; rest are fatal.
                 let retryable = matches!(error_code, 16 | 17 | 48);
                 let fatal = !retryable && !matches!(error_code, 32 | 33);
 
                 if fatal {
                     tracing::error!(
                         "[layer] bad_msg_notification (fatal): bad_msg_id={bad_msg_id} \
-                         code={error_code} — {description}"
+                         code={error_code}: {description}"
                     );
                 } else {
                     tracing::warn!(
                         "[layer] bad_msg_notification: bad_msg_id={bad_msg_id} \
-                         code={error_code} — {description}"
+                         code={error_code}: {description}"
                     );
                 }
 
@@ -2353,20 +2341,19 @@ impl Client {
                 let resend: Option<(Vec<u8>, i64, i64, FrameKind)> = {
                     let mut w = self.inner.writer.lock().await;
 
-                    // G-12: correct clock skew on codes 16/17.
+                    // correct clock skew on codes 16/17.
                     if error_code == 16 || error_code == 17 {
                         w.enc.correct_time_offset(msg_id);
                     }
-                    // G-03: correct seq_no on codes 32/33
+                    // correct seq_no on codes 32/33
                     if error_code == 32 || error_code == 33 {
                         w.enc.correct_seq_no(error_code);
                     }
 
                     if retryable {
-                        // DIFF-11: if bad_msg_id is not in sent_bodies directly, check
-                        // container_map — the server sends the notification for the
+                        // if bad_msg_id is not in sent_bodies directly, check
+                        // container_map: the server sends the notification for the
                         // outer container msg_id when a whole container was bad.
-                        // grammers ref: process_bad_message() pair.container_msg_id check.
                         let resolved_id = if w.sent_bodies.contains_key(&bad_msg_id) {
                             bad_msg_id
                         } else if let Some(&inner_id) = w.container_map.get(&bad_msg_id) {
@@ -2412,10 +2399,10 @@ impl Client {
                             // Phase 3: re-acquire writer only for TCP send.
                             let mut w = self.inner.writer.lock().await;
                             if let Err(e) = send_frame_write(&mut w.write_half, &wire, &fk).await {
-                                tracing::warn!("[layer] G-02 re-send failed: {e}");
+                                tracing::warn!("[layer] re-send failed: {e}");
                                 w.sent_bodies.remove(&new_msg_id);
                             } else {
-                                tracing::debug!("[layer] G-02 re-sent {old_msg_id}→{new_msg_id}");
+                                tracing::debug!("[layer] re-sent {old_msg_id}→{new_msg_id}");
                             }
                         } else {
                             self.inner
@@ -2436,7 +2423,7 @@ impl Client {
                     }
                 }
             }
-            // ── G-11: MsgDetailedInfo → ack the answer_msg_id ───────────────
+            // MsgDetailedInfo → ack the answer_msg_id
             ID_MSG_DETAILED_INFO => {
                 // msg_detailed_info#276d3ec6 msg_id:long answer_msg_id:long bytes:int status:int
                 // body[4..12]  = msg_id (original request)
@@ -2450,7 +2437,7 @@ impl Client {
                         .pending_ack
                         .push(answer_msg_id);
                     tracing::trace!(
-                        "[layer] G-11 MsgDetailedInfo: queued ack for answer_msg_id={answer_msg_id}"
+                        "[layer] MsgDetailedInfo: queued ack for answer_msg_id={answer_msg_id}"
                     );
                 }
             }
@@ -2465,12 +2452,10 @@ impl Client {
                         .await
                         .pending_ack
                         .push(answer_msg_id);
-                    tracing::trace!(
-                        "[layer] G-11 MsgNewDetailedInfo: queued ack for {answer_msg_id}"
-                    );
+                    tracing::trace!("[layer] MsgNewDetailedInfo: queued ack for {answer_msg_id}");
                 }
             }
-            // ── G-14: MsgResendReq → re-send the requested msg_ids ──────────
+            // MsgResendReq → re-send the requested msg_ids
             ID_MSG_RESEND_REQ => {
                 // msg_resend_req#7d861a08 msg_ids:Vector<long>
                 // body[4..8]   = 0x1cb5c415 (Vector constructor)
@@ -2496,21 +2481,17 @@ impl Client {
                             drop(pending);
                             w.sent_bodies.insert(new_id, orig_body);
                             send_frame_write(&mut w.write_half, &wire, &fk).await.ok();
-                            tracing::debug!(
-                                "[layer] G-14 MsgResendReq: resent {resend_id} → {new_id}"
-                            );
+                            tracing::debug!("[layer] MsgResendReq: resent {resend_id} → {new_id}");
                         }
                     }
                 }
             }
-            // ── G-13: log DestroySession outcomes ───────────────────────────
+            // log DestroySession outcomes
             0xe22045fc => {
-                tracing::warn!(
-                    "[layer] destroy_session_ok received — session terminated by server"
-                );
+                tracing::warn!("[layer] destroy_session_ok received: session terminated by server");
             }
             0x62d350c9 => {
-                tracing::warn!("[layer] destroy_session_none received — session was already gone");
+                tracing::warn!("[layer] destroy_session_none received: session was already gone");
             }
             ID_UPDATES
             | ID_UPDATE_SHORT
@@ -2519,7 +2500,7 @@ impl Client {
             | ID_UPDATE_SHORT_CHAT_MSG
             | ID_UPDATE_SHORT_SENT_MSG
             | ID_UPDATES_TOO_LONG => {
-                // G-04: ack update frames too
+                // ack update frames too
                 self.inner.writer.lock().await.pending_ack.push(msg_id);
                 // Bug #1 fix: route through pts/qts/seq gap-checkers
                 self.dispatch_updates(&body).await;
@@ -2528,12 +2509,12 @@ impl Client {
         }
     }
 
-    // ── Fix B1: sort updates by pts-count key before dispatching ─────────────
-    // ── Fix B5: make seq check synchronous and gating ─────────────────────────
+    // sort updates by pts-count key before dispatching
+    // make seq check synchronous and gating
 
     /// Extract the pts-sort key for a single update: `pts - pts_count`.
     ///
-    /// Fix B1: grammers sorts every update batch by this key before processing.
+    ///sorts every update batch by this key before processing.
     /// Without the sort, a container arriving as [pts=5, pts=3, pts=4] produces
     /// a false gap on the first item (expected 3, got 5) and spuriously fires
     /// getDifference even though the filling updates are present in the same batch.
@@ -2552,7 +2533,7 @@ impl Client {
         }
     }
 
-    // ── Bug #1: pts-aware update dispatch ────────────────────────────────────
+    // Bug #1: pts-aware update dispatch
 
     /// Parse an incoming update container and route each update through the
     /// pts/qts/seq gap-checkers before forwarding to `update_tx`.
@@ -2562,9 +2543,9 @@ impl Client {
         }
         let cid = u32::from_le_bytes(body[..4].try_into().unwrap());
 
-        // updatesTooLong — we must call getDifference to recover missed updates.
+        // updatesTooLong: we must call getDifference to recover missed updates.
         if cid == 0xe317af7e_u32 {
-            tracing::warn!("[layer] updatesTooLong — getDifference");
+            tracing::warn!("[layer] updatesTooLong: getDifference");
             let c = self.clone();
             let utx = self.inner.update_tx.clone();
             tokio::spawn(async move {
@@ -2572,7 +2553,7 @@ impl Client {
                     Ok(updates) => {
                         for u in updates {
                             if utx.try_send(u).is_err() {
-                                tracing::warn!("[layer] update channel full — dropping update");
+                                tracing::warn!("[layer] update channel full: dropping update");
                                 break;
                             }
                         }
@@ -2583,7 +2564,7 @@ impl Client {
             return;
         }
 
-        // BUG-FIX: updateShortMessage (0x313bc7f8) and updateShortChatMessage (0x4d6deea5)
+        // updateShortMessage (0x313bc7f8) and updateShortChatMessage (0x4d6deea5)
         // carry pts/pts_count but the old code forwarded them directly to update_tx WITHOUT
         // calling check_and_fill_gap. That left the internal pts counter frozen, so the
         // next updateNewMessage (e.g. the bot's own reply) triggered a false gap ->
@@ -2614,7 +2595,7 @@ impl Client {
                     Ok(updates) => {
                         for u in updates {
                             if utx.try_send(u).is_err() {
-                                tracing::warn!("[layer] update channel full — dropping update");
+                                tracing::warn!("[layer] update channel full: dropping update");
                             }
                         }
                     }
@@ -2646,7 +2627,7 @@ impl Client {
                     Ok(updates) => {
                         for u in updates {
                             if utx.try_send(u).is_err() {
-                                tracing::warn!("[layer] update channel full — dropping update");
+                                tracing::warn!("[layer] update channel full: dropping update");
                             }
                         }
                     }
@@ -2656,7 +2637,7 @@ impl Client {
             return;
         }
 
-        // BUG-FIX: updateShortSentMessage push — advance pts without emitting an Update.
+        // updateShortSentMessage push: advance pts without emitting an Update.
         // Telegram can also PUSH updateShortSentMessage (not just in RPC responses).
         // Same fix: extract pts and route through check_and_fill_gap.
         if cid == ID_UPDATE_SHORT_SENT_MSG {
@@ -2666,7 +2647,7 @@ impl Client {
                     let pts = m.pts;
                     let pts_count = m.pts_count;
                     tracing::debug!(
-                        "[layer] updateShortSentMessage (push): pts={pts} pts_count={pts_count} — advancing pts"
+                        "[layer] updateShortSentMessage (push): pts={pts} pts_count={pts_count}: advancing pts"
                     );
                     let c = self.clone();
                     let utx = self.inner.update_tx.clone();
@@ -2676,7 +2657,7 @@ impl Client {
                                 for u in replayed {
                                     if utx.try_send(u).is_err() {
                                         tracing::warn!(
-                                            "[layer] update channel full — dropping update"
+                                            "[layer] update channel full: dropping update"
                                         );
                                     }
                                 }
@@ -2694,7 +2675,7 @@ impl Client {
             return;
         }
 
-        // Fix B5: Seq check must be synchronous and act as a gate for the whole
+        // Seq check must be synchronous and act as a gate for the whole
         // container.  The old approach spawned a task concurrently with dispatching
         // the individual updates, meaning seq could be advanced over an unclean batch.
         // Grammers only advances seq after the full update loop completes with no
@@ -2706,7 +2687,7 @@ impl Client {
         // Parse the container ONCE and capture seq_info, users, chats, and the
         // bare update list together.  The old code parsed twice (once for seq_info,
         // once for raw updates) and both times discarded users/chats, so the
-        // PeerCache was never populated from incoming update containers — hence
+        // PeerCache was never populated from incoming update containers: hence
         // the "no access_hash for user X, using 0" warnings.
         struct ParsedContainer {
             seq_info: Option<(i32, i32)>,
@@ -2752,7 +2733,7 @@ impl Client {
                 }
             }
             0x78d4dec1 => {
-                // updateShort — no users/chats/seq
+                // updateShort: no users/chats/seq
                 match tl::types::UpdateShort::deserialize(&mut Cursor::from_slice(body)) {
                     Ok(u) => ParsedContainer {
                         seq_info: None,
@@ -2782,27 +2763,27 @@ impl Client {
                 .await;
         }
 
-        // Fix B5: synchronous seq gate — check before processing any updates.
+        // synchronous seq gate: check before processing any updates.
         if let Some((seq, seq_start)) = parsed.seq_info
             && seq != 0
         {
             let result = self.inner.pts_state.lock().await.check_seq(seq, seq_start);
             match result {
                 PtsCheckResult::Ok => {
-                    // Good — will advance seq after the batch below.
+                    // Good: will advance seq after the batch below.
                 }
                 PtsCheckResult::Duplicate => {
-                    // Already handled this container — drop it silently.
+                    // Already handled this container: drop it silently.
                     tracing::debug!(
-                        "[layer] seq duplicate (seq={seq}, seq_start={seq_start}) — dropping container"
+                        "[layer] seq duplicate (seq={seq}, seq_start={seq_start}): dropping container"
                     );
                     return;
                 }
                 PtsCheckResult::Gap { expected, got } => {
-                    // Real seq gap — fire getDifference and drop the container.
+                    // Real seq gap: fire getDifference and drop the container.
                     // getDifference will deliver the missed updates.
                     tracing::warn!(
-                        "[layer] seq gap: expected {expected}, got {got} — getDifference"
+                        "[layer] seq gap: expected {expected}, got {got}: getDifference"
                     );
                     let c = self.clone();
                     let utx = self.inner.update_tx.clone();
@@ -2812,7 +2793,7 @@ impl Client {
                                 for u in updates {
                                     if utx.try_send(u).is_err() {
                                         tracing::warn!(
-                                            "[layer] update channel full — dropping seq gap update"
+                                            "[layer] update channel full: dropping seq gap update"
                                         );
                                         break;
                                     }
@@ -2828,7 +2809,7 @@ impl Client {
 
         let mut raw: Vec<tl::enums::Update> = parsed.updates;
 
-        // Fix B1: sort by (pts - pts_count) before dispatching — mirrors grammers'
+        // sort by (pts - pts_count) before dispatching:
         // updates.sort_by_key(update_sort_key).  Without this, an out-of-order batch
         // like [pts=5, pts=3, pts=4] falsely detects a gap on the first update and
         // fires getDifference even though the filling updates are in the same container.
@@ -2838,8 +2819,8 @@ impl Client {
             self.dispatch_single_update(upd).await;
         }
 
-        // Fix B5: advance seq AFTER the full batch has been dispatched — mirrors
-        // grammers' post-loop seq advance that only fires when !have_unresolved_gaps.
+        // advance seq AFTER the full batch has been dispatched: mirrors
+        // ' post-loop seq advance that only fires when !have_unresolved_gaps.
         // (In our spawn-per-update model we can't track unresolved gaps inline, but
         // advancing here at minimum prevents premature seq advancement before the
         // container's pts checks have even been spawned.)
@@ -2953,7 +2934,7 @@ impl Client {
                             for u in v {
                                 let u = attach_client_to_update(u, &c);
                                 if utx.try_send(u).is_err() {
-                                    tracing::warn!("[layer] update channel full — dropping update");
+                                    tracing::warn!("[layer] update channel full: dropping update");
                                     break;
                                 }
                             }
@@ -2984,7 +2965,7 @@ impl Client {
                                     let u = attach_client_to_update(u, &c);
                                     if utx.try_send(u).is_err() {
                                         tracing::warn!(
-                                            "[layer] update channel full — dropping update"
+                                            "[layer] update channel full: dropping update"
                                         );
                                         break;
                                     }
@@ -3024,7 +3005,7 @@ impl Client {
 
         for u in to_send {
             if self.inner.update_tx.try_send(u).is_err() {
-                tracing::warn!("[layer] update channel full — dropping update");
+                tracing::warn!("[layer] update channel full: dropping update");
             }
         }
     }
@@ -3034,8 +3015,8 @@ impl Client {
     /// receiver for its result.
     ///
     /// - `initial_delay_ms = RECONNECT_BASE_MS` for a fresh disconnect.
-    /// - `initial_delay_ms = 0` when TCP already worked but init failed — we
-    ///   want to retry init immediately rather than waiting another full backoff.
+    /// - `initial_delay_ms = 0` when TCP already worked but init failed: we
+    /// want to retry init immediately rather than waiting another full backoff.
     ///
     /// Returns `None` if the shutdown token fires (caller should exit).
     async fn do_reconnect_loop(
@@ -3049,7 +3030,7 @@ impl Client {
     ) -> Option<oneshot::Receiver<Result<(), InvocationError>>> {
         let mut delay_ms = if initial_delay_ms == 0 {
             // Caller explicitly requests an immediate first attempt (e.g. init
-            // failed but TCP is up — no reason to wait before the next try).
+            // failed but TCP is up: no reason to wait before the next try).
             0
         } else {
             initial_delay_ms.max(RECONNECT_BASE_MS)
@@ -3070,9 +3051,9 @@ impl Client {
                     *fk = new_fk;
                     *ak = new_ak;
                     *sid = new_sid;
-                    tracing::debug!("[layer] TCP reconnected ✓ — initialising session …");
+                    tracing::debug!("[layer] TCP reconnected ✓: initialising session …");
 
-                    // Spawn init_connection. MUST NOT be awaited inline — the
+                    // Spawn init_connection. MUST NOT be awaited inline: the
                     // reader loop must resume so it can route the RPC response.
                     // We give back a oneshot so the reader can act on failure.
                     let (init_tx, init_rx) = oneshot::channel();
@@ -3082,7 +3063,7 @@ impl Client {
                         // Respect FLOOD_WAIT before sending the result back.
                         // Without this, a FLOOD_WAIT from Telegram during init
                         // would immediately re-trigger another reconnect attempt,
-                        // which would itself hit FLOOD_WAIT — a ban spiral.
+                        // which would itself hit FLOOD_WAIT: a ban spiral.
                         let result = loop {
                             match c.init_connection().await {
                                 Ok(()) => break Ok(()),
@@ -3091,7 +3072,7 @@ impl Client {
                                 {
                                     let secs = r.flood_wait_seconds().unwrap();
                                     tracing::warn!(
-                                        "[layer] init_connection FLOOD_WAIT_{secs} —                                          waiting before retry"
+                                        "[layer] init_connection FLOOD_WAIT_{secs}:                                          waiting before retry"
                                     );
                                     sleep(Duration::from_secs(secs + 1)).await;
                                     // loop and retry init_connection
@@ -3104,7 +3085,7 @@ impl Client {
                             // After fresh DH the new key may not have propagated to
                             // all of Telegram's app servers yet, so getDifference can
                             // return AUTH_KEY_UNREGISTERED (401).  A 2 s pause lets the
-                            // key replicate before we send any RPCs (same reason grammers
+                            // key replicate before we send any RPCs (same reason
                             // yields after fresh DH).  Without this, post-reconnect RPC
                             // calls silently fail and the bot stops responding.
                             if c.inner
@@ -3121,7 +3102,7 @@ impl Client {
                                 {
                                     tracing::warn!(
                                         "[layer] getDifference AUTH_KEY_UNREGISTERED after \
-                                         fresh DH — falling back to sync_pts_state"
+                                         fresh DH: falling back to sync_pts_state"
                                     );
                                     let _ = c.sync_pts_state().await;
                                     vec![]
@@ -3136,7 +3117,7 @@ impl Client {
                             for u in missed {
                                 if utx.try_send(attach_client_to_update(u, &c)).is_err() {
                                     tracing::warn!(
-                                        "[layer] update channel full — dropping catch-up update"
+                                        "[layer] update channel full: dropping catch-up update"
                                     );
                                     break;
                                 }
@@ -3196,10 +3177,10 @@ impl Client {
             {
                 Ok(c) => c,
                 Err(e) => {
-                    // S2 fix: a TCP failure during reconnect does NOT warrant a
+                    // a TCP failure during reconnect does NOT warrant a
                     // fresh DH handshake (which generates a new auth key and
                     // orphans the old one still registered on Telegram's servers).
-                    // Return the error — do_reconnect_loop will back off and retry
+                    // Return the error: do_reconnect_loop will back off and retry
                     // with the same saved key once the network recovers.
                     return Err(e);
                 }
@@ -3213,13 +3194,12 @@ impl Client {
         let new_sid = new_writer.enc.session_id();
         *self.inner.writer.lock().await = new_writer;
 
-        // DIFF-15: The new writer is fresh (new EncryptedSession) but
+        // The new writer is fresh (new EncryptedSession) but
         // salt_request_in_flight lives on self.inner and is never reset
         // automatically.  If a GetFutureSalts was in flight when the
         // disconnect happened the flag stays `true` forever, preventing any
         // future proactive salt refreshes.  Reset it here so the first
         // bad_server_salt after reconnect can spawn a new request.
-        // grammers ref: salt_request_msg_id is always cleared on reconnect
         // because the entire Sender is recreated.
         self.inner
             .salt_request_in_flight
@@ -3240,7 +3220,7 @@ impl Client {
         //
         // do_reconnect() is always called from inside the reader loop's select!,
         // which means the reader task is blocked while this function runs.
-        // init_connection() sends an RPC and awaits the response — but only the
+        // init_connection() sends an RPC and awaits the response: but only the
         // reader task can route that response back to the pending caller.
         // Calling it here creates a self-deadlock that times out after 30 s.
         //
@@ -3250,7 +3230,7 @@ impl Client {
         Ok((new_read, new_fk, new_ak, new_sid))
     }
 
-    // ── Messaging ──────────────────────────────────────────────────────────
+    // Messaging
 
     /// Send a text message. Use `"me"` for Saved Messages.
     pub async fn send_message(
@@ -3292,7 +3272,7 @@ impl Client {
             msg.schedule_date
         };
 
-        // G-45: if media is attached, route through SendMedia instead of SendMessage.
+        // if media is attached, route through SendMedia instead of SendMessage.
         if let Some(media) = &msg.media {
             let req = tl::functions::messages::SendMedia {
                 silent: msg.silent,
@@ -3362,7 +3342,7 @@ impl Client {
         }
         let cid = u32::from_le_bytes(body[..4].try_into().unwrap());
 
-        // updates#74ae4240 / updatesCombined#725b04c3 — full Updates container
+        // updates#74ae4240 / updatesCombined#725b04c3: full Updates container
         if cid == 0x74ae4240 || cid == 0x725b04c3 {
             let mut cur = Cursor::from_slice(body);
             if let Ok(tl::enums::Updates::Updates(u)) = tl::enums::Updates::deserialize(&mut cur) {
@@ -3393,7 +3373,7 @@ impl Client {
             }
         }
 
-        // updateShortSentMessage#9015e101 — server returns id/pts/date/media/entities
+        // updateShortSentMessage#9015e101: server returns id/pts/date/media/entities
         // but not the full message body. Reconstruct from what we know.
         if cid == 0x9015e101 {
             let mut cur = Cursor::from_slice(&body[4..]);
@@ -3402,7 +3382,7 @@ impl Client {
             }
         }
 
-        // updateShortMessage#313bc7f8 (DM to another user — we get a short form)
+        // updateShortMessage#313bc7f8 (DM to another user: we get a short form)
         if cid == 0x313bc7f8 {
             let mut cur = Cursor::from_slice(&body[4..]);
             if let Ok(m) = tl::types::UpdateShortMessage::deserialize(&mut cur) {
@@ -3720,7 +3700,7 @@ impl Client {
     /// Forward messages and return the forwarded copies.
     ///
     /// Like [`forward_messages`] but parses the Updates response and returns
-    /// the new messages in the destination chat, matching grammers behaviour.
+    /// the new messages in the destination chat, matching  behaviour.
     pub async fn forward_messages_returning(
         &self,
         destination: impl Into<PeerRef>,
@@ -3941,7 +3921,7 @@ impl Client {
     /// # async fn f(client: layer_client::Client, msg: layer_client::update::IncomingMessage)
     /// #   -> Result<(), layer_client::InvocationError> {
     /// if let Some(replied) = client.get_reply_to_message(&msg).await? {
-    ///     println!("Replied to: {:?}", replied.text());
+    /// println!("Replied to: {:?}", replied.text());
     /// }
     /// # Ok(()) }
     /// ```
@@ -4007,7 +3987,7 @@ impl Client {
         self.rpc_write(&req).await
     }
 
-    // ── Message search ─────────────────────────────────────────────────────
+    // Message search
 
     /// Search messages in a chat (simple form).
     /// For advanced filtering use [`Client::search`] → [`SearchBuilder`].
@@ -4020,7 +4000,7 @@ impl Client {
         self.search(peer, query).limit(limit).fetch(self).await
     }
 
-    /// G-31: Fluent search builder for in-chat message search.
+    /// Fluent search builder for in-chat message search.
     pub fn search(&self, peer: impl Into<PeerRef>, query: &str) -> SearchBuilder {
         SearchBuilder::new(peer.into(), query.to_string())
     }
@@ -4037,12 +4017,12 @@ impl Client {
             .await
     }
 
-    /// G-32: Fluent builder for global cross-chat search.
+    /// Fluent builder for global cross-chat search.
     pub fn search_global_builder(&self, query: &str) -> GlobalSearchBuilder {
         GlobalSearchBuilder::new(query.to_string())
     }
 
-    // ── Scheduled messages ─────────────────────────────────────────────────
+    // Scheduled messages
 
     /// Retrieve all scheduled messages in a chat.
     ///
@@ -4054,7 +4034,7 @@ impl Client {
     /// # async fn f(client: layer_client::Client, peer: layer_tl_types::enums::Peer) -> Result<(), Box<dyn std::error::Error>> {
     /// let scheduled = client.get_scheduled_messages(peer).await?;
     /// for msg in &scheduled {
-    ///     println!("Scheduled: {:?} at {:?}", msg.text(), msg.date());
+    /// println!("Scheduled: {:?} at {:?}", msg.text(), msg.date());
     /// }
     /// # Ok(()) }
     /// ```
@@ -4097,9 +4077,9 @@ impl Client {
         self.rpc_write(&req).await
     }
 
-    // ── Callback / Inline Queries ──────────────────────────────────────────
+    // Callback / Inline Queries
 
-    /// G-24: Edit an inline message by its [`InputBotInlineMessageId`].
+    /// Edit an inline message by its [`InputBotInlineMessageId`].
     ///
     /// Inline messages live on the bot's home DC, not necessarily the current
     /// connection's DC.  This method sends the edit RPC on the correct DC by
@@ -4174,7 +4154,7 @@ impl Client {
         Ok(body.len() >= 4 && u32::from_le_bytes(body[..4].try_into().unwrap()) == 0x997275b5)
     }
 
-    // ── Dialogs ────────────────────────────────────────────────────────────
+    // Dialogs
 
     /// Fetch up to `limit` dialogs, most recent first. Populates entity/message.
     pub async fn get_dialogs(&self, limit: i32) -> Result<Vec<Dialog>, InvocationError> {
@@ -4534,7 +4514,7 @@ impl Client {
     /// ```rust,no_run
     /// # async fn f(client: layer_client::Client, msg: layer_client::update::IncomingMessage) -> Result<(), Box<dyn std::error::Error>> {
     /// if let Some(loc) = msg.download_location() {
-    ///     client.download_media_to_file(loc, "/tmp/file.jpg").await?;
+    /// client.download_media_to_file(loc, "/tmp/file.jpg").await?;
     /// }
     /// # Ok(()) }
     /// ```
@@ -4599,7 +4579,7 @@ impl Client {
         self.rpc_write(&req).await
     }
 
-    // ── Chat actions (typing, etc) ─────────────────────────────────────────
+    // Chat actions (typing, etc)
 
     /// Send a chat action (typing indicator, uploading photo, etc).
     ///
@@ -4615,7 +4595,7 @@ impl Client {
         self.send_chat_action_ex(peer, action, None).await
     }
 
-    // ── Join / invite links ────────────────────────────────────────────────
+    // Join / invite links
 
     /// Join a public chat or channel by username/peer.
     pub async fn join_chat(&self, peer: impl Into<PeerRef>) -> Result<(), InvocationError> {
@@ -4669,7 +4649,7 @@ impl Client {
         None
     }
 
-    // ── Message history (paginated) ────────────────────────────────────────
+    // Message history (paginated)
 
     /// Fetch a page of messages from a peer's history.
     pub async fn get_messages(
@@ -4702,7 +4682,7 @@ impl Client {
             .collect())
     }
 
-    // ── Peer resolution ────────────────────────────────────────────────────
+    // Peer resolution
 
     /// Resolve a peer string to a [`tl::enums::Peer`].
     pub async fn resolve_peer(&self, peer: &str) -> Result<tl::enums::Peer, InvocationError> {
@@ -4742,7 +4722,7 @@ impl Client {
         Ok(resolved.peer)
     }
 
-    // ── Raw invoke ─────────────────────────────────────────────────────────
+    // Raw invoke
 
     /// Invoke any TL function directly, handling flood-wait retries.
 
@@ -4751,7 +4731,6 @@ impl Client {
     /// Called from `do_rpc_call` (proactive, pool size <= 1) and from the
     /// `bad_server_salt` handler (reactive, after salt pool reset).
     ///
-    /// grammers reference: `try_request_salts()` in `mtp/encrypted.rs`.
     fn spawn_salt_fetch_if_needed(&self) {
         if self
             .inner
@@ -4815,7 +4794,7 @@ impl Client {
                 Ok(body) => return Ok(body),
                 Err(e) if e.migrate_dc_id().is_some() => {
                     // Telegram is redirecting us to a different DC.
-                    // Migrate transparently and retry — no error surfaces to caller.
+                    // Migrate transparently and retry: no error surfaces to caller.
                     self.migrate_to(e.migrate_dc_id().unwrap()).await?;
                 }
                 Err(e) => rl.advance(e).await?,
@@ -4826,22 +4805,22 @@ impl Client {
     /// Send an RPC call and await the response via a oneshot channel.
     ///
     /// This is the core of the split-stream design:
-    ///  1. Pack the request and get its msg_id.
-    ///  2. Register a oneshot Sender in the pending map (BEFORE sending).
-    ///  3. Send the frame while holding the writer lock.
-    ///  4. Release the writer lock immediately — the reader task now runs freely.
-    ///  5. Await the oneshot Receiver; the reader task will fulfill it when
-    ///     the matching rpc_result frame arrives.
+    ///1. Pack the request and get its msg_id.
+    ///2. Register a oneshot Sender in the pending map (BEFORE sending).
+    ///3. Send the frame while holding the writer lock.
+    ///4. Release the writer lock immediately: the reader task now runs freely.
+    ///5. Await the oneshot Receiver; the reader task will fulfill it when
+    /// the matching rpc_result frame arrives.
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
         {
             let raw_body = req.to_bytes();
-            // G-06: compress large outgoing bodies
+            // compress large outgoing bodies
             let body = maybe_gz_pack(&raw_body);
 
             let mut w = self.inner.writer.lock().await;
 
-            // Proactive salt cycling on every send (grammers: Encrypted::push() prelude).
+            // Proactive salt cycling on every send (: Encrypted::push() prelude).
             // Prunes expired salts, cycles enc.salt to newest usable entry,
             // and triggers a background GetFutureSalts when pool shrinks to 1.
             if w.advance_salt_if_needed() {
@@ -4852,18 +4831,18 @@ impl Client {
 
             let fk = w.frame_kind.clone();
 
-            // G-04 + G-07: drain any pending acks; if non-empty bundle them with
+            // +: drain any pending acks; if non-empty bundle them with
             // the request in a MessageContainer so acks piggyback on every send.
             let acks: Vec<i64> = w.pending_ack.drain(..).collect();
 
             if acks.is_empty() {
-                // ── Simple path: standalone request ──────────────────────────
+                // Simple path: standalone request
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
-                w.sent_bodies.insert(msg_id, body); // G-02
+                w.sent_bodies.insert(msg_id, body); //
                 self.inner.pending.lock().await.insert(msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
             } else {
-                // ── G-07 container path: [MsgsAck, request] ─────────────────
+                // container path: [MsgsAck, request]
                 // Build MsgsAck inner body
                 let ack_body = build_msgs_ack_body(&acks);
                 // Allocate inner msg_id+seqno for each item
@@ -4879,15 +4858,14 @@ impl Client {
                 // Encrypt the container as a non-content-related outer message.
                 // pack_container now returns (wire, container_msg_id) so we can
                 // register the mapping for bad_msg_notification recovery.
-                // grammers ref: MsgIdPair { msg_id: req_msg_id, container_msg_id }
                 let (wire, container_msg_id) = w.enc.pack_container(&container_payload);
 
-                w.sent_bodies.insert(req_msg_id, body); // G-02
-                w.container_map.insert(container_msg_id, req_msg_id); // DIFF-11
+                w.sent_bodies.insert(req_msg_id, body); //
+                w.container_map.insert(container_msg_id, req_msg_id); // 
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
                 tracing::debug!(
-                    "[layer] G-07 container: bundled {} acks + request (cid={container_msg_id})",
+                    "[layer] container: bundled {} acks + request (cid={container_msg_id})",
                     acks.len()
                 );
             }
@@ -4901,7 +4879,7 @@ impl Client {
     }
 
     /// Like `rpc_call_raw` but for write RPCs (Serializable, return type is Updates).
-    /// Uses the same oneshot mechanism — the reader task signals success/failure.
+    /// Uses the same oneshot mechanism: the reader task signals success/failure.
     async fn rpc_write<S: tl::Serializable>(&self, req: &S) -> Result<(), InvocationError> {
         let mut fail_count = NonZeroU32::new(1).unwrap();
         let mut slept_so_far = Duration::default();
@@ -4932,18 +4910,18 @@ impl Client {
         let (tx, rx) = oneshot::channel();
         {
             let raw_body = req.to_bytes();
-            // G-06: compress large outgoing bodies
+            // compress large outgoing bodies
             let body = maybe_gz_pack(&raw_body);
 
             let mut w = self.inner.writer.lock().await;
             let fk = w.frame_kind.clone();
 
-            // G-04 + G-07: drain pending acks and bundle into container if any
+            // +: drain pending acks and bundle into container if any
             let acks: Vec<i64> = w.pending_ack.drain(..).collect();
 
             if acks.is_empty() {
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
-                w.sent_bodies.insert(msg_id, body); // G-02
+                w.sent_bodies.insert(msg_id, body); //
                 self.inner.pending.lock().await.insert(msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
             } else {
@@ -4955,12 +4933,12 @@ impl Client {
                     (req_msg_id, req_seqno, body.as_slice()),
                 ]);
                 let (wire, container_msg_id) = w.enc.pack_container(&container_payload);
-                w.sent_bodies.insert(req_msg_id, body); // G-02
-                w.container_map.insert(container_msg_id, req_msg_id); // DIFF-11
+                w.sent_bodies.insert(req_msg_id, body); //
+                w.container_map.insert(container_msg_id, req_msg_id); // 
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
                 tracing::debug!(
-                    "[layer] G-07 write container: bundled {} acks + write (cid={container_msg_id})",
+                    "[layer] write container: bundled {} acks + write (cid={container_msg_id})",
                     acks.len()
                 );
             }
@@ -4973,7 +4951,7 @@ impl Client {
         }
     }
 
-    // ── initConnection ─────────────────────────────────────────────────────
+    // initConnection
 
     async fn init_connection(&self) -> Result<(), InvocationError> {
         use tl::functions::{InitConnection, InvokeWithLayer, help::GetConfig};
@@ -5027,7 +5005,7 @@ impl Client {
         Ok(())
     }
 
-    // ── DC migration ───────────────────────────────────────────────────────
+    // DC migration
 
     async fn migrate_to(&self, new_dc_id: i32) -> Result<(), InvocationError> {
         let addr = {
@@ -5079,7 +5057,7 @@ impl Client {
             .send((new_read, new_fk, new_ak, new_sid));
 
         // migrate_to() is called from user-facing methods (bot_sign_in,
-        // request_login_code, sign_in) — NOT from inside the reader loop.
+        // request_login_code, sign_in): NOT from inside the reader loop.
         // The reader task is a separate tokio task running concurrently, so
         // awaiting init_connection() here is safe: the reader is free to route
         // the RPC response while we wait. We must await before returning so
@@ -5093,7 +5071,7 @@ impl Client {
                 Err(InvocationError::Rpc(ref r)) if r.flood_wait_seconds().is_some() => {
                     let secs = r.flood_wait_seconds().unwrap();
                     tracing::warn!(
-                        "[layer] migrate_to DC{new_dc_id}: init FLOOD_WAIT_{secs} — waiting"
+                        "[layer] migrate_to DC{new_dc_id}: init FLOOD_WAIT_{secs}: waiting"
                     );
                     sleep(Duration::from_secs(secs + 1)).await;
                 }
@@ -5106,7 +5084,7 @@ impl Client {
         Ok(())
     }
 
-    // ── G-34: Graceful shutdown ────────────────────────────────────────────
+    // Graceful shutdown
 
     /// Gracefully shut down the client.
     ///
@@ -5119,7 +5097,7 @@ impl Client {
         self.inner.shutdown_token.cancel();
     }
 
-    // ── G-54: Expose sync_update_state publicly ────────────────────────────
+    // Expose sync_update_state publicly
 
     /// Sync the internal pts/qts/seq/date state with the Telegram server.
     ///
@@ -5130,7 +5108,7 @@ impl Client {
         let _ = self.sync_pts_state().await;
     }
 
-    // ── Cache helpers ──────────────────────────────────────────────────────
+    // Cache helpers
 
     async fn cache_user(&self, user: &tl::enums::User) {
         self.inner.peer_cache.write().await.cache_user(user);
@@ -5209,13 +5187,13 @@ impl Client {
         let (tx, rx) = oneshot::channel();
         {
             let raw_body = req.to_bytes();
-            let body = maybe_gz_pack(&raw_body); // G-06
+            let body = maybe_gz_pack(&raw_body); //
             let mut w = self.inner.writer.lock().await;
             let fk = w.frame_kind.clone();
-            let acks: Vec<i64> = w.pending_ack.drain(..).collect(); // G-04+G-07
+            let acks: Vec<i64> = w.pending_ack.drain(..).collect(); // 
             if acks.is_empty() {
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
-                w.sent_bodies.insert(msg_id, body); // G-02
+                w.sent_bodies.insert(msg_id, body); //
                 self.inner.pending.lock().await.insert(msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
             } else {
@@ -5227,8 +5205,8 @@ impl Client {
                     (req_msg_id, req_seqno, body.as_slice()),
                 ]);
                 let (wire, container_msg_id) = w.enc.pack_container(&container_payload);
-                w.sent_bodies.insert(req_msg_id, body); // G-02
-                w.container_map.insert(container_msg_id, req_msg_id); // DIFF-11
+                w.sent_bodies.insert(req_msg_id, body); //
+                w.container_map.insert(container_msg_id, req_msg_id); // 
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
                 send_frame_write(&mut w.write_half, &wire, &fk).await?;
             }
@@ -5239,7 +5217,7 @@ impl Client {
         }
     }
 
-    // ── Paginated dialog iterator ──────────────────────────────────────────
+    // Paginated dialog iterator
 
     /// Fetch dialogs page by page.
     ///
@@ -5251,7 +5229,7 @@ impl Client {
     /// # async fn f(client: layer_client::Client) -> Result<(), Box<dyn std::error::Error>> {
     /// let mut iter = client.iter_dialogs();
     /// while let Some(dialog) = iter.next(&client).await? {
-    ///     println!("{}", dialog.title());
+    /// println!("{}", dialog.title());
     /// }
     /// # Ok(()) }
     /// ```
@@ -5275,7 +5253,7 @@ impl Client {
     /// # async fn f(client: layer_client::Client, peer: layer_tl_types::enums::Peer) -> Result<(), Box<dyn std::error::Error>> {
     /// let mut iter = client.iter_messages(peer);
     /// while let Some(msg) = iter.next(&client).await? {
-    ///     println!("{:?}", msg.text());
+    /// println!("{:?}", msg.text());
     /// }
     /// # Ok(()) }
     /// ```
@@ -5290,7 +5268,7 @@ impl Client {
         }
     }
 
-    // ── resolve_peer helper returning Result on unknown hash ───────────────
+    // resolve_peer helper returning Result on unknown hash
 
     /// Try to resolve a peer to InputPeer, returning an error if the access_hash
     /// is unknown (i.e. the peer has not been seen in any prior API call).
@@ -5331,7 +5309,7 @@ impl Client {
         }
     }
 
-    // ── Multi-DC pool ──────────────────────────────────────────────────────
+    // Multi-DC pool
 
     /// Invoke a request on a specific DC, using the pool.
     ///
@@ -5460,7 +5438,7 @@ impl Client {
         Ok(())
     }
 
-    // ── Private helpers ────────────────────────────────────────────────────
+    // Private helpers
 
     async fn get_password_info(&self) -> Result<PasswordToken, InvocationError> {
         let body = self
@@ -5533,7 +5511,7 @@ pub(crate) fn attach_client_to_update(u: update::Update, client: &Client) -> upd
     }
 }
 
-// ─── Paginated iterators ──────────────────────────────────────────────────────
+// Paginated iterators
 
 /// Cursor-based iterator over dialogs. Created by [`Client::iter_dialogs`].
 pub struct DialogIter {
@@ -5676,7 +5654,7 @@ impl MessageIter {
     }
 }
 
-// ─── Public random helper (used by media.rs) ──────────────────────────────────
+// Public random helper (used by media.rs)
 
 /// Public wrapper for `random_i64` used by sub-modules.
 #[doc(hidden)]
@@ -5684,7 +5662,7 @@ pub fn random_i64_pub() -> i64 {
     random_i64()
 }
 
-// ─── Connection ───────────────────────────────────────────────────────────────
+// Connection
 
 /// How framing bytes are sent/received on a connection.
 ///
@@ -5709,12 +5687,11 @@ enum FrameKind {
     },
 }
 
-// ─── Split connection types ───────────────────────────────────────────────────
+// Split connection types
 
 /// Write half of a split connection.  Held under `Mutex` in `ClientInner`.
 /// A single server-provided salt with its validity window.
 ///
-/// grammers reference: `mtp/encrypted.rs FutureSalt`
 #[derive(Clone, Debug)]
 struct FutureSalt {
     valid_since: i32,
@@ -5723,7 +5700,7 @@ struct FutureSalt {
 }
 
 /// Delay (seconds) before a salt is considered usable after its `valid_since`.
-/// Mirrors grammers' `SALT_USE_DELAY = 60`.
+///
 const SALT_USE_DELAY: i32 = 60;
 
 /// Owns the EncryptedSession (for packing) and the pending-RPC map.
@@ -5731,31 +5708,29 @@ struct ConnectionWriter {
     write_half: OwnedWriteHalf,
     enc: EncryptedSession,
     frame_kind: FrameKind,
-    /// G-04: msg_ids of received content messages waiting to be acked.
+    /// msg_ids of received content messages waiting to be acked.
     /// Drained into a MsgsAck on every outgoing frame (bundled into container
     /// when sending an RPC, or sent standalone after route_frame).
     pending_ack: Vec<i64>,
-    /// G-02: raw TL body bytes of every sent request, keyed by msg_id.
+    /// raw TL body bytes of every sent request, keyed by msg_id.
     /// On bad_msg_notification the matching body is re-encrypted with a fresh
     /// msg_id and re-sent transparently.
     sent_bodies: std::collections::HashMap<i64, Vec<u8>>,
-    /// DIFF-11: maps container_msg_id → inner request msg_id.
+    /// maps container_msg_id → inner request msg_id.
     /// When bad_msg_notification / bad_server_salt arrives for a container
     /// rather than the individual inner message, we look here to find the
     /// inner request to retry.
     ///
-    /// grammers reference: `MsgIdPair { msg_id, container_msg_id }`
     container_map: std::collections::HashMap<i64, i64>,
-    /// DIFF-03/09: grammers-style future salt pool.
+    /// -style future salt pool.
     /// Sorted by valid_since ascending so the newest salt is LAST
-    /// (mirrors grammers' sort_by_key(|s| -s.valid_since), which puts
+    /// (.valid_since), which puts
     /// the highest valid_since at the end in ascending-key order).
     salts: Vec<FutureSalt>,
     /// Server-time anchor received with the last GetFutureSalts response.
     /// (server_now, local_instant) lets us approximate server time at any
     /// moment so we can check whether a salt's valid_since window has opened.
     ///
-    /// grammers reference: `mtp/encrypted.rs start_salt_time`
     start_salt_time: Option<(i32, std::time::Instant)>,
 }
 
@@ -5772,18 +5747,17 @@ impl ConnectionWriter {
 
     /// Proactively advance the active salt and prune expired ones.
     ///
-    /// Called at the top of every RPC send, mirroring grammers' `push()` prelude.
+    /// Called at the top of every RPC send.
     /// Salts are sorted ascending by `valid_since` (oldest=index 0, newest=last).
     ///
     /// Steps performed:
     /// 1. Prune salts where `now > valid_until` (uses the field; silences dead_code).
     /// 2. Cycle `enc.salt` to the freshest entry whose use-delay window has opened.
     ///
-    /// Returns `true` when the pool has shrunk to a single entry — caller should
+    /// Returns `true` when the pool has shrunk to a single entry: caller should
     /// fire a proactive `GetFutureSalts`.
     ///
-    /// grammers reference: `mtp/encrypted.rs Encrypted::push()` prelude +
-    ///                      `try_request_salts()`.
+    ///                  `try_request_salts()`.
     fn advance_salt_if_needed(&mut self) -> bool {
         let Some((server_now, start_instant)) = self.start_salt_time else {
             return self.salts.len() <= 1;
@@ -5792,7 +5766,7 @@ impl ConnectionWriter {
         // Approximate current server time.
         let now = server_now + start_instant.elapsed().as_secs() as i32;
 
-        // ── 1. Prune expired salts (uses valid_until field). ──────────────────
+        // 1. Prune expired salts (uses valid_until field).
         while self.salts.len() > 1 && now > self.salts[0].valid_until {
             let expired = self.salts.remove(0);
             tracing::debug!(
@@ -5802,7 +5776,7 @@ impl ConnectionWriter {
             );
         }
 
-        // ── 2. Cycle to freshest usable salt. ────────────────────────────────
+        // 2. Cycle to freshest usable salt.
         // Pool ascending: newest is last. Find the newest whose use-delay opened.
         if self.salts.len() > 1 {
             let best = self
@@ -5911,17 +5885,17 @@ impl Connection {
                 ))
             }
             TransportKind::Obfuscated { secret } => {
-                // ── Correct Obfuscated2 handshake (all 3 bugs fixed) ────────
+                // Correct Obfuscated2 handshake (all 3 bugs fixed)
                 //
-                // Bug A fix: use AES-256-CTR via layer_crypto::ObfuscatedCipher,
-                //            not the broken SHA-256 XOR ObfCipher.
+                // use AES-256-CTR via layer_crypto::ObfuscatedCipher,
+                //        not the broken SHA-256 XOR ObfCipher.
                 //
-                // Bug B fix: ObfuscatedCipher::new reverses the WHOLE 64-byte
-                //            nonce buffer to derive the RX key, not sub-slices.
+                // ObfuscatedCipher::new reverses the WHOLE 64-byte
+                //        nonce buffer to derive the RX key, not sub-slices.
                 //
-                // Bug C fix: encrypt ALL 64 bytes so the cipher is at position 64
-                //            after the handshake; the cipher is STORED and applied
-                //            to every byte sent/received afterwards.
+                // encrypt ALL 64 bytes so the cipher is at position 64
+                //        after the handshake; the cipher is STORED and applied
+                //        to every byte sent/received afterwards.
                 //
                 // Proxy secret is reserved for future MTProxy support.
                 let _ = secret; // not yet used
@@ -6079,7 +6053,7 @@ impl Connection {
     }
 }
 
-// ─── Transport framing (multi-kind) ──────────────────────────────────────────
+// Transport framing (multi-kind)
 
 /// Send a framed message using the active transport kind.
 async fn send_frame(
@@ -6122,7 +6096,7 @@ async fn send_frame(
     }
 }
 
-// ─── Split-reader helpers ─────────────────────────────────────────────────────
+// Split-reader helpers
 
 /// Outcome of a timed frame read attempt.
 enum FrameOutcome {
@@ -6133,10 +6107,10 @@ enum FrameOutcome {
 
 /// Read one frame with a 60-second keepalive timeout (PING_DELAY_SECS).
 ///
-/// If the timeout fires we send a `PingDelayDisconnect` — this tells Telegram
+/// If the timeout fires we send a `PingDelayDisconnect`: this tells Telegram
 /// to forcibly close the connection after `NO_PING_DISCONNECT` seconds of
 /// silence, giving us a clean EOF to detect rather than a silently stale socket.
-/// That mirrors what both grammers and the official Telegram clients do.
+/// That mirrors what both  and the official Telegram clients do.
 async fn recv_frame_with_keepalive(
     rh: &mut OwnedReadHalf,
     fk: &FrameKind,
@@ -6175,7 +6149,7 @@ async fn recv_frame_with_keepalive(
 
 /// Send a framed message via an OwnedWriteHalf (split connection).
 ///
-/// Fix #1: Header and payload are combined into a single Vec before calling
+/// Header and payload are combined into a single Vec before calling
 /// write_all, reducing write syscalls from 2 → 1 per frame.  With Abridged
 /// framing this previously sent a 1-byte header then the payload in separate
 /// syscalls (and two TCP segments even with TCP_NODELAY on fast paths).
@@ -6214,7 +6188,7 @@ async fn send_frame_write(
             Ok(())
         }
         FrameKind::Obfuscated { cipher } => {
-            // Abridged framing + AES-256-CTR encryption (Bug C fix: cipher stored).
+            // Abridged framing + AES-256-CTR encryption (cipher stored).
             let words = data.len() / 4;
             let mut frame = if words < 0x7f {
                 let mut v = Vec::with_capacity(1 + data.len());
@@ -6274,7 +6248,7 @@ async fn recv_frame_read(
             let mut len_buf = [0u8; 4];
             stream.read_exact(&mut len_buf).await?;
             // Read as i32 so a negative length (raw transport error code) doesn't
-            // cause a ~4 GB allocation via u32 cast. Matches grammers' intermediate.
+            // cause a ~4 GB allocation via u32 cast. Matches ' intermediate.
             let len_i32 = i32::from_le_bytes(len_buf);
             if len_i32 < 0 {
                 return Err(InvocationError::Rpc(RpcError::from_telegram(
@@ -6299,7 +6273,7 @@ async fn recv_frame_read(
         }
         FrameKind::Obfuscated { cipher } => {
             // Obfuscated2: Abridged framing with AES-256-CTR decryption.
-            // Bug C fix: cipher is stored and continues from where handshake left off.
+            // cipher is stored and continues from where handshake left off.
             let mut h = [0u8; 1];
             stream.read_exact(&mut h).await?;
             cipher.lock().await.decrypt(&mut h);
@@ -6314,7 +6288,7 @@ async fn recv_frame_read(
             let mut buf = vec![0u8; words * 4];
             stream.read_exact(&mut buf).await?;
             cipher.lock().await.decrypt(&mut buf);
-            // Transport error: same detection as Abridged — negative i32 in 4-byte payload.
+            // Transport error: same detection as Abridged: negative i32 in 4-byte payload.
             if buf.len() == 4 {
                 let code = i32::from_le_bytes(buf[..4].try_into().unwrap());
                 if code < 0 {
@@ -6332,7 +6306,7 @@ async fn recv_frame_read(
 /// Send using Abridged framing (used for DH plaintext during connect).
 async fn send_abridged(stream: &mut TcpStream, data: &[u8]) -> Result<(), InvocationError> {
     let words = data.len() / 4;
-    // Single combined write (header + payload) — same fix #1 as send_frame_write.
+    // Single combined write (header + payload): same fix #1 as send_frame_write.
     let mut frame = if words < 0x7f {
         let mut v = Vec::with_capacity(1 + data.len());
         v.push(words as u8);
@@ -6373,7 +6347,7 @@ async fn recv_abridged(stream: &mut TcpStream) -> Result<Vec<u8>, InvocationErro
         }
         w
     };
-    // Guard against implausibly large reads — a raw 4-byte transport error
+    // Guard against implausibly large reads: a raw 4-byte transport error
     // whose first byte was mis-read as a word count causes a hang otherwise.
     if words == 0 || words > 0x8000 {
         return Err(InvocationError::Deserialize(format!(
@@ -6393,7 +6367,7 @@ async fn recv_frame_plain<T: Deserializable>(
     // DH handshake frames use the same transport framing as all other frames.
     // The old code hardcoded recv_abridged here, which worked only when transport
     // was Abridged.  With Intermediate or Full, Telegram responds with a 4-byte
-    // LE length prefix but we tried to parse it as a 1-byte Abridged header —
+    // LE length prefix but we tried to parse it as a 1-byte Abridged header
     // mangling the length, reading garbage bytes, and corrupting the auth key.
     // Every single subsequent decrypt then failed with AuthKeyMismatch.
     let raw = match kind {
@@ -6450,13 +6424,13 @@ async fn recv_frame_plain<T: Deserializable>(
     T::deserialize(&mut cur).map_err(Into::into)
 }
 
-// ─── MTProto envelope ─────────────────────────────────────────────────────────
+// MTProto envelope
 
 enum EnvelopeResult {
     Payload(Vec<u8>),
     /// Raw update bytes to be routed through dispatch_updates for proper pts tracking.
     RawUpdates(Vec<Vec<u8>>),
-    /// pts/pts_count from updateShortSentMessage — advance counter, emit nothing.
+    /// pts/pts_count from updateShortSentMessage: advance counter, emit nothing.
     Pts(i32, i32),
     None,
 }
@@ -6517,12 +6491,12 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
             let bytes = tl_read_bytes(&body[4..]).unwrap_or_default();
             unwrap_envelope(gz_inflate(&bytes)?)
         }
-        // MTProto service messages — silently acknowledged, no payload extracted.
+        // MTProto service messages: silently acknowledged, no payload extracted.
         // NOTE: ID_PONG is intentionally NOT listed here. Pong arrives as a bare
         // top-level frame (never inside rpc_result), so it is handled in route_frame
         // directly. Silencing it here would drop it before invoke() can resolve it.
         ID_MSGS_ACK | ID_NEW_SESSION | ID_BAD_SERVER_SALT | ID_BAD_MSG_NOTIFY
-        // These are correctly silenced (grammers silences these too)
+        // These are correctly silenced ( silences these too)
         | 0xd33b5459  // MsgsStateReq
         | 0x04deb57d  // MsgsStateInfo
         | 0x8cc0d131  // MsgsAllInfo
@@ -6547,7 +6521,7 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
         | ID_UPDATES_TOO_LONG => {
             Ok(EnvelopeResult::RawUpdates(vec![body]))
         }
-        // BUG-FIX: updateShortSentMessage is the RPC response to messages.sendMessage.
+        // updateShortSentMessage is the RPC response to messages.sendMessage.
         // It carries the ONLY pts record for the bot's own sent message.
         // Bots do NOT receive a push updateNewMessage for their own messages,
         // so if we absorb this silently, pts stays stale -> false gap -> getDifference
@@ -6558,7 +6532,7 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
             match tl::types::UpdateShortSentMessage::deserialize(&mut cur) {
                 Ok(m) => {
                     tracing::debug!(
-                        "[layer] updateShortSentMessage (RPC): pts={} pts_count={} — advancing pts",
+                        "[layer] updateShortSentMessage (RPC): pts={} pts_count={}: advancing pts",
                         m.pts, m.pts_count
                     );
                     Ok(EnvelopeResult::Pts(m.pts, m.pts_count))
@@ -6573,7 +6547,7 @@ fn unwrap_envelope(body: Vec<u8>) -> Result<EnvelopeResult, InvocationError> {
     }
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// Utilities
 
 fn random_i64() -> i64 {
     let mut b = [0u8; 8];
@@ -6634,7 +6608,7 @@ fn gz_inflate(data: &[u8]) -> Result<Vec<u8>, InvocationError> {
     Ok(out)
 }
 
-// ── G-06: outgoing gzip compression ──────────────────────────────────────────
+// outgoing gzip compression
 
 /// Minimum body size above which we attempt zlib compression.
 /// Below this threshold the gzip_packed wrapper overhead exceeds the gain.
@@ -6685,7 +6659,7 @@ fn maybe_gz_pack(data: &[u8]) -> Vec<u8> {
     }
 }
 
-// ── G-04 + G-07: MsgsAck body builder ───────────────────────────────────────
+// +: MsgsAck body builder
 
 /// Build the TL body for `msgs_ack#62d6b459 msg_ids:Vector<long>`.
 fn build_msgs_ack_body(msg_ids: &[i64]) -> Vec<u8> {
@@ -6701,7 +6675,7 @@ fn build_msgs_ack_body(msg_ids: &[i64]) -> Vec<u8> {
     out
 }
 
-// ── G-07: MessageContainer body builder ──────────────────────────────────────
+// MessageContainer body builder
 
 /// Build the body of a `msg_container#73f1f8dc` from a list of
 /// `(msg_id, seqno, body)` inner messages.

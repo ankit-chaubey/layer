@@ -13,7 +13,7 @@ use tokio::net::TcpStream;
 
 use crate::{InvocationError, TransportKind, session::DcEntry};
 
-// ─── DcConnection ─────────────────────────────────────────────────────────────
+// DcConnection
 
 /// A single encrypted connection to one Telegram DC.
 pub struct DcConnection {
@@ -243,7 +243,7 @@ fn tl_read_string(data: &[u8]) -> Option<String> {
     tl_read_bytes(data).map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
-// ─── DcPool ───────────────────────────────────────────────────────────────────
+// DcPool
 
 /// Pool of per-DC authenticated connections.
 pub struct DcPool {

@@ -1,6 +1,6 @@
-# Quick Start — Bot
+# Quick Start: Bot
 
-A production-ready bot skeleton with commands, callback queries, and inline mode — all handled concurrently.
+A production-ready bot skeleton with commands, callback queries, and inline mode: all handled concurrently.
 
 ```rust
 use layer_client::{Client, InputMessage, parsers::parse_markdown, update::Update};
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     while let Some(update) = updates.next().await {
         let client = client.clone();
-        // Each update in its own task — the loop never blocks
+        // Each update in its own task: the loop never blocks
         tokio::spawn(async move {
             if let Err(e) = dispatch(update, &client).await {
                 eprintln!("Handler error: {e}");
@@ -46,7 +46,7 @@ async fn dispatch(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     match update {
-        // ── Commands ───────────────────────────────────────────────
+        // Commands
         Update::NewMessage(msg) if !msg.outgoing() => {
             let text = msg.text().unwrap_or("").trim().to_string();
             let peer = match msg.peer_id() {
@@ -63,7 +63,7 @@ async fn dispatch(
             match cmd {
                 "/start" => {
                     let (t, e) = parse_markdown(
-                        "👋 **Hello!** I'm built with **layer** — async Telegram MTProto in Rust 🦀\n\n\
+                        "👋 **Hello!** I'm built with **layer**: async Telegram MTProto in Rust 🦀\n\n\
                          Use /help to see all commands."
                     );
                     client.send_message_to_peer_ex(peer, &InputMessage::text(t)
@@ -72,13 +72,13 @@ async fn dispatch(
                 "/help" => {
                     let (t, e) = parse_markdown(
                         "📖 **Commands**\n\n\
-                         /start — Welcome message\n\
-                         /ping — Latency check\n\
-                         /echo `<text>` — Repeat your text\n\
-                         /upper `<text>` — UPPERCASE\n\
-                         /lower `<text>` — lowercase\n\
-                         /reverse `<text>` — esreveR\n\
-                         /id — Your user and chat ID"
+                         /start: Welcome message\n\
+                         /ping: Latency check\n\
+                         /echo `<text>`: Repeat your text\n\
+                         /upper `<text>`: UPPERCASE\n\
+                         /lower `<text>`: lowercase\n\
+                         /reverse `<text>`: esreveR\n\
+                         /id: Your user and chat ID"
                     );
                     client.send_message_to_peer_ex(peer, &InputMessage::text(t)
                         .entities(e).reply_to(Some(reply_to))).await?;
@@ -112,16 +112,16 @@ async fn dispatch(
             }
         }
 
-        // ── Callback queries ───────────────────────────────────────
+        // Callback queries
         Update::CallbackQuery(cb) => {
             match cb.data().unwrap_or("") {
                 "help"  => { client.answer_callback_query(cb.query_id, Some("Send /help for commands"), false).await?; }
-                "about" => { client.answer_callback_query(cb.query_id, Some("Built with layer — Rust MTProto 🦀"), true).await?; }
+                "about" => { client.answer_callback_query(cb.query_id, Some("Built with layer: Rust MTProto 🦀"), true).await?; }
                 _       => { client.answer_callback_query(cb.query_id, None, false).await?; }
             }
         }
 
-        // ── Inline mode ────────────────────────────────────────────
+        // Inline mode
         Update::InlineQuery(iq) => {
             let q   = iq.query().to_string();
             let qid = iq.query_id;
@@ -172,7 +172,7 @@ fn make_article(id: &str, title: &str, text: &str) -> tl::enums::InputBotInlineR
 
 ## Next steps
 
-- [Bot Login — full guide](./authentication/bot-login.md)
+- [Bot Login: full guide](./authentication/bot-login.md)
 - [Callback Queries](./updates/callbacks.md)
 - [Inline Mode](./updates/inline-mode.md)
 - [Inline Keyboards](./messaging/keyboards.md)

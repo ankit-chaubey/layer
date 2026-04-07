@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-// ─── Error ───────────────────────────────────────────────────────────────────
+// Error
 
 /// Errors that can occur during deserialization.
 #[derive(Clone, Debug, PartialEq)]
@@ -29,7 +29,7 @@ impl std::error::Error for Error {}
 /// Specialized `Result` for deserialization.
 pub type Result<T> = std::result::Result<T, Error>;
 
-// ─── Cursor ──────────────────────────────────────────────────────────────────
+// Cursor
 
 /// A zero-copy cursor over an in-memory byte slice.
 ///
@@ -90,7 +90,7 @@ impl<'a> Cursor<'a> {
 /// Alias used by generated code: `crate::deserialize::Buffer<'_, '_>`.
 pub type Buffer<'a, 'b> = &'a mut Cursor<'b>;
 
-// ─── Deserializable ──────────────────────────────────────────────────────────
+// Deserializable
 
 /// Deserialize a value from TL binary format.
 pub trait Deserializable: Sized {
@@ -104,7 +104,7 @@ pub trait Deserializable: Sized {
     }
 }
 
-// ─── Primitives ───────────────────────────────────────────────────────────────
+// Primitives
 
 impl Deserializable for bool {
     fn deserialize(buf: Buffer) -> Result<Self> {
@@ -164,7 +164,7 @@ impl Deserializable for [u8; 32] {
     }
 }
 
-// ─── Bytes / String ───────────────────────────────────────────────────────────
+// Bytes / String
 
 impl Deserializable for Vec<u8> {
     fn deserialize(buf: Buffer) -> Result<Self> {
@@ -199,7 +199,7 @@ impl Deserializable for String {
     }
 }
 
-// ─── Vectors ─────────────────────────────────────────────────────────────────
+// Vectors
 
 impl<T: Deserializable> Deserializable for Vec<T> {
     fn deserialize(buf: Buffer) -> Result<Self> {

@@ -11,10 +11,10 @@ Reactions are emoji responses attached to messages. They appear below messages w
 ```rust
 use layer_client::reactions::InputReactions;
 
-// Standard emoji — shorthand (no import needed, &str converts automatically)
+// Standard emoji: shorthand (no import needed, &str converts automatically)
 client.send_reaction(peer.clone(), message_id, "👍").await?;
 
-// Standard emoji — explicit builder
+// Standard emoji: explicit builder
 client.send_reaction(peer.clone(), message_id, InputReactions::emoticon("🔥")).await?;
 
 // Custom (premium) emoji by document_id

@@ -1,16 +1,16 @@
-//! Ergonomic high-level wrappers over raw TL user/chat types (G-37).
+//! Typed wrappers over raw TL user and chat types.
 //!
 //! The raw TL layer has `tl::enums::User` (two variants: `Empty` / `User`) and
 //! `tl::enums::Chat` (five variants: `Empty`, `Chat`, `Forbidden`,
 //! `Channel`, `ChannelForbidden`).  Working with them directly requires constant
-//! pattern-matching.  This module provides three thin wrappers — [`User`],
-//! [`Group`], and [`Channel`] — with uniform accessor APIs.
+//! pattern-matching.  This module provides three thin wrappers: [`User`],
+//! [`Group`], and [`Channel`]: with uniform accessor APIs.
 
 use layer_tl_types as tl;
 
-// ─── User ─────────────────────────────────────────────────────────────────────
+// User
 
-/// Wrapper around `tl::enums::User` with ergonomic accessors.
+/// Typed wrapper over `tl::enums::User`.
 #[derive(Debug, Clone)]
 pub struct User {
     pub raw: tl::enums::User,
@@ -222,9 +222,9 @@ impl std::fmt::Display for User {
     }
 }
 
-// ─── Group ────────────────────────────────────────────────────────────────────
+// Group
 
-/// Wrapper around a basic Telegram group (`tl::types::Chat`).
+/// Typed wrapper over `tl::types::Chat`.
 #[derive(Debug, Clone)]
 pub struct Group {
     pub raw: tl::types::Chat,
@@ -285,7 +285,7 @@ impl std::fmt::Display for Group {
     }
 }
 
-// ─── Channel ──────────────────────────────────────────────────────────────────
+// Channel
 
 /// The kind of a channel or supergroup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,7 +298,7 @@ pub enum ChannelKind {
     Gigagroup,
 }
 
-/// Wrapper around a Telegram channel or supergroup (`tl::types::Channel`).
+/// Typed wrapper over `tl::types::Channel`.
 #[derive(Debug, Clone)]
 pub struct Channel {
     pub raw: tl::types::Channel,
@@ -459,9 +459,9 @@ impl std::fmt::Display for Channel {
     }
 }
 
-// ─── Chat enum (unified) ──────────────────────────────────────────────────────
+// Chat enum (unified)
 
-/// A unified chat type — either a basic [`Group`] or a [`Channel`]/supergroup.
+/// A unified chat type: either a basic [`Group`] or a [`Channel`]/supergroup.
 #[derive(Debug, Clone)]
 pub enum Chat {
     Group(Group),

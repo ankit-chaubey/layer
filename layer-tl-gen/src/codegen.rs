@@ -10,7 +10,7 @@ use crate::grouper;
 use crate::metadata::Metadata;
 use crate::namegen as n;
 
-// ─── Config ───────────────────────────────────────────────────────────────────
+// Config
 
 /// Generation configuration.
 pub struct Config {
@@ -41,7 +41,7 @@ impl Default for Config {
     }
 }
 
-// ─── Outputs ─────────────────────────────────────────────────────────────────
+// Outputs
 
 /// Writers for each generated Rust module.
 pub struct Outputs<W: Write> {
@@ -78,7 +78,7 @@ impl<W: Write> Outputs<W> {
     }
 }
 
-// ─── Special-cased primitives ─────────────────────────────────────────────────
+// Special-cased primitives
 
 /// These TL types are handled as Rust primitives; we never emit structs/enums.
 const BUILTIN_TYPES: &[&str] = &["Bool", "True"];
@@ -87,7 +87,7 @@ fn is_builtin(ty_name: &str) -> bool {
     BUILTIN_TYPES.contains(&ty_name)
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// Public API
 
 /// Generate Rust source code from a slice of parsed TL definitions.
 ///
@@ -107,12 +107,12 @@ pub fn generate<W: Write>(
     Ok(())
 }
 
-// ─── Common module ────────────────────────────────────────────────────────────
+// Common module
 
 fn write_common<W: Write>(defs: &[Definition], config: &Config, out: &mut W) -> io::Result<()> {
-    // Extract LAYER constant from the first `// LAYER N` comment heuristic —
+    // Extract LAYER constant from the first `// LAYER N` comment heuristic
     // for now we derive it from the highest layer seen in definitions or emit 0.
-    writeln!(out, "// @generated — do not edit by hand")?;
+    writeln!(out, "// @generated: do not edit by hand")?;
     writeln!(out, "// Re-run the build script to regenerate.")?;
     writeln!(out)?;
     writeln!(out, "/// The API layer this code was generated from.")?;
@@ -142,7 +142,7 @@ fn write_common<W: Write>(defs: &[Definition], config: &Config, out: &mut W) -> 
     Ok(())
 }
 
-// ─── Struct generation (types + functions) ────────────────────────────────────
+// Struct generation (types + functions)
 
 fn write_types_mod<W: Write>(
     defs: &[Definition],
@@ -150,7 +150,7 @@ fn write_types_mod<W: Write>(
     meta: &Metadata,
     out: &mut W,
 ) -> io::Result<()> {
-    writeln!(out, "// @generated — do not edit by hand")?;
+    writeln!(out, "// @generated: do not edit by hand")?;
     writeln!(out, "pub mod types {{")?;
 
     let grouped = grouper::group_by_ns(defs, Category::Types);
@@ -187,7 +187,7 @@ fn write_functions_mod<W: Write>(
     meta: &Metadata,
     out: &mut W,
 ) -> io::Result<()> {
-    writeln!(out, "// @generated — do not edit by hand")?;
+    writeln!(out, "// @generated: do not edit by hand")?;
     writeln!(out, "pub mod functions {{")?;
 
     let grouped = grouper::group_by_ns(defs, Category::Functions);
@@ -221,7 +221,7 @@ fn write_functions_mod<W: Write>(
     writeln!(out, "}}")
 }
 
-// ─── Struct pieces ────────────────────────────────────────────────────────────
+// Struct pieces
 
 fn generic_list(def: &Definition, bounds: &str) -> String {
     let mut params: Vec<&str> = Vec::new();
@@ -401,7 +401,7 @@ fn write_param_serialization<W: Write>(
             let attr = n::param_attr_name(param);
             if flag.is_some() {
                 if ty.name == "true" {
-                    // bool flag — nothing to serialize, it's in the flags word
+                    // bool flag: nothing to serialize, it's in the flags word
                 } else {
                     writeln!(
                         out,
@@ -516,7 +516,7 @@ fn write_remote_call<W: Write>(out: &mut W, indent: &str, def: &Definition) -> i
     writeln!(out, "{indent}}}")
 }
 
-// ─── Enum generation ──────────────────────────────────────────────────────────
+// Enum generation
 
 fn write_enums_mod<W: Write>(
     defs: &[Definition],
@@ -524,7 +524,7 @@ fn write_enums_mod<W: Write>(
     meta: &Metadata,
     out: &mut W,
 ) -> io::Result<()> {
-    writeln!(out, "// @generated — do not edit by hand")?;
+    writeln!(out, "// @generated: do not edit by hand")?;
     writeln!(out, "pub mod enums {{")?;
 
     let grouped = grouper::group_types_by_ns(defs);

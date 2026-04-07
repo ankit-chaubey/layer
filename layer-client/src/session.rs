@@ -1,12 +1,12 @@
-//! Session persistence — saves auth key, salt, time offset, DC table,
+//! Session persistence: saves auth key, salt, time offset, DC table,
 //! update sequence counters (pts/qts/seq/date/per-channel pts), and
 //! peer access-hash cache.
 //!
 //! ## Binary format versioning
 //!
 //! Every file starts with a single **version byte**:
-//! - `0x01` — legacy format (DC table only, no update state or peers).
-//! - `0x02` — current format (DC table + update state + peer cache).
+//! - `0x01`: legacy format (DC table only, no update state or peers).
+//! - `0x02`: current format (DC table + update state + peer cache).
 //!
 //! `load()` handles both.  `save()` always writes v2.
 
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 use std::path::Path;
 
-// ─── DcEntry ──────────────────────────────────────────────────────────────────
+// DcEntry
 
 /// One entry in the DC address table.
 #[derive(Clone, Debug)]
@@ -27,7 +27,7 @@ pub struct DcEntry {
     pub time_offset: i32,
 }
 
-// ─── UpdatesStateSnap ─────────────────────────────────────────────────────────
+// UpdatesStateSnap
 
 /// Snapshot of the MTProto update-sequence state that we persist so that
 /// `catch_up: true` can call `updates.getDifference` with the *pre-shutdown* pts.
@@ -72,7 +72,7 @@ impl UpdatesStateSnap {
     }
 }
 
-// ─── CachedPeer ───────────────────────────────────────────────────────────────
+// CachedPeer
 
 /// A cached access-hash entry so that the peer can be addressed across restarts
 /// without re-resolving it from Telegram.
@@ -87,7 +87,7 @@ pub struct CachedPeer {
     pub is_channel: bool,
 }
 
-// ─── PersistedSession ─────────────────────────────────────────────────────────
+// PersistedSession
 
 /// Everything that needs to survive a process restart.
 #[derive(Clone, Debug, Default)]
@@ -103,7 +103,7 @@ pub struct PersistedSession {
 }
 
 impl PersistedSession {
-    // ── Serialise (v2) ────────────────────────────────────────────────────
+    // Serialise (v2)
 
     /// Encode the session to raw bytes (v2 binary format).
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -165,7 +165,7 @@ impl PersistedSession {
         std::fs::rename(&tmp, path)
     }
 
-    // ── Deserialise (v1 + v2) ─────────────────────────────────────────────
+    // Deserialise (v1 + v2)
 
     /// Decode a session from raw bytes (v1 or v2 binary format).
     pub fn from_bytes(buf: &[u8]) -> io::Result<Self> {
@@ -313,7 +313,7 @@ impl std::fmt::Display for PersistedSession {
     }
 }
 
-// ─── Bootstrap DC table ───────────────────────────────────────────────────────
+// Bootstrap DC table
 
 /// Bootstrap DC address table (fallback if GetConfig fails).
 pub fn default_dc_addresses() -> HashMap<i32, String> {

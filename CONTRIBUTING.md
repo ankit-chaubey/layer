@@ -59,7 +59,7 @@ Use the issue templates:
 ## Development Setup
 
 **Prerequisites:**
-- Rust stable (2024 edition or later) — install via [rustup](https://rustup.rs/)
+- Rust stable (2024 edition or later): install via [rustup](https://rustup.rs/)
 - Cargo
 
 ```bash
@@ -89,25 +89,25 @@ cargo clippy --workspace --all-features -- -D warnings
 
 ```
 layer/
-├── layer-tl-parser/      .tl schema text -> AST
-├── layer-tl-gen/         AST -> Rust source at build time
-├── layer-tl-types/       All generated Telegram types
-├── layer-crypto/         Low-level crypto primitives
-├── layer-mtproto/        MTProto session and transport
-├── layer-client/         High-level Client API  <-- most contributions go here
-│   └── src/
-│       ├── lib.rs            Core Client methods
-│       ├── participants.rs   Admin, ban, reactions, permissions
-│       ├── media.rs          Upload, download, albums
-│       ├── search.rs         SearchBuilder, GlobalSearchBuilder
-│       ├── keyboard.rs       Inline and reply keyboards
-│       ├── typing_guard.rs   TypingGuard RAII helpers
-│       ├── inline_iter.rs    InlineQueryIter, InlineResultIter
-│       ├── session_backend.rs Session backends
-│       ├── parsers.rs        Markdown and HTML parsers
-│       └── update.rs         Update types and IncomingMessage
-├── layer-connect/        Minimal DH demo
-└── layer-app/            Interactive demo binary
+├ layer-tl-parser/ .tl schema text -> AST
+├ layer-tl-gen/ AST -> Rust source at build time
+├ layer-tl-types/ All generated Telegram types
+├ layer-crypto/ Low-level crypto primitives
+├ layer-mtproto/ MTProto session and transport
+├ layer-client/ High-level Client API <-- most contributions go here
+│ └ src/
+│ ├ lib.rs Core Client methods
+│ ├ participants.rs Admin, ban, reactions, permissions
+│ ├ media.rs Upload, download, albums
+│ ├ search.rs SearchBuilder, GlobalSearchBuilder
+│ ├ keyboard.rs Inline and reply keyboards
+│ ├ typing_guard.rs TypingGuard RAII helpers
+│ ├ inline_iter.rs InlineQueryIter, InlineResultIter
+│ ├ session_backend.rs Session backends
+│ ├ parsers.rs Markdown and HTML parsers
+│ └ update.rs Update types and IncomingMessage
+├ layer-connect/ Minimal DH demo
+└ layer-app/ Interactive demo binary
 ```
 
 ---

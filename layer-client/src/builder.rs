@@ -1,4 +1,4 @@
-//! G-20: Fluent [`ClientBuilder`] for constructing a [`Config`] and connecting.
+//! [`ClientBuilder`] for constructing a [`Config`] and connecting.
 //!
 //! # Example
 //! ```rust,no_run
@@ -6,13 +6,13 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     let (client, _shutdown) = Client::builder()
-//!         .api_id(12345)
-//!         .api_hash("abc123")
-//!         .session("my.session")
-//!         .catch_up(true)
-//!         .connect().await?;
-//!     Ok(())
+//! let (client, _shutdown) = Client::builder()
+//!     .api_id(12345)
+//!     .api_hash("abc123")
+//!     .session("my.session")
+//!     .catch_up(true)
+//!     .connect().await?;
+//! Ok(())
 //! }
 //! ```
 //!
@@ -21,10 +21,10 @@
 //! # use layer_client::Client;
 //! # #[tokio::main] async fn main() -> anyhow::Result<()> {
 //! let (client, _shutdown) = Client::builder()
-//!     .api_id(12345)
-//!     .api_hash("abc123")
-//!     .session_string(std::env::var("SESSION").unwrap_or_default())
-//!     .connect().await?;
+//! .api_id(12345)
+//! .api_hash("abc123")
+//! .session_string(std::env::var("SESSION").unwrap_or_default())
+//! .connect().await?;
 //! # Ok(()) }
 //! ```
 
@@ -69,7 +69,7 @@ impl Default for ClientBuilder {
 }
 
 impl ClientBuilder {
-    // ── Credentials ──────────────────────────────────────────────────────────
+    // Credentials
 
     /// Set the Telegram API ID (from <https://my.telegram.org>).
     pub fn api_id(mut self, id: i32) -> Self {
@@ -83,12 +83,12 @@ impl ClientBuilder {
         self
     }
 
-    // ── Session ───────────────────────────────────────────────────────────────
+    // Session
 
     /// Use a binary file session at `path`.
     ///
     /// Mutually exclusive with [`session_string`](Self::session_string) and
-    /// [`in_memory`](Self::in_memory) — last call wins.
+    /// [`in_memory`](Self::in_memory): last call wins.
     pub fn session(mut self, path: impl AsRef<std::path::Path>) -> Self {
         self.session_backend = Arc::new(BinaryFileBackend::new(path.as_ref()));
         self
@@ -96,12 +96,12 @@ impl ClientBuilder {
 
     /// Use a portable base64 string session.
     ///
-    /// Pass an empty string to start fresh — the exported session string
+    /// Pass an empty string to start fresh: the exported session string
     /// from [`Client::export_session_string`] can be injected here directly
     /// (e.g. via an environment variable).
     ///
     /// Mutually exclusive with [`session`](Self::session) and
-    /// [`in_memory`](Self::in_memory) — last call wins.
+    /// [`in_memory`](Self::in_memory): last call wins.
     pub fn session_string(mut self, s: impl Into<String>) -> Self {
         self.session_backend = Arc::new(StringSessionBackend::new(s));
         self
@@ -110,7 +110,7 @@ impl ClientBuilder {
     /// Use a non-persistent in-memory session (useful for tests).
     ///
     /// Mutually exclusive with [`session`](Self::session) and
-    /// [`session_string`](Self::session_string) — last call wins.
+    /// [`session_string`](Self::session_string): last call wins.
     pub fn in_memory(mut self) -> Self {
         self.session_backend = Arc::new(InMemoryBackend::new());
         self
@@ -126,9 +126,9 @@ impl ClientBuilder {
     /// # use layer_client::LibSqlBackend;
     /// use std::sync::Arc;
     /// let (client, _) = Client::builder()
-    ///     .api_id(12345).api_hash("abc")
-    ///     .session_backend(Arc::new(LibSqlBackend::new("my.db")))
-    ///     .connect().await?;
+    /// .api_id(12345).api_hash("abc")
+    /// .session_backend(Arc::new(LibSqlBackend::new("my.db")))
+    /// .connect().await?;
     /// # }
     /// ```
     pub fn session_backend(mut self, backend: Arc<dyn SessionBackend>) -> Self {
@@ -136,7 +136,7 @@ impl ClientBuilder {
         self
     }
 
-    // ── Update catch-up ───────────────────────────────────────────────────────
+    // Update catch-up
 
     /// When `true`, replay missed updates via `updates.getDifference` on connect.
     ///
@@ -146,7 +146,7 @@ impl ClientBuilder {
         self
     }
 
-    // ── Network ───────────────────────────────────────────────────────────────
+    // Network
 
     /// Override the first DC address (e.g. `"149.154.167.51:443"`).
     pub fn dc_addr(mut self, addr: impl Into<String>) -> Self {
@@ -172,7 +172,7 @@ impl ClientBuilder {
         self
     }
 
-    // ── Retry ─────────────────────────────────────────────────────────────────
+    // Retry
 
     /// Override the flood-wait / retry policy.
     pub fn retry_policy(mut self, policy: Arc<dyn RetryPolicy>) -> Self {
@@ -180,7 +180,7 @@ impl ClientBuilder {
         self
     }
 
-    // ── Terminal ─────────────────────────────────────────────────────────────
+    // Terminal
 
     /// Build the [`Config`] without connecting.
     ///
@@ -216,7 +216,7 @@ impl ClientBuilder {
     }
 }
 
-// ─── BuilderError ────────────────────────────────────────────────────────────
+// BuilderError
 
 /// Errors that can be returned by [`ClientBuilder::build`] or
 /// [`ClientBuilder::connect`].

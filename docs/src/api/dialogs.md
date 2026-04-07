@@ -9,7 +9,7 @@
 let dialogs = client.get_dialogs(50).await?;
 
 for d in &dialogs {
-    println!("{} — {} unread — top msg: {}",
+    println!("{}: {} unread: top msg: {}",
         d.title(), d.unread_count(), d.top_message());
 }
 ```
@@ -25,7 +25,7 @@ for d in &dialogs {
 
 ---
 
-## `DialogIter` — lazy paginated iterator
+## `DialogIter`: lazy paginated iterator
 
 ```rust
 let mut iter = client.iter_dialogs();
@@ -43,12 +43,12 @@ while let Some(dialog) = iter.next(&client).await? {
 | Method | Description |
 |---|---|
 | `client.iter_dialogs()` | Create iterator |
-| `iter.total()` | `Option<i32>` — total count after first fetch |
+| `iter.total()` | `Option<i32>`: total count after first fetch |
 | `iter.next(&client)` | `async → Option<Dialog>` |
 
 ---
 
-## `MessageIter` — lazy message history
+## `MessageIter`: lazy message history
 
 ```rust
 let mut iter = client.iter_messages(peer.clone());
@@ -66,7 +66,7 @@ while let Some(msg) = iter.next(&client).await? {
 | Method | Description |
 |---|---|
 | `client.iter_messages(peer)` | Create iterator (newest first) |
-| `iter.total()` | `Option<i32>` — total message count after first fetch |
+| `iter.total()` | `Option<i32>`: total message count after first fetch |
 | `iter.next(&client)` | `async → Option<tl::types::Message>` |
 
 ---
@@ -79,7 +79,7 @@ let messages = client.get_messages(peer.clone(), 20).await?;
 
 // Specific message IDs
 let messages = client.get_messages_by_id(peer.clone(), &[100, 101, 102]).await?;
-// Returns Vec<Option<tl::enums::Message>> — None if not found
+// Returns Vec<Option<tl::enums::Message>>: None if not found
 
 // Pinned message
 let pinned = client.get_pinned_message(peer.clone()).await?;

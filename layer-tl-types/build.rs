@@ -1,7 +1,7 @@
 //! Build script: parse `.tl` schema files and generate Rust source code.
 //!
 //! Adding support for a new layer is as simple as dropping a new `.tl` file
-//! into `tl/` and bumping the `LAYER` constant — the rest is automatic.
+//! into `tl/` and bumping the `LAYER` constant: the rest is automatic.
 
 use std::env;
 use std::fs;
@@ -14,7 +14,7 @@ use layer_tl_parser::{parse_tl_file, tl::Definition};
 fn main() -> io::Result<()> {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
 
-    // ── Collect schema files ────────────────────────────────────────────────
+    // Collect schema files
     let mut all_defs: Vec<Definition> = Vec::new();
     let mut layer: i32 = 0;
 
@@ -55,7 +55,7 @@ fn main() -> io::Result<()> {
         }
     }
 
-    // ── Build config from features ──────────────────────────────────────────
+    // Build config from features
     let config = Config {
         gen_name_for_id: cfg!(feature = "name-for-id"),
         deserializable_functions: cfg!(feature = "deserializable-functions"),
@@ -65,7 +65,7 @@ fn main() -> io::Result<()> {
         impl_serde: cfg!(feature = "impl-serde"),
     };
 
-    // ── Generate code ───────────────────────────────────────────────────────
+    // Generate code
     let mut outputs = Outputs::from_dir(&out_dir)?;
     generate(&all_defs, &config, &mut outputs)?;
     outputs.flush()?;

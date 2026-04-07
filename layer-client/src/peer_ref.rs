@@ -1,4 +1,4 @@
-//! [`PeerRef`] — flexible peer argument accepted by all `Client` methods.
+//! [`PeerRef`]: flexible peer argument accepted by all `Client` methods.
 //!
 //! Every public API method that previously required a bare `tl::enums::Peer`
 //! now accepts `impl Into<PeerRef>`, so you can pass any of:
@@ -24,7 +24,7 @@
 //! // Bot-API basic-group ID (negative, small)
 //! client.mark_as_read(-123456_i64).await?;
 //!
-//! // already-resolved peer — zero overhead
+//! // already-resolved peer: zero overhead
 //! use layer_client::tl;
 //! let peer = tl::enums::Peer::User(tl::types::PeerUser { user_id: 123 });
 //! client.send_message_to_peer(peer, "hi").await?;
@@ -54,7 +54,7 @@ pub enum PeerRef {
     /// Negative ≤ `−1 000 000 000 000` → channel/supergroup
     /// (`channel_id = -id - 1_000_000_000_000`).
     Id(i64),
-    /// Already-resolved TL peer — forwarded at zero cost.
+    /// Already-resolved TL peer: forwarded at zero cost.
     Peer(tl::enums::Peer),
 }
 
@@ -64,7 +64,7 @@ impl PeerRef {
     /// * `Peer` variant → returned immediately.
     /// * `Id` variant   → decoded from Bot-API encoding, no network call.
     /// * `Username` variant → may perform a `contacts.resolveUsername` RPC
-    ///   if not already cached.
+    /// if not already cached.
     pub async fn resolve(
         self,
         client: &crate::Client,

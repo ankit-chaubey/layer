@@ -29,7 +29,7 @@ impl FromStr for Parameter {
     /// `{X:Type}` generic-parameter-definition syntax so callers can handle it
     /// without the overhead of `?`.
     fn from_str(token: &str) -> Result<Self, Self::Err> {
-        // Generic type-definition `{X:Type}` — not a real parameter
+        // Generic type-definition `{X:Type}`: not a real parameter
         if let Some(inner) = token.strip_prefix('{') {
             return Err(match inner.strip_suffix(":Type}") {
                 Some(name) => ParamParseError::TypeDef { name: name.into() },

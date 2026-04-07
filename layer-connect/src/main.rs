@@ -3,10 +3,10 @@
 //! # What this does
 //!
 //! 1. TCP connect to Telegram DC1 (test servers by default)
-//! 2. **Step 1** — send `req_pq_multi`
-//! 3. **Step 2** — receive `ResPQ`, factorize PQ, RSA-encrypt → `req_DH_params`
-//! 4. **Step 3** — receive `ServerDhParams`, complete DH → `set_client_DH_params`
-//! 5. **Finish** — receive `DhGenOk`, derive `AuthKey`
+//! 2. **Step 1**: send `req_pq_multi`
+//! 3. **Step 2**: receive `ResPQ`, factorize PQ, RSA-encrypt → `req_DH_params`
+//! 4. **Step 3**: receive `ServerDhParams`, complete DH → `set_client_DH_params`
+//! 5. **Finish**: receive `DhGenOk`, derive `AuthKey`
 //! 6. Call `help.getConfig` using MTProto 2.0 encrypted transport
 //! 7. Print the DC list from the config
 //!
@@ -24,8 +24,6 @@ use layer_mtproto::transport::{AbridgedTransport, ObfuscatedAbridged, Transport}
 use layer_mtproto::{EncryptedSession, Session, authentication as auth};
 use layer_tl_types::{Cursor, Deserializable};
 
-// ── DC addresses ─────────────────────────────────────────────────────────────
-
 /// Production DC1
 #[allow(dead_code)]
 const DC1_PROD: &str = "149.154.167.51:443";
@@ -33,8 +31,6 @@ const DC1_PROD: &str = "149.154.167.51:443";
 /// Test DC1 (use while developing)
 #[allow(dead_code)]
 const DC1_TEST: &str = "149.154.167.40:80";
-
-// ── Minimal TCP transport ─────────────────────────────────────────────────────
 
 struct Tcp(TcpStream);
 
@@ -68,8 +64,6 @@ impl Transport for Tcp {
     }
 }
 
-// ── Plaintext frame parser ────────────────────────────────────────────────────
-
 fn plaintext_body(frame: &[u8]) -> Result<&[u8], &'static str> {
     if frame.len() < 20 {
         return Err("frame too short");
@@ -83,8 +77,6 @@ fn plaintext_body(frame: &[u8]) -> Result<&[u8], &'static str> {
     }
     Ok(&frame[20..20 + len])
 }
-
-// ── TL send/receive helpers ───────────────────────────────────────────────────
 
 fn send_plain<T: layer_tl_types::RemoteCall>(
     transport: &mut ObfuscatedAbridged,
@@ -104,17 +96,15 @@ fn recv_plain<T: Deserializable>(
     Ok(T::deserialize(&mut cur)?)
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ── 1. Connect ────────────────────────────────────────────────────────────
+    // 1. Connect
     println!("Connecting to {} …", DC1_PROD);
     let tcp = Tcp::connect(DC1_PROD)?;
     let mut transport = ObfuscatedAbridged::new(tcp.0)?;
     let mut session = Session::new();
     println!("✓ TCP connected");
 
-    // ── 2. Auth key — Step 1: req_pq_multi ───────────────────────────────────
+    // 2. Auth key: Step 1: req_pq_multi
     let (req1, state1) = auth::step1()?;
     println!("\n[Step 1] Sending req_pq_multi …");
     send_plain(&mut transport, &mut session, &req1)?;
@@ -123,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layer_tl_types::enums::ResPq::ResPq(pq) = &res_pq;
     println!("  ✓ ResPQ: pq={:02x?}", pq.pq);
 
-    // ── 3. Auth key — Step 2: req_DH_params ──────────────────────────────────
+    // 3. Auth key: Step 2: req_DH_params
     let (req2, state2) = auth::step2(state1, res_pq)?;
     println!("[Step 2] Sending req_DH_params …");
     send_plain(&mut transport, &mut session, &req2)?;
@@ -134,21 +124,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         layer_tl_types::enums::ServerDhParams::Fail(_) => println!("  ✗ ServerDhParamsFail"),
     }
 
-    // ── 4. Auth key — Step 3: set_client_DH_params ───────────────────────────
+    // 4. Auth key: Step 3: set_client_DH_params
     let (req3, state3) = auth::step3(state2, server_dh)?;
     println!("[Step 3] Sending set_client_DH_params …");
     send_plain(&mut transport, &mut session, &req3)?;
 
     let dh_answer: layer_tl_types::enums::SetClientDhParamsAnswer = recv_plain(&mut transport)?;
 
-    // ── 5. Derive auth key ────────────────────────────────────────────────────
+    // 5. Derive auth key
     let done = auth::finish(state3, dh_answer)?;
     println!("\n✓ Auth key derived!");
     println!("  time_offset = {}s", done.time_offset);
     println!("  first_salt  = {}", done.first_salt);
     println!("  auth_key    = {:02x?}…", &done.auth_key[..8]);
 
-    // ── 6. Encrypted session — call help.getConfig ────────────────────────────
+    // 6. Encrypted session: call help.getConfig
     println!("\n[Encrypted] Calling help.getConfig …");
     let mut enc = EncryptedSession::new(done.auth_key, done.first_salt, done.time_offset);
 
@@ -183,8 +173,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n✓ Full MTProto flow complete!");
     Ok(())
 }
-
-// ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

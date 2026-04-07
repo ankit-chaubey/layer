@@ -1,43 +1,4 @@
-//! Retry policies for handling `FLOOD_WAIT`, transient I/O errors,
-//! and DC-migration redirects.
-//!
-//! # What changed vs the original
-//!
-//! | Before | After |
-//! |---|---|
-//! | Retry loop copy-pasted in 3 places (`rpc_call_raw`, `rpc_write`, reconnect) | Single `RetryLoop` drives every call site |
-//! | `RetryContext` recreated from scratch each iteration | `RetryLoop` holds it mutably, cheaper |
-//! | `RpcError` had no migrate helper | `RpcError::migrate_dc_id()` added |
-//! | MIGRATE errors bubbled up to callers of `invoke` | `rpc_call_raw` auto-migrates before retrying |
-//!
-//! # Usage (call sites)
-//!
-//! ```rust,ignore
-//! // Old (copy-pasted everywhere):
-//! let mut fail_count   = NonZeroU32::new(1).unwrap();
-//! let mut slept_so_far = Duration::default();
-//! loop {
-//!     match self.do_rpc_call(req).await {
-//!         Ok(b) => return Ok(b),
-//!         Err(e) => {
-//!             let ctx = RetryContext { fail_count, slept_so_far, error: e };
-//!             match self.inner.retry_policy.should_retry(&ctx) {
-//!                 ControlFlow::Continue(d) => { sleep(d).await; slept_so_far += d; fail_count = fail_count.saturating_add(1); }
-//!                 ControlFlow::Break(())   => return Err(ctx.error),
-//!             }
-//!         }
-//!     }
-//! }
-//!
-//! // New (single line at each call site):
-//! let mut rl = RetryLoop::new(Arc::clone(&self.inner.retry_policy));
-//! loop {
-//!     match self.do_rpc_call(req).await {
-//!         Ok(b)  => return Ok(b),
-//!         Err(e) => rl.advance(e).await?,   // sleeps or returns Err
-//!     }
-//! }
-//! ```
+//! Retry policies for handling `FLOOD_WAIT`, transient I/O errors, and DC-migration redirects.
 
 use std::num::NonZeroU32;
 use std::ops::ControlFlow;
@@ -48,26 +9,22 @@ use tokio::time::sleep;
 
 use crate::errors::InvocationError;
 
-// ─── RpcError helpers (add to errors.rs as well) ─────────────────────────────
-
 /// Extension methods on [`crate::errors::RpcError`] for routing decisions.
-///
-/// Put these in `errors.rs` alongside `flood_wait_seconds`.
 impl crate::errors::RpcError {
     /// If this is a DC-migration redirect (code 303), returns the target DC id.
     ///
     /// Telegram sends these for:
-    /// - `PHONE_MIGRATE_X`   — user's home DC during auth
-    /// - `NETWORK_MIGRATE_X` — general redirect
-    /// - `FILE_MIGRATE_X`    — file download/upload DC
-    /// - `USER_MIGRATE_X`    — account migration
+    /// - `PHONE_MIGRATE_X`  : user's home DC during auth
+    /// - `NETWORK_MIGRATE_X`: general redirect
+    /// - `FILE_MIGRATE_X`   : file download/upload DC
+    /// - `USER_MIGRATE_X`   : account migration
     ///
     /// All have `code == 303` and a numeric suffix that is the DC id.
     pub fn migrate_dc_id(&self) -> Option<i32> {
         if self.code != 303 {
             return None;
         }
-        // grammers pattern: any *_MIGRATE_* name with a numeric value
+        //  pattern: any *_MIGRATE_* name with a numeric value
         let is_migrate = self.name == "PHONE_MIGRATE"
             || self.name == "NETWORK_MIGRATE"
             || self.name == "FILE_MIGRATE"
@@ -93,7 +50,7 @@ impl InvocationError {
     }
 }
 
-// ─── RetryPolicy trait ───────────────────────────────────────────────────────
+// RetryPolicy trait
 
 /// Controls how the client reacts when an RPC call fails.
 ///
@@ -117,9 +74,9 @@ pub struct RetryContext {
     pub error: InvocationError,
 }
 
-// ─── Built-in policies ───────────────────────────────────────────────────────
+// Built-in policies
 
-/// Never retry — propagate every error immediately.
+/// Never retry: propagate every error immediately.
 pub struct NoRetries;
 
 impl RetryPolicy for NoRetries {
@@ -130,13 +87,13 @@ impl RetryPolicy for NoRetries {
 
 /// Automatically sleep on `FLOOD_WAIT` and retry once on transient I/O errors.
 ///
-/// Mirrors grammers' `AutoSleep` exactly, but is also the layer default.
+/// Default retry policy. Sleeps on `FLOOD_WAIT`, backs off on I/O errors.
 ///
 /// ```rust
 /// # use layer_client::retry::AutoSleep;
 /// let policy = AutoSleep {
-///     threshold: std::time::Duration::from_secs(60),
-///     io_errors_as_flood_of: Some(std::time::Duration::from_secs(1)),
+/// threshold: std::time::Duration::from_secs(60),
+/// io_errors_as_flood_of: Some(std::time::Duration::from_secs(1)),
 /// };
 /// ```
 pub struct AutoSleep {
@@ -162,36 +119,36 @@ impl Default for AutoSleep {
 impl RetryPolicy for AutoSleep {
     fn should_retry(&self, ctx: &RetryContext) -> ControlFlow<(), Duration> {
         match &ctx.error {
-            // FLOOD_WAIT — sleep exactly as long as Telegram asks, for every
+            // FLOOD_WAIT: sleep exactly as long as Telegram asks, for every
             // occurrence up to threshold. Removing the fail_count==1 guard
             // means a second consecutive FLOOD_WAIT is also honoured rather
             // than propagated immediately.
             InvocationError::Rpc(rpc) if rpc.code == 420 && rpc.name == "FLOOD_WAIT" => {
                 let secs = rpc.value.unwrap_or(0) as u64;
                 if secs <= self.threshold.as_secs() {
-                    tracing::info!("FLOOD_WAIT_{secs} — sleeping before retry");
+                    tracing::info!("FLOOD_WAIT_{secs}: sleeping before retry");
                     ControlFlow::Continue(Duration::from_secs(secs))
                 } else {
                     ControlFlow::Break(())
                 }
             }
 
-            // SLOWMODE_WAIT — same semantics as FLOOD_WAIT; very common in
+            // SLOWMODE_WAIT: same semantics as FLOOD_WAIT; very common in
             // group bots that send messages faster than the channel's slowmode.
             InvocationError::Rpc(rpc) if rpc.code == 420 && rpc.name == "SLOWMODE_WAIT" => {
                 let secs = rpc.value.unwrap_or(0) as u64;
                 if secs <= self.threshold.as_secs() {
-                    tracing::info!("SLOWMODE_WAIT_{secs} — sleeping before retry");
+                    tracing::info!("SLOWMODE_WAIT_{secs}: sleeping before retry");
                     ControlFlow::Continue(Duration::from_secs(secs))
                 } else {
                     ControlFlow::Break(())
                 }
             }
 
-            // Transient I/O errors — back off briefly and retry once.
+            // Transient I/O errors: back off briefly and retry once.
             InvocationError::Io(_) if ctx.fail_count.get() == 1 => {
                 if let Some(d) = self.io_errors_as_flood_of {
-                    tracing::info!("I/O error — sleeping {d:?} before retry");
+                    tracing::info!("I/O error: sleeping {d:?} before retry");
                     ControlFlow::Continue(d)
                 } else {
                     ControlFlow::Break(())
@@ -203,7 +160,7 @@ impl RetryPolicy for AutoSleep {
     }
 }
 
-// ─── RetryLoop ───────────────────────────────────────────────────────────────
+// RetryLoop
 
 /// Drives the retry loop for a single RPC call.
 ///
@@ -212,10 +169,10 @@ impl RetryPolicy for AutoSleep {
 /// ```rust,ignore
 /// let mut rl = RetryLoop::new(Arc::clone(&self.inner.retry_policy));
 /// loop {
-///     match self.do_rpc_call(req).await {
-///         Ok(body) => return Ok(body),
-///         Err(e)   => rl.advance(e).await?,
-///     }
+/// match self.do_rpc_call(req).await {
+///     Ok(body) => return Ok(body),
+///     Err(e)   => rl.advance(e).await?,
+/// }
 /// }
 /// ```
 ///
@@ -266,7 +223,7 @@ impl RetryLoop {
     }
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// Tests
 
 #[cfg(test)]
 mod tests {
@@ -293,7 +250,7 @@ mod tests {
         })
     }
 
-    // ── NoRetries ────────────────────────────────────────────────────────────
+    // NoRetries
 
     #[test]
     fn no_retries_always_breaks() {
@@ -306,7 +263,7 @@ mod tests {
         assert!(matches!(policy.should_retry(&ctx), ControlFlow::Break(())));
     }
 
-    // ── AutoSleep ─────────────────────────────────────────────────────────────
+    // AutoSleep
 
     #[test]
     fn autosleep_retries_flood_under_threshold() {
@@ -381,7 +338,7 @@ mod tests {
         assert!(matches!(policy.should_retry(&ctx), ControlFlow::Break(())));
     }
 
-    // ── RpcError::migrate_dc_id ───────────────────────────────────────────────
+    // RpcError::migrate_dc_id
 
     #[test]
     fn migrate_dc_id_detected() {
@@ -433,7 +390,7 @@ mod tests {
         assert_eq!(e.migrate_dc_id(), Some(2));
     }
 
-    // ── RetryLoop ─────────────────────────────────────────────────────────────
+    // RetryLoop
 
     #[tokio::test]
     async fn retry_loop_gives_up_on_no_retries() {
