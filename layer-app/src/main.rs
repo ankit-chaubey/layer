@@ -109,7 +109,7 @@ async fn dispatch(upd: Update, client: &Client, my_id: i64) {
                 sender_uid
                     .map(|id| format!(" from={id}"))
                     .unwrap_or_default(),
-                &text[..text.len().min(100)]
+                &text[..text.floor_char_boundary(100)]
             );
 
             if !text.starts_with('.') {
