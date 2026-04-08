@@ -639,10 +639,13 @@ impl Dialog {
 // ClientInner
 
 struct ClientInner {
-    /// Write half of the connection: holds the EncryptedSession (for packing)
-    /// and the send half of the TCP stream. The read half is owned by the
-    /// reader task started in connect().
+    /// Crypto/state for the connection: EncryptedSession, salts, acks, etc.
+    /// Held only for CPU-bound packing : never while awaiting TCP I/O.
     writer: Mutex<ConnectionWriter>,
+    /// The TCP send half. Separate from `writer` so the reader task can lock
+    /// `writer` for pending_ack / state while a caller awaits `write_all`.
+    /// This split eliminates the burst-deadlock at 10+ concurrent RPCs.
+    write_half: Mutex<OwnedWriteHalf>,
     /// Pending RPC replies, keyed by MTProto msg_id.
     /// RPC callers insert a oneshot::Sender here before sending; the reader
     /// task routes incoming rpc_result frames to the matching sender.
@@ -814,7 +817,7 @@ impl Client {
         // The writer (write half + EncryptedSession) stays in ClientInner.
         // The read half goes to the reader task which we spawn right now so
         // that RPC calls during init_connection work correctly.
-        let (writer, read_half, frame_kind) = conn.into_writer();
+        let (writer, write_half, read_half, frame_kind) = conn.into_writer();
         let auth_key = writer.enc.auth_key_bytes();
         let session_id = writer.enc.session_id();
 
@@ -837,6 +840,7 @@ impl Client {
 
         let inner = Arc::new(ClientInner {
             writer: Mutex::new(writer),
+            write_half: Mutex::new(write_half),
             pending: pending.clone(),
             reconnect_tx,
             network_hint_tx,
@@ -960,7 +964,7 @@ impl Client {
                     Connection::connect_raw(&addr_r, socks5_r.as_ref(), &transport_r).await?;
 
                 // Split first so we can read the new key/salt from the writer.
-                let (new_writer, new_read, new_fk) = new_conn.into_writer();
+                let (new_writer, new_wh, new_read, new_fk) = new_conn.into_writer();
                 // Update ONLY the home DC entry: all other DC keys are preserved.
                 {
                     let mut opts_guard = client.inner.dc_options.lock().await;
@@ -974,6 +978,7 @@ impl Client {
                 let new_ak = new_writer.enc.auth_key_bytes();
                 let new_sid = new_writer.enc.session_id();
                 *client.inner.writer.lock().await = new_writer;
+                *client.inner.write_half.lock().await = new_wh;
                 let _ = client
                     .inner
                     .reconnect_tx
@@ -1741,8 +1746,31 @@ impl Client {
         // This prevents a transient 30 s timeout from nuking a valid session.
         let mut init_fail_count: u32 = 0;
 
+        let mut gap_tick = tokio::time::interval(std::time::Duration::from_millis(1500));
+        gap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
         loop {
             tokio::select! {
+                // Drive possible-gap deadline every 1.5 s: if updates were buffered
+                // waiting for a pts gap fill and no new update arrives, this fires
+                // getDifference after the 1-second window expires.
+                _ = gap_tick.tick() => {
+                    // get_difference() is now atomic (check-and-set inside a single
+                    // lock acquisition), so there is no need to guard against a
+                    // concurrent in-flight call here : get_difference() will bail
+                    // safely on its own.  Just check has_global() + deadline.
+                    if self.inner.possible_gap.lock().await.has_global() {
+                        let gap_expired = self.inner.possible_gap.lock().await.global_deadline_elapsed();
+                        if gap_expired {
+                            let c = self.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = c.check_update_deadline().await {
+                                    tracing::warn!("[layer] gap tick getDifference: {e}");
+                                }
+                            });
+                        }
+                    }
+                }
                 // Normal frame (or application-level keepalive timeout)
                 outcome = recv_frame_with_keepalive(&mut rh, &fk, self, &ak) => {
                     match outcome {
@@ -1871,7 +1899,17 @@ impl Client {
                             }
                         }
 
-                        FrameOutcome::Keepalive => {} // ping sent successfully; loop
+                        FrameOutcome::Keepalive => {
+                            // Drive possible-gap deadline: if updates were buffered
+                            // waiting for a gap fill and no new update has arrived
+                            // to re-trigger check_and_fill_gap, this fires getDifference.
+                            let c = self.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = c.check_update_deadline().await {
+                                    tracing::warn!("[layer] check_update_deadline: {e}");
+                                }
+                            });
+                        }
                     }
                 }
 
@@ -2138,9 +2176,12 @@ impl Client {
                             if let Some(tx) = pending.remove(&resolved_id) {
                                 pending.insert(new_msg_id, tx);
                                 drop(pending);
-                                let mut w = self.inner.writer.lock().await;
-                                if let Err(e) =
-                                    send_frame_write(&mut w.write_half, &wire, &fk).await
+                                if let Err(e) = send_frame_write(
+                                    &mut *self.inner.write_half.lock().await,
+                                    &wire,
+                                    &fk,
+                                )
+                                .await
                                 {
                                     tracing::warn!("[layer] bad_server_salt re-send failed: {e}");
                                 } else {
@@ -2210,7 +2251,8 @@ impl Client {
 
                     // Parse ALL returned salts ( stores the full Vec).
                     // Each FutureSalt entry is 16 bytes starting at offset 24.
-                    let mut new_salts: Vec<FutureSalt> = Vec::with_capacity(count.clamp(0, 4096) as usize);
+                    let mut new_salts: Vec<FutureSalt> =
+                        Vec::with_capacity(count.clamp(0, 4096) as usize);
                     for i in 0..count {
                         let base = 24 + i * 16;
                         if base + 16 > body.len() {
@@ -2396,11 +2438,21 @@ impl Client {
                             }
                         };
                         if has_waiter {
-                            // Phase 3: re-acquire writer only for TCP send.
-                            let mut w = self.inner.writer.lock().await;
-                            if let Err(e) = send_frame_write(&mut w.write_half, &wire, &fk).await {
+                            // Phase 3: TCP send : no writer lock needed.
+                            if let Err(e) = send_frame_write(
+                                &mut *self.inner.write_half.lock().await,
+                                &wire,
+                                &fk,
+                            )
+                            .await
+                            {
                                 tracing::warn!("[layer] re-send failed: {e}");
-                                w.sent_bodies.remove(&new_msg_id);
+                                self.inner
+                                    .writer
+                                    .lock()
+                                    .await
+                                    .sent_bodies
+                                    .remove(&new_msg_id);
                             } else {
                                 tracing::debug!("[layer] re-sent {old_msg_id}→{new_msg_id}");
                             }
@@ -2463,26 +2515,37 @@ impl Client {
                 // body[12..]   = msg_ids
                 if body.len() >= 12 {
                     let count = u32::from_le_bytes(body[8..12].try_into().unwrap()) as usize;
-                    let mut w = self.inner.writer.lock().await;
-                    let fk = w.frame_kind.clone();
-                    for i in 0..count {
-                        let off = 12 + i * 8;
-                        if off + 8 > body.len() {
-                            break;
-                        }
-                        let resend_id = i64::from_le_bytes(body[off..off + 8].try_into().unwrap());
-                        if let Some(orig_body) = w.sent_bodies.remove(&resend_id) {
-                            let (wire, new_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
-                            // Re-key the pending waiter
-                            let mut pending = self.inner.pending.lock().await;
-                            if let Some(tx) = pending.remove(&resend_id) {
-                                pending.insert(new_id, tx);
+                    let mut resends: Vec<(Vec<u8>, i64, i64)> = Vec::new();
+                    {
+                        let mut w = self.inner.writer.lock().await;
+                        let fk = w.frame_kind.clone();
+                        for i in 0..count {
+                            let off = 12 + i * 8;
+                            if off + 8 > body.len() {
+                                break;
                             }
-                            drop(pending);
-                            w.sent_bodies.insert(new_id, orig_body);
-                            send_frame_write(&mut w.write_half, &wire, &fk).await.ok();
-                            tracing::debug!("[layer] MsgResendReq: resent {resend_id} → {new_id}");
+                            let resend_id =
+                                i64::from_le_bytes(body[off..off + 8].try_into().unwrap());
+                            if let Some(orig_body) = w.sent_bodies.remove(&resend_id) {
+                                let (wire, new_id) = w.enc.pack_body_with_msg_id(&orig_body, true);
+                                let mut pending = self.inner.pending.lock().await;
+                                if let Some(tx) = pending.remove(&resend_id) {
+                                    pending.insert(new_id, tx);
+                                }
+                                drop(pending);
+                                w.sent_bodies.insert(new_id, orig_body);
+                                resends.push((wire, resend_id, new_id));
+                            }
                         }
+                        let _ = fk; // fk captured above, writer lock drops here
+                    }
+                    // TCP sends outside writer lock
+                    let fk = self.inner.writer.lock().await.frame_kind.clone();
+                    for (wire, resend_id, new_id) in resends {
+                        send_frame_write(&mut *self.inner.write_half.lock().await, &wire, &fk)
+                            .await
+                            .ok();
+                        tracing::debug!("[layer] MsgResendReq: resent {resend_id} → {new_id}");
                     }
                 }
             }
@@ -3189,10 +3252,11 @@ impl Client {
             Connection::connect_raw(&addr, socks5.as_ref(), &transport).await?
         };
 
-        let (new_writer, new_read, new_fk) = new_conn.into_writer();
+        let (new_writer, new_wh, new_read, new_fk) = new_conn.into_writer();
         let new_ak = new_writer.enc.auth_key_bytes();
         let new_sid = new_writer.enc.session_id();
         *self.inner.writer.lock().await = new_writer;
+        *self.inner.write_half.lock().await = new_wh;
 
         // The new writer is fresh (new EncryptedSession) but
         // salt_request_in_flight lives on self.inner and is never reset
@@ -4751,18 +4815,17 @@ impl Client {
             let mut req_body = Vec::with_capacity(8);
             req_body.extend_from_slice(&0xb921bd04_u32.to_le_bytes()); // get_future_salts
             req_body.extend_from_slice(&64_i32.to_le_bytes()); // num
-            let (wire, fs_msg_id) = {
+            let (wire, fk, fs_msg_id) = {
                 let mut w = inner.writer.lock().await;
+                let fk = w.frame_kind.clone();
                 let (wire, id) = w.enc.pack_body_with_msg_id(&req_body, true);
                 w.sent_bodies.insert(id, req_body);
-                (wire, id)
+                (wire, fk, id)
             };
-            let fk = inner.writer.lock().await.frame_kind.clone();
             let (tx, rx) = tokio::sync::oneshot::channel();
             inner.pending.lock().await.insert(fs_msg_id, tx);
             let send_ok = {
-                let mut w = inner.writer.lock().await;
-                send_frame_write(&mut w.write_half, &wire, &fk)
+                send_frame_write(&mut *inner.write_half.lock().await, &wire, &fk)
                     .await
                     .is_ok()
             };
@@ -4813,7 +4876,7 @@ impl Client {
     /// the matching rpc_result frame arrives.
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
-        {
+        let wire = {
             let raw_body = req.to_bytes();
             // compress large outgoing bodies
             let body = maybe_gz_pack(&raw_body);
@@ -4840,36 +4903,33 @@ impl Client {
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
                 w.sent_bodies.insert(msg_id, body); //
                 self.inner.pending.lock().await.insert(msg_id, tx);
-                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+                (wire, fk)
             } else {
                 // container path: [MsgsAck, request]
-                // Build MsgsAck inner body
                 let ack_body = build_msgs_ack_body(&acks);
-                // Allocate inner msg_id+seqno for each item
                 let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false); // non-content
                 let (req_msg_id, req_seqno) = w.enc.alloc_msg_seqno(true); // content
 
-                // Build container payload
                 let container_payload = build_container_body(&[
                     (ack_msg_id, ack_seqno, ack_body.as_slice()),
                     (req_msg_id, req_seqno, body.as_slice()),
                 ]);
 
-                // Encrypt the container as a non-content-related outer message.
-                // pack_container now returns (wire, container_msg_id) so we can
-                // register the mapping for bad_msg_notification recovery.
                 let (wire, container_msg_id) = w.enc.pack_container(&container_payload);
 
                 w.sent_bodies.insert(req_msg_id, body); //
                 w.container_map.insert(container_msg_id, req_msg_id); // 
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
-                send_frame_write(&mut w.write_half, &wire, &fk).await?;
                 tracing::debug!(
                     "[layer] container: bundled {} acks + request (cid={container_msg_id})",
                     acks.len()
                 );
+                (wire, fk)
             }
-        }
+            // writer lock released here : before any TCP I/O
+        };
+        // TCP send with writer lock free: reader can push pending_ack concurrently
+        send_frame_write(&mut *self.inner.write_half.lock().await, &wire.0, &wire.1).await?;
         match rx.await {
             Ok(result) => result,
             Err(_) => Err(InvocationError::Deserialize(
@@ -4908,7 +4968,7 @@ impl Client {
 
     async fn do_rpc_write<S: tl::Serializable>(&self, req: &S) -> Result<(), InvocationError> {
         let (tx, rx) = oneshot::channel();
-        {
+        let wire = {
             let raw_body = req.to_bytes();
             // compress large outgoing bodies
             let body = maybe_gz_pack(&raw_body);
@@ -4923,7 +4983,7 @@ impl Client {
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
                 w.sent_bodies.insert(msg_id, body); //
                 self.inner.pending.lock().await.insert(msg_id, tx);
-                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+                (wire, fk)
             } else {
                 let ack_body = build_msgs_ack_body(&acks);
                 let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false);
@@ -4936,13 +4996,15 @@ impl Client {
                 w.sent_bodies.insert(req_msg_id, body); //
                 w.container_map.insert(container_msg_id, req_msg_id); // 
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
-                send_frame_write(&mut w.write_half, &wire, &fk).await?;
                 tracing::debug!(
                     "[layer] write container: bundled {} acks + write (cid={container_msg_id})",
                     acks.len()
                 );
+                (wire, fk)
             }
-        }
+            // writer lock released here : before any TCP I/O
+        };
+        send_frame_write(&mut *self.inner.write_half.lock().await, &wire.0, &wire.1).await?;
         match rx.await {
             Ok(result) => result.map(|_| ()),
             Err(_) => Err(InvocationError::Deserialize(
@@ -5042,11 +5104,12 @@ impl Client {
             entry.auth_key = Some(new_key);
         }
 
-        // Split the new connection and replace writer + reader.
-        let (new_writer, new_read, new_fk) = conn.into_writer();
+        // Split the new connection and replace writer + read half.
+        let (new_writer, new_wh, new_read, new_fk) = conn.into_writer();
         let new_ak = new_writer.enc.auth_key_bytes();
         let new_sid = new_writer.enc.session_id();
         *self.inner.writer.lock().await = new_writer;
+        *self.inner.write_half.lock().await = new_wh;
         *self.inner.home_dc_id.lock().await = new_dc_id;
 
         // Hand the new read half to the reader task FIRST so it can route
@@ -5185,7 +5248,7 @@ impl Client {
         req: &S,
     ) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
-        {
+        let wire = {
             let raw_body = req.to_bytes();
             let body = maybe_gz_pack(&raw_body); //
             let mut w = self.inner.writer.lock().await;
@@ -5195,7 +5258,7 @@ impl Client {
                 let (wire, msg_id) = w.enc.pack_body_with_msg_id(&body, true);
                 w.sent_bodies.insert(msg_id, body); //
                 self.inner.pending.lock().await.insert(msg_id, tx);
-                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+                (wire, fk)
             } else {
                 let ack_body = build_msgs_ack_body(&acks);
                 let (ack_msg_id, ack_seqno) = w.enc.alloc_msg_seqno(false);
@@ -5208,9 +5271,11 @@ impl Client {
                 w.sent_bodies.insert(req_msg_id, body); //
                 w.container_map.insert(container_msg_id, req_msg_id); // 
                 self.inner.pending.lock().await.insert(req_msg_id, tx);
-                send_frame_write(&mut w.write_half, &wire, &fk).await?;
+                (wire, fk)
             }
-        }
+            // writer lock released here : before any TCP I/O
+        };
+        send_frame_write(&mut *self.inner.write_half.lock().await, &wire.0, &wire.1).await?;
         match rx.await {
             Ok(result) => result,
             Err(_) => Err(InvocationError::Deserialize("rpc channel closed".into())),
@@ -5705,7 +5770,6 @@ const SALT_USE_DELAY: i32 = 60;
 
 /// Owns the EncryptedSession (for packing) and the pending-RPC map.
 struct ConnectionWriter {
-    write_half: OwnedWriteHalf,
     enc: EncryptedSession,
     frame_kind: FrameKind,
     /// msg_ids of received content messages waiting to be acked.
@@ -6037,10 +6101,9 @@ impl Connection {
     }
 
     /// Split into a write-only `ConnectionWriter` and the TCP read half.
-    fn into_writer(self) -> (ConnectionWriter, OwnedReadHalf, FrameKind) {
+    fn into_writer(self) -> (ConnectionWriter, OwnedWriteHalf, OwnedReadHalf, FrameKind) {
         let (read_half, write_half) = self.stream.into_split();
         let writer = ConnectionWriter {
-            write_half,
             enc: self.enc,
             frame_kind: self.frame_kind.clone(),
             pending_ack: Vec::new(),
@@ -6049,7 +6112,7 @@ impl Connection {
             salts: Vec::new(),
             start_salt_time: None,
         };
-        (writer, read_half, self.frame_kind)
+        (writer, write_half, read_half, self.frame_kind)
     }
 }
 
@@ -6133,14 +6196,13 @@ async fn recv_frame_with_keepalive(
                 ping_id: random_i64(),
                 disconnect_delay: NO_PING_DISCONNECT,
             };
-            let mut w = client.inner.writer.lock().await;
-            let wire = w.enc.pack(&ping_req);
-            let fk = w.frame_kind.clone();
-            match send_frame_write(&mut w.write_half, &wire, &fk).await {
+            let (wire, fk) = {
+                let mut w = client.inner.writer.lock().await;
+                let fk = w.frame_kind.clone();
+                (w.enc.pack(&ping_req), fk)
+            };
+            match send_frame_write(&mut *client.inner.write_half.lock().await, &wire, &fk).await {
                 Ok(()) => FrameOutcome::Keepalive,
-                // If the write itself fails the connection is already dead.
-                // Return Error so the reader immediately enters the reconnect loop
-                // instead of sitting silent for another PING_DELAY_SECS.
                 Err(e) => FrameOutcome::Error(e),
             }
         }

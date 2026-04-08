@@ -83,6 +83,17 @@ impl PossibleGapBuffer {
         self.channel.contains_key(&channel_id)
     }
 
+    /// Start the global deadline timer without buffering an update.
+    ///
+    /// Called when a gap is detected but the triggering update carries no
+    /// high-level `Update` value (e.g. `updateShortSentMessage` with `upd=None`).
+    /// Without this, `global` stays `None` → `global_deadline_elapsed()` always
+    /// returns `false` → `gap_tick` never fires getDifference for such gaps.
+    pub fn touch_global_timer(&mut self) {
+        self.global
+            .get_or_insert_with(|| (Vec::new(), Instant::now()));
+    }
+
     /// Drain global buffered updates.
     pub fn drain_global(&mut self) -> Vec<update::Update> {
         self.global.take().map(|(v, _)| v).unwrap_or_default()
@@ -124,6 +135,10 @@ pub struct PtsState {
     /// Without this, two simultaneous gap detections both spawn get_difference(),
     /// which double-processes updates and corrupts pts state.
     pub getting_global_diff: bool,
+    /// When getting_global_diff was set to true.  Used by the stuck-diff watchdog
+    /// in check_update_deadline: if the flag has been set for >30 s the RPC is
+    /// assumed hung and the guard is reset so the next gap_tick can retry.
+    pub getting_global_diff_since: Option<Instant>,
 }
 
 impl PtsState {
@@ -137,6 +152,7 @@ impl PtsState {
             last_update_at: Some(Instant::now()),
             getting_diff_for: HashSet::new(),
             getting_global_diff: false,
+            getting_global_diff_since: None,
         }
     }
 
@@ -277,14 +293,75 @@ impl Client {
     /// never dropping a partial batch.  Previous code returned after one slice,
     /// silently losing all updates in subsequent slices.
     pub async fn get_difference(&self) -> Result<Vec<update::Update>, InvocationError> {
-        // mark global diff in-flight so concurrent gap detections skip.
-        // Cleared in every exit path below.
-        self.inner.pts_state.lock().await.getting_global_diff = true;
+        // Atomically claim the in-flight slot.
+        //
+        // TOCTOU fix: the old code set getting_global_diff=true inside get_difference
+        // but the external guard in check_and_fill_gap read the flag in a SEPARATE lock
+        // acquisition.  With multi-threaded Tokio, N tasks could all read false, all
+        // pass the external check, then all race into this function and all set the flag
+        // to true.  Each concurrent call resets pts_state to the server state it received;
+        // the last STALE write rolls pts back below where it actually is, which immediately
+        // triggers a new gap → another burst of concurrent getDifference calls → cascade.
+        //
+        // Fix: check-and-set inside a SINGLE lock acquisition.  Only the first caller
+        // proceeds; all others see true and return Ok(vec![]) immediately.
+        {
+            let mut s = self.inner.pts_state.lock().await;
+            if s.getting_global_diff {
+                return Ok(vec![]);
+            }
+            s.getting_global_diff = true;
+            s.getting_global_diff_since = Some(Instant::now());
+        }
 
-        let result = self.get_difference_inner().await;
+        // Drain the initial-gap buffer before the RPC.
+        //
+        // possible_gap.global contains updates buffered during the possible-gap window
+        // (before we decided to call getDiff).  The server response covers exactly
+        // these pts values → discard the snapshot on success.
+        // On RPC error, restore them so the next gap_tick can retry.
+        //
+        // Note: updates arriving DURING the RPC flight are now force-dispatched by
+        // check_and_fill_gap and never accumulate in possible_gap,
+        // so there is nothing extra to drain after the call returns.
+        let pre_diff = self.inner.possible_gap.lock().await.drain_global();
+
+        // Wrap the RPC in a hard 30-second timeout so a hung TCP connection
+        // (half-open socket, unresponsive DC) cannot hold getting_global_diff=true
+        // forever and freeze the bot indefinitely.
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            self.get_difference_inner(),
+        )
+        .await
+        .unwrap_or_else(|_| {
+            tracing::warn!("[layer] getDifference RPC timed out after 30 s: will retry");
+            Err(InvocationError::Io(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "getDifference timed out",
+            )))
+        });
 
         // Always clear the guard, even on error.
-        self.inner.pts_state.lock().await.getting_global_diff = false;
+        {
+            let mut s = self.inner.pts_state.lock().await;
+            s.getting_global_diff = false;
+            s.getting_global_diff_since = None;
+        }
+
+        match &result {
+            Ok(_) => {
+                // pre_diff is covered by the server response; discard it.
+                // (Flight-time updates are force-dispatched, not buffered into possible_gap.)
+            }
+            Err(_) => {
+                // Restore pre-existing items so the next gap_tick retry sees them.
+                let mut gap = self.inner.possible_gap.lock().await;
+                for u in pre_diff {
+                    gap.push_global(u);
+                }
+            }
+        }
 
         result
     }
@@ -362,8 +439,10 @@ impl Client {
                     {
                         let mut s = self.inner.pts_state.lock().await;
                         let getting_diff_for = std::mem::take(&mut s.getting_diff_for);
+                        let since = s.getting_global_diff_since; // preserve watchdog timestamp
                         *s = new_state;
                         s.getting_diff_for = getting_diff_for;
+                        s.getting_global_diff_since = since;
                     }
                     // Final response: stop looping.
                     return Ok(all_updates);
@@ -401,8 +480,10 @@ impl Client {
                     {
                         let mut s = self.inner.pts_state.lock().await;
                         let getting_diff_for = std::mem::take(&mut s.getting_diff_for);
+                        let since = s.getting_global_diff_since; // preserve watchdog timestamp
                         *s = new_state;
                         s.getting_diff_for = getting_diff_for;
+                        s.getting_global_diff_since = since;
                     }
                     // Loop: fetch the next slice.
                     continue;
@@ -573,23 +654,31 @@ impl Client {
     }
     /// Check global pts, buffer during possible-gap window, fetch diff if real gap.
     ///
-    /// if a global getDifference is already in-flight (getting_global_diff == true),
-    /// buffer the update and return immediately:
-    /// for Key::Common.  Without this, every simultaneous gap detection spawns a redundant
-    /// get_difference(), double-advancing pts and corrupting state.
+    /// When a global getDifference is already in-flight (`getting_global_diff == true`),
+    /// updates are **force-dispatched** immediately without pts tracking.
+    /// This prevents the cascade freeze that buffering caused:
+    ///   1. getDiff runs; flight-buffered updates pile up in `possible_gap`.
+    ///   2. getDiff returns; `gap_tick` sees `has_global()=true` → another getDiff.
+    ///   3. Each getDiff spawns another → bot freezes under a burst of messages.
     pub async fn check_and_fill_gap(
         &self,
         new_pts: i32,
         pts_count: i32,
         upd: Option<update::Update>,
     ) -> Result<Vec<update::Update>, InvocationError> {
-        // if a global diff is already in flight, just buffer and bail.
+        // getDiff in flight: force updates through without pts tracking.
+        //
+        // Force-dispatch: socket updates are sent through
+        // when getting_diff_for contains the key; no buffering, no pts check.
+        // Buffering caused a cascade of getDiff calls and a bot freeze under bursts.
+        // Force-dispatch means these may duplicate what getDiff returns (same pts
+        // range), which is acceptable: Telegram's spec explicitly states that socket
+        // updates received during getDiff "should also have been retrieved through
+        // getDifference". Application-layer deduplication by message_id handles doubles.
+        // pts is NOT advanced here; getDiff sets it authoritatively when it returns.
         if self.inner.pts_state.lock().await.getting_global_diff {
-            tracing::debug!("[layer] global diff in flight: buffering pts={new_pts}");
-            if let Some(u) = upd {
-                self.inner.possible_gap.lock().await.push_global(u);
-            }
-            return Ok(vec![]);
+            tracing::debug!("[layer] global diff in flight: force-applying pts={new_pts}");
+            return Ok(upd.into_iter().collect());
         }
 
         let result = self
@@ -600,21 +689,50 @@ impl Client {
             .check_pts(new_pts, pts_count);
         match result {
             PtsCheckResult::Ok => {
-                // Drain any buffered global updates now that we're in sync,
-                // then append the current update (which triggered the Ok).
-                let mut buffered = self.inner.possible_gap.lock().await.drain_global();
+                // Advance pts and dispatch only this update.
+                //
+                // Do NOT blindly drain possible_gap here.
+                //
+                // Old behaviour: drain all buffered updates and return them together
+                // with the Ok update.  This caused a second freeze:
+                //
+                //   1. pts=1021.  Burst arrives: 1024-1030 all gap → buffered.
+                //   2. Update 1022 arrives → Ok → drain dispatches 1024-1030.
+                //   3. pts advances only to 1022 (the Ok value), NOT to 1030.
+                //   4. Bot sends replies → updateShortSentMessage pts=1031 →
+                //      check_and_fill_gap: expected=1023, got=1031 → GAP.
+                //   5. Cascade getDiff → duplicates → flood-wait → freeze.
+                //
+                // Grammers avoids this by re-checking each buffered update in
+                // order and advancing pts for each one (process_updates inner loop
+                // over entry.possible_gap).  Layer's Update enum carries no pts
+                // metadata, so we cannot replicate that ordered sequence check here.
+                //
+                // Correct equivalent: leave possible_gap alone.  The buffered
+                // updates will be recovered by gap_tick → getDiff(new_pts), which
+                // drains possible_gap into pre_diff, lets the server fill the
+                // gap, and advances pts to the true server state; no stale pts,
+                // no secondary cascade, no duplicates.
                 self.inner.pts_state.lock().await.advance(new_pts);
-                if let Some(u) = upd {
-                    buffered.push(u);
-                }
-                Ok(buffered)
+                Ok(upd.into_iter().collect())
             }
             PtsCheckResult::Gap { expected, got } => {
-                // Buffer the update first; only fetch getDifference after the
-                // deadline has elapsed (avoids spurious getDifference on every
-                // slightly out-of-order update).
-                if let Some(u) = upd {
-                    self.inner.possible_gap.lock().await.push_global(u);
+                // Buffer the update; start the deadline timer regardless.
+                //
+                // Bug fix (touch_global_timer): when upd=None (e.g. the gap is
+                // triggered by an updateShortSentMessage RPC response), nothing was
+                // ever pushed to possible_gap.global, so global stayed None.
+                // global_deadline_elapsed() returned false forever, gap_tick never
+                // saw has_global()=true, and the gap was never resolved unless a
+                // subsequent user message arrived.  touch_global_timer() starts the
+                // 1-second deadline clock even without a buffered update.
+                {
+                    let mut gap = self.inner.possible_gap.lock().await;
+                    if let Some(u) = upd {
+                        gap.push_global(u);
+                    } else {
+                        gap.touch_global_timer();
+                    }
                 }
                 let deadline_elapsed = self
                     .inner
@@ -626,12 +744,12 @@ impl Client {
                     tracing::warn!(
                         "[layer] global pts gap: expected {expected}, got {got}: getDifference"
                     );
-                    let buffered = self.inner.possible_gap.lock().await.drain_global();
-                    // get_difference now sets/clears getting_global_diff internally ().
-                    let mut diff_updates = self.get_difference().await?;
-                    // Prepend buffered updates so ordering is maintained.
-                    diff_updates.splice(0..0, buffered);
-                    Ok(diff_updates)
+                    // get_difference() is now atomic (check-and-set) and drains the
+                    // possible_gap buffer internally on success, so callers must NOT
+                    // drain before calling or splice the old buffer onto the results.
+                    // Doing so caused every gap update to be dispatched twice, which
+                    // triggered FLOOD_WAIT, blocked the handler, and froze the bot.
+                    self.get_difference().await
                 } else {
                     tracing::debug!(
                         "[layer] global pts gap: expected {expected}, got {got}: buffering (possible gap)"
@@ -868,7 +986,33 @@ impl Client {
     /// until another update arrived.  This
     /// which scans all LiveEntry.effective_deadline() on every keepalive tick.
     pub async fn check_update_deadline(&self) -> Result<(), InvocationError> {
-        // existing 15-minute global timeout
+        // Stuck-diff watchdog: if getting_global_diff has been true for more than
+        // 30 s the in-flight getDifference RPC is assumed hung (e.g. half-open TCP
+        // that the OS keepalive hasn't killed yet).  Reset the guard so the next
+        // gap_tick cycle can issue a fresh getDifference.  The 30-second timeout
+        // in get_difference() will concurrently return an error and also clear the
+        // flag; this watchdog is a belt-and-suspenders safety net for edge cases
+        // where that timeout itself is somehow delayed.
+        {
+            let stuck = {
+                let s = self.inner.pts_state.lock().await;
+                s.getting_global_diff
+                    && s.getting_global_diff_since
+                        .map(|t| t.elapsed().as_secs() > 30)
+                        .unwrap_or(false)
+            };
+            if stuck {
+                tracing::warn!(
+                    "[layer] getDifference in-flight for >30 s: \
+                     resetting guard so gap_tick can retry"
+                );
+                let mut s = self.inner.pts_state.lock().await;
+                s.getting_global_diff = false;
+                s.getting_global_diff_since = None;
+            }
+        }
+
+        // existing 5-minute global timeout
         let exceeded = self.inner.pts_state.lock().await.deadline_exceeded();
         if exceeded {
             tracing::info!("[layer] update deadline exceeded: fetching getDifference");
@@ -890,13 +1034,16 @@ impl Client {
                 .lock()
                 .await
                 .global_deadline_elapsed();
-            let already = self.inner.pts_state.lock().await.getting_global_diff;
-            if gap_expired && !already {
+            // Note: get_difference() is now atomic (check-and-set), so the
+            // `already` guard is advisory only; get_difference() will bail
+            // safely if another call is already in flight.
+            if gap_expired {
                 tracing::debug!("[layer] B3 global possible-gap deadline expired: getDifference");
-                let buffered = self.inner.possible_gap.lock().await.drain_global();
+                // get_difference() snapshots and drains the pre-existing buffer at its
+                // start (before the RPC), so updates that arrive DURING the RPC flight
+                // remain in possible_gap for the next cycle.  Never drain here.
                 match self.get_difference().await {
-                    Ok(mut updates) => {
-                        updates.splice(0..0, buffered);
+                    Ok(updates) => {
                         for u in updates {
                             if self.inner.update_tx.try_send(u).is_err() {
                                 tracing::warn!("[layer] update channel full: dropping gap update");
