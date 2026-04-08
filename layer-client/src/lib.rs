@@ -2210,7 +2210,7 @@ impl Client {
 
                     // Parse ALL returned salts ( stores the full Vec).
                     // Each FutureSalt entry is 16 bytes starting at offset 24.
-                    let mut new_salts: Vec<FutureSalt> = Vec::with_capacity(count);
+                    let mut new_salts: Vec<FutureSalt> = Vec::with_capacity(count.clamp(0, 4096) as usize);
                     for i in 0..count {
                         let base = 24 + i * 16;
                         if base + 16 > body.len() {
