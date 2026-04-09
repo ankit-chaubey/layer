@@ -395,6 +395,7 @@ impl Client {
             };
 
             let body = self.rpc_call_raw_pub(&req).await?;
+            let body = crate::maybe_gz_decompress(body)?;
             let mut cur = Cursor::from_slice(&body);
             let diff = tl::enums::updates::Difference::deserialize(&mut cur)?;
 
@@ -572,6 +573,7 @@ impl Client {
             }
             Err(e) => return Err(e),
         };
+        let body = crate::maybe_gz_decompress(body)?;
         let mut cur = Cursor::from_slice(&body);
         let diff = tl::enums::updates::ChannelDifference::deserialize(&mut cur)?;
 

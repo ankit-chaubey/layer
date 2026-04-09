@@ -5284,7 +5284,17 @@ impl Client {
 
     // Paginated dialog iterator
 
-    /// Fetch dialogs page by page.
+    pub async fn count_channels(&self) -> Result<usize, InvocationError> {
+        let mut iter = self.iter_dialogs();
+        let mut count = 0usize;
+        while let Some(dialog) = iter.next(self).await? {
+            if matches!(dialog.peer(), Some(tl::enums::Peer::Channel(_))) {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     ///
     /// Returns a [`DialogIter`] that can be advanced with [`DialogIter::next`].
     /// This lets you page through all dialogs without loading them all at once.
@@ -5725,6 +5735,14 @@ impl MessageIter {
 #[doc(hidden)]
 pub fn random_i64_pub() -> i64 {
     random_i64()
+}
+
+pub fn is_bool_true(body: &[u8]) -> bool {
+    body.len() == 4 && u32::from_le_bytes(body[0..4].try_into().unwrap_or([0u8; 4])) == 0x997275b5
+}
+
+pub fn is_bool_false(body: &[u8]) -> bool {
+    body.len() == 4 && u32::from_le_bytes(body[0..4].try_into().unwrap_or([0u8; 4])) == 0xbc799737
 }
 
 // Connection
@@ -6629,7 +6647,7 @@ fn jitter_delay(base_ms: u64) -> Duration {
     Duration::from_millis((base_ms as f64 * factor) as u64)
 }
 
-fn tl_read_bytes(data: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn tl_read_bytes(data: &[u8]) -> Option<Vec<u8>> {
     if data.is_empty() {
         return Some(vec![]);
     }
@@ -6653,7 +6671,7 @@ fn tl_read_string(data: &[u8]) -> Option<String> {
     tl_read_bytes(data).map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
-fn gz_inflate(data: &[u8]) -> Result<Vec<u8>, InvocationError> {
+pub(crate) fn gz_inflate(data: &[u8]) -> Result<Vec<u8>, InvocationError> {
     use std::io::Read;
     let mut out = Vec::new();
     if flate2::read::GzDecoder::new(data)
@@ -6668,6 +6686,17 @@ fn gz_inflate(data: &[u8]) -> Result<Vec<u8>, InvocationError> {
         .read_to_end(&mut out)
         .map_err(|_| InvocationError::Deserialize("decompression failed".into()))?;
     Ok(out)
+}
+
+pub(crate) fn maybe_gz_decompress(body: Vec<u8>) -> Result<Vec<u8>, InvocationError> {
+    const ID_GZIP_PACKED_LOCAL: u32 = 0x3072cfa1;
+    if body.len() >= 4 && u32::from_le_bytes(body[0..4].try_into().unwrap()) == ID_GZIP_PACKED_LOCAL
+    {
+        let bytes = tl_read_bytes(&body[4..]).unwrap_or_default();
+        gz_inflate(&bytes)
+    } else {
+        Ok(body)
+    }
 }
 
 // outgoing gzip compression
