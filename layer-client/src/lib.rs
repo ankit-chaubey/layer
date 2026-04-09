@@ -27,6 +27,7 @@ pub mod media;
 pub mod parsers;
 pub mod participants;
 pub mod pts;
+mod restart;
 mod retry;
 mod session;
 mod transport;
@@ -60,6 +61,7 @@ pub use keyboard::{Button, InlineKeyboard, ReplyKeyboard};
 pub use media::{Document, DownloadIter, Downloadable, Photo, Sticker, UploadedFile};
 pub use participants::{Participant, ProfilePhotoIter};
 pub use peer_ref::PeerRef;
+pub use restart::{ConnectionRestartPolicy, FixedInterval, NeverRestart};
 use retry::RetryLoop;
 pub use retry::{AutoSleep, NoRetries, RetryContext, RetryPolicy};
 pub use search::{GlobalSearchBuilder, SearchBuilder};
@@ -505,6 +507,7 @@ pub struct Config {
     /// after connecting.
     /// Default: `false`.
     pub catch_up: bool,
+    pub restart_policy: Arc<dyn ConnectionRestartPolicy>,
 }
 
 impl Config {
@@ -544,6 +547,7 @@ impl Default for Config {
                 "layer.session",
             )),
             catch_up: false,
+            restart_policy: Arc::new(NeverRestart),
         }
     }
 }
@@ -663,6 +667,7 @@ struct ClientInner {
     /// Whether to replay missed updates via getDifference on connect.
     #[allow(dead_code)]
     catch_up: bool,
+    restart_policy: Arc<dyn ConnectionRestartPolicy>,
     home_dc_id: Mutex<i32>,
     dc_options: Mutex<HashMap<i32, DcEntry>>,
     pub peer_cache: RwLock<PeerCache>,
@@ -837,6 +842,7 @@ impl Client {
         // Graceful shutdown token: cancel this to stop the reader task cleanly.
         let shutdown_token = CancellationToken::new();
         let catch_up = config.catch_up;
+        let restart_policy = config.restart_policy;
 
         let inner = Arc::new(ClientInner {
             writer: Mutex::new(writer),
@@ -846,6 +852,7 @@ impl Client {
             network_hint_tx,
             shutdown_token: shutdown_token.clone(),
             catch_up,
+            restart_policy,
             home_dc_id: Mutex::new(home_dc_id),
             dc_options: Mutex::new(dc_opts),
             peer_cache: RwLock::new(PeerCache::default()),
@@ -1749,6 +1756,15 @@ impl Client {
         let mut gap_tick = tokio::time::interval(std::time::Duration::from_millis(1500));
         gap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+        let mut restart_interval = self.inner.restart_policy.restart_interval().map(|d| {
+            let mut i = tokio::time::interval(d);
+            i.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            i
+        });
+        if let Some(ref mut i) = restart_interval {
+            i.tick().await;
+        }
+
         loop {
             tokio::select! {
                 // Drive possible-gap deadline every 1.5 s: if updates were buffered
@@ -1770,6 +1786,14 @@ impl Client {
                             });
                         }
                     }
+                }
+                _ = async {
+                    if let Some(ref mut i) = restart_interval { i.tick().await; }
+                    else { std::future::pending::<()>().await; }
+                } => {
+                    tracing::info!("[layer] scheduled restart: reconnecting");
+                    let _ = self.inner.write_half.lock().await.shutdown().await;
+                    let _ = self.inner.network_hint_tx.send(());
                 }
                 // Normal frame (or application-level keepalive timeout)
                 outcome = recv_frame_with_keepalive(&mut rh, &fk, self, &ak) => {

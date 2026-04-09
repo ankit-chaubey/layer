@@ -402,14 +402,11 @@ mod tests {
 
     #[tokio::test]
     async fn retry_loop_increments_fail_count() {
-        // Use a policy that retries the first I/O error, then gives up.
         let mut rl = RetryLoop::new(Arc::new(AutoSleep {
             threshold: Duration::from_secs(60),
-            io_errors_as_flood_of: Some(Duration::from_millis(1)), // short for test
+            io_errors_as_flood_of: Some(Duration::from_millis(1)),
         }));
-        // First failure: should sleep and return Ok
         assert!(rl.advance(io_err()).await.is_ok());
-        // fail_count is now 2; second I/O error should break
         assert!(rl.advance(io_err()).await.is_err());
     }
 }

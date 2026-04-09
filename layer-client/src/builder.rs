@@ -32,6 +32,7 @@ use std::sync::Arc;
 
 use crate::{
     Client, Config, InvocationError, ShutdownToken, TransportKind,
+    restart::{ConnectionRestartPolicy, NeverRestart},
     retry::{AutoSleep, RetryPolicy},
     session_backend::{BinaryFileBackend, InMemoryBackend, SessionBackend, StringSessionBackend},
     socks5::Socks5Config,
@@ -45,6 +46,7 @@ pub struct ClientBuilder {
     api_hash: String,
     dc_addr: Option<String>,
     retry_policy: Arc<dyn RetryPolicy>,
+    restart_policy: Arc<dyn ConnectionRestartPolicy>,
     socks5: Option<Socks5Config>,
     allow_ipv6: bool,
     transport: TransportKind,
@@ -59,6 +61,7 @@ impl Default for ClientBuilder {
             api_hash: String::new(),
             dc_addr: None,
             retry_policy: Arc::new(AutoSleep::default()),
+            restart_policy: Arc::new(NeverRestart),
             socks5: None,
             allow_ipv6: false,
             transport: TransportKind::Abridged,
@@ -180,6 +183,11 @@ impl ClientBuilder {
         self
     }
 
+    pub fn restart_policy(mut self, policy: Arc<dyn ConnectionRestartPolicy>) -> Self {
+        self.restart_policy = policy;
+        self
+    }
+
     // Terminal
 
     /// Build the [`Config`] without connecting.
@@ -198,6 +206,7 @@ impl ClientBuilder {
             api_hash: self.api_hash,
             dc_addr: self.dc_addr,
             retry_policy: self.retry_policy,
+            restart_policy: self.restart_policy,
             socks5: self.socks5,
             allow_ipv6: self.allow_ipv6,
             transport: self.transport,
