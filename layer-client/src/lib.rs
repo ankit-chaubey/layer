@@ -4852,6 +4852,7 @@ impl Client {
 
     async fn rpc_call_raw<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let mut rl = RetryLoop::new(Arc::clone(&self.inner.retry_policy));
+        let mut auth_key_retries = 0u32;
         loop {
             match self.do_rpc_call(req).await {
                 Ok(body) => return Ok(body),
@@ -4859,6 +4860,19 @@ impl Client {
                     // Telegram is redirecting us to a different DC.
                     // Migrate transparently and retry: no error surfaces to caller.
                     self.migrate_to(e.migrate_dc_id().unwrap()).await?;
+                }
+                Err(InvocationError::Rpc(ref r)) if r.code == 401 => {
+                    auth_key_retries += 1;
+                    if auth_key_retries > 3 {
+                        return Err(InvocationError::Rpc(r.clone()));
+                    }
+                    tracing::warn!(
+                        "[layer] AUTH_KEY_UNREGISTERED on invoke (attempt {}/3): forcing reconnect",
+                        auth_key_retries
+                    );
+                    let _ = self.inner.write_half.lock().await.shutdown().await;
+                    let _ = self.inner.network_hint_tx.send(());
+                    sleep(Duration::from_secs(3)).await;
                 }
                 Err(e) => rl.advance(e).await?,
             }
