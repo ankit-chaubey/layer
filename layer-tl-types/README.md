@@ -15,10 +15,10 @@ Auto-generated Rust types for all Telegram API Layer 224 constructors, functions
 
 ```toml
 [dependencies]
-layer-tl-types = "0.4.7"
+layer-tl-types = "0.4.8"
 
 # With MTProto low-level types (required by layer-mtproto):
-layer-tl-types = { version = "0.4.7", features = ["tl-mtproto"] }
+layer-tl-types = { version = "0.4.8", features = ["tl-mtproto"] }
 ```
 
 ---

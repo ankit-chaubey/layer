@@ -60,7 +60,7 @@
 - [Raw API Access](./advanced/raw-api.md)
 - [Retry & Flood Wait](./advanced/retry.md)
 - [DC Migration](./advanced/dc-migration.md)
-- [Socks5 Proxy](./advanced/proxy.md)
+- [Proxies & Transports](./advanced/proxy.md)
 - [Upgrading TL Layer](./advanced/layer-upgrade.md)
 
 ---

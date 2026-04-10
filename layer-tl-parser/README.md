@@ -14,7 +14,7 @@ Reads `.tl` schema files and produces a structured AST. Used internally by `laye
 
 ```toml
 [dependencies]
-layer-tl-parser = "0.4.7"
+layer-tl-parser = "0.4.8"
 ```
 
 ---

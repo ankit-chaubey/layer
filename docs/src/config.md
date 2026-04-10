@@ -1,114 +1,174 @@
 # Configuration
 
-`Config` is the single struct passed to `Client::connect`. All fields except `api_id` and `api_hash` have defaults.
+`Config` is the struct passed to `Client::connect`. The recommended way to build it is via `Client::builder()`. All fields except `api_id` and `api_hash` have defaults.
 
 ```rust
-use layer_client::{Config, AutoSleep, TransportKind, Socks5Config};
-use layer_client::session_backend::{BinaryFileBackend, InMemoryBackend};
-use std::sync::Arc;
+use layer_client::{Client, TransportKind};
 
-let (client, _shutdown) = Client::connect(Config {
-    // Required
-    api_id:   12345,
-    api_hash: "your_api_hash".into(),
-
-    // Session (default: BinaryFileBackend("session.session"))
-    
-
-    // DC override (default: DC2)
-    dc_addr: None,
-
-    // Transport (default: Abridged)
-    transport: TransportKind::Abridged,
-
-    // Flood wait retry (default: AutoSleep)
-    retry_policy: Arc::new(AutoSleep::default()),
-
-    // Proxy (default: None)
-    socks5: None,
-
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .session("bot.session")       // default: "layer.session"
+    .transport(TransportKind::Obfuscated { secret: None })
+    .catch_up(false)
+    .connect()
+    .await?;
 ```
 
 ---
 
-## All fields
+## Builder methods
 
-### `api_id`: required
-Your Telegram app's numeric ID from [my.telegram.org](https://my.telegram.org).
+### `api_id` / `api_hash`
+
+Required. Get these from [my.telegram.org](https://my.telegram.org).
 
 ```rust
-api_id: 12345_i32,
+.api_id(12345)
+.api_hash("your_hash")
 ```
 
-### `api_hash`: required
-Your Telegram app's hex hash string from [my.telegram.org](https://my.telegram.org).
+### `session`
+
+Path to a binary session file. Default: `"layer.session"`.
 
 ```rust
-api_hash: "deadbeef01234567...".into(),
+.session("mybot.session")
+```
+
+### `session_string`
+
+Portable base64 session (for serverless / env-var storage). Pass an empty string to start fresh.
+
+```rust
+.session_string(std::env::var("SESSION").unwrap_or_default())
+```
+
+### `in_memory`
+
+Non-persistent session. Useful for tests.
+
+```rust
+.in_memory()
 ```
 
 ### `session_backend`
-Path to the binary session file. Default: `"session.session"`.
+
+Inject a custom `SessionBackend` directly, e.g. `LibSqlBackend`:
 
 ```rust
+use std::sync::Arc;
+use layer_client::LibSqlBackend;
 
-```
-
-### `dc_addr`
-Override the initial DC address. Default: `None` (uses DC2 = `149.154.167.51:443`). After login, the correct DC is cached in the session.
-
-```rust
-dc_addr: Some("149.154.175.53:443".parse().unwrap()), // DC1
+.session_backend(Arc::new(LibSqlBackend::new("remote.db")))
 ```
 
 ### `transport`
-The MTProto transport protocol. Default: `TransportKind::Abridged`.
 
-| Variant | Description |
+Which MTProto framing to use. Default: `TransportKind::Abridged`.
+
+| Variant | Notes |
 |---|---|
-| `Abridged` | Minimal overhead, default |
-| `Intermediate` | Fixed-length framing |
-| `ObfuscatedAbridged` | Disguised for firewall evasion |
+| `Abridged` | Minimal overhead. Default. |
+| `Intermediate` | 4-byte LE length prefix. Better compat with some proxies. |
+| `Full` | Intermediate + seqno + CRC32 integrity check. |
+| `Obfuscated { secret }` | AES-256-CTR (Obfuscated2). Pass `secret: None` for direct connections, or a 16-byte key for MTProxy with a plain secret. |
+| `PaddedIntermediate { secret }` | Obfuscated2 with padded Intermediate framing. Required for `0xDD` MTProxy secrets. |
+| `FakeTls { secret, domain }` | Disguises traffic as a TLS 1.3 ClientHello. Required for `0xEE` MTProxy secrets. |
 
 ```rust
-transport: TransportKind::ObfuscatedAbridged,
+use layer_client::TransportKind;
+
+// plain obfuscation, no proxy
+.transport(TransportKind::Obfuscated { secret: None })
+
+// Intermediate framing
+.transport(TransportKind::Intermediate)
+
+// FakeTLS (manual, normally set by .mtproxy())
+.transport(TransportKind::FakeTls {
+    secret: [0xab; 16],
+    domain: "example.com".into(),
+})
+```
+
+When using `.mtproxy()`, the transport is set automatically. Do not also call `.transport()`.
+
+### `socks5`
+
+Route connections through a SOCKS5 proxy.
+
+```rust
+use layer_client::socks5::Socks5Config;
+
+// no auth
+.socks5(Socks5Config::new("127.0.0.1:1080"))
+
+// with auth
+.socks5(Socks5Config::with_auth("proxy.example.com:1080", "user", "pass"))
+```
+
+### `mtproxy`
+
+Route connections through an MTProxy relay. The transport is auto-selected from the secret.
+
+```rust
+use layer_client::proxy::parse_proxy_link;
+
+let proxy = parse_proxy_link("tg://proxy?server=...&port=443&secret=...").unwrap();
+.mtproxy(proxy)
+```
+
+See [Proxies & Transports](./advanced/proxy.md) for full details.
+
+### `dc_addr`
+
+Override the initial DC address. After login the correct DC is cached in the session, so this is only needed if you know exactly which DC to target.
+
+```rust
+.dc_addr("149.154.167.51:443")  // DC2
+```
+
+### `catch_up`
+
+When `true`, replays missed updates via `updates.getDifference` on reconnect. Default: `false`.
+
+```rust
+.catch_up(true)
+```
+
+### `allow_ipv6`
+
+Allow IPv6 DC addresses. Default: `false`.
+
+```rust
+.allow_ipv6(true)
 ```
 
 ### `retry_policy`
-How to handle `FLOOD_WAIT` errors. Default: `AutoSleep`.
+
+How to handle `FLOOD_WAIT` errors. Default: `AutoSleep` (sleep the required duration and retry).
 
 ```rust
-use layer_client::{AutoSleep, NoRetries};
+use std::sync::Arc;
+use layer_client::retry::{AutoSleep, NoRetries};
 
-retry_policy: Arc::new(AutoSleep::default()),  // auto-sleep and retry
-retry_policy: Arc::new(NoRetries),             // propagate immediately
-```
-
-### `socks5`
-Optional SOCKS5 proxy configuration.
-
-```rust
-socks5: Some(Socks5Config {
-    addr:     "127.0.0.1:1080".parse().unwrap(),
-    username: None,
-    password: None,
-}),
+.retry_policy(Arc::new(AutoSleep::default()))   // sleep and retry
+.retry_policy(Arc::new(NoRetries))              // propagate immediately
 ```
 
 ---
 
-## Full default values
+## Building Config without connecting
 
 ```rust
-Config {
-    api_id:        0,
-    api_hash:      String::new(),
-    
-    dc_addr:       None,
-    transport:     TransportKind::Abridged,
-    retry_policy:  Arc::new(AutoSleep::default()),
-    socks5:        None,
-}
+let config = Client::builder()
+    .api_id(12345)
+    .api_hash("hash")
+    .build()?;
+
+// later
+let (client, _shutdown) = Client::connect(config).await?;
 ```
+
+`build()` returns `Err(BuilderError::MissingApiId)` or `Err(BuilderError::MissingApiHash)` if those fields are missing, before touching the network.

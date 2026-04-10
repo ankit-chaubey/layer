@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.8]: 2026-04-10
+
+### Fixed
+
+- **Double-dispatch of buffered updates after getDifference**: when `getDifference` completed, updates held in `PossibleGapBuffer` were drained and dispatched directly, then dispatched a second time as part of the diff result. Under message bursts this caused duplicate processing and state corruption. Fix: after getDifference, leave `possible_gap` alone; the returned updates go through the normal dispatch path only.
+
+- **TOCTOU race on `getting_global_diff`**: the `getting_global_diff` flag was set to `true` inside `get_difference`, after the gap check that reads it. Under a burst, multiple tasks could pass the check simultaneously before any of them set the flag, spawning concurrent getDifference calls and cascading into a freeze. Fix: set `getting_global_diff = true` atomically before spawning the call, while still holding the pts state lock.
+
+- **Gap deadline never fires for `updateShortSentMessage`**: `updateShortSentMessage` carries no high-level `Update` value, so when it triggered a pts gap nothing was pushed into `possible_gap.global`. Since the buffer stayed `None`, `global_deadline_elapsed()` always returned `false` and `gap_tick` never called getDifference for these gaps. Fix: call `touch_global_timer()` to start the 1-second deadline clock even when there is no update to buffer.
+
+---
+
 ## [0.4.7]: 2026-04-02
 
 ### Added

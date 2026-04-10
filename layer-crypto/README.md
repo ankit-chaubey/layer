@@ -14,7 +14,7 @@ Implements AES-IGE, RSA, SHA-1/256, Diffie-Hellman, PQ factorization, auth key d
 
 ```toml
 [dependencies]
-layer-crypto = "0.4.7"
+layer-crypto = "0.4.8"
 ```
 
 ---

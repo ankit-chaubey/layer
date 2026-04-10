@@ -13,8 +13,8 @@ MTProto 2.0 session management, DH key exchange, and message framing for Rust.
 
 ```toml
 [dependencies]
-layer-mtproto  = "0.4.7"
-layer-tl-types = { version = "0.4.7", features = ["tl-mtproto"] }
+layer-mtproto  = "0.4.8"
+layer-tl-types = { version = "0.4.8", features = ["tl-mtproto"] }
 ```
 
 ---

@@ -14,7 +14,7 @@ Build-dependency only. Runs during `cargo build` via `build.rs` and produces Rus
 
 ```toml
 [build-dependencies]
-layer-tl-gen = "0.4.7"
+layer-tl-gen = "0.4.8"
 ```
 
 ---

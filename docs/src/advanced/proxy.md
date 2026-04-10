@@ -1,61 +1,101 @@
-# Socks5 Proxy
+# Proxies
 
-`layer-client` supports SOCKS5 proxies, including those with username/password authentication.
+`layer-client` supports two proxy types: SOCKS5 (generic TCP tunnel) and MTProxy (Telegram's native obfuscated proxy protocol).
 
-## Configuration
+## SOCKS5
 
-```rust
-use layer_client::{Client, Config, Socks5Config};
-
-let (client, _shutdown) = Client::connect(Config {
-    api_id:       12345,
-    api_hash:     "your_hash".into(),
-    socks5:       Some(Socks5Config {
-        addr:     "127.0.0.1:1080".parse().unwrap(),
-        username: None,
-        password: None,
-    }),
-    ..Default::default()
-}).await?;
-```
-
-## With authentication
+### Without authentication
 
 ```rust
-socks5: Some(Socks5Config {
-    addr:     "proxy.example.com:1080".parse().unwrap(),
-    username: Some("user".into()),
-    password: Some("pass".into()),
-}),
+use layer_client::{Client, socks5::Socks5Config};
+
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_hash")
+    .session("bot.session")
+    .socks5(Socks5Config::new("127.0.0.1:1080"))
+    .connect()
+    .await?;
 ```
 
-## Common use cases
-
-**MTProxy** is a Telegram-specific proxy format. `layer-client` uses standard SOCKS5. To use an MTProxy, you'll need a SOCKS5 bridge or use the `transport_obfuscated` module for protocol obfuscation.
-
-**Tor**: Point SOCKS5 at `127.0.0.1:9050` (the default Tor port) to route all Telegram traffic through the Tor network.
+### With username/password authentication
 
 ```rust
-socks5: Some(Socks5Config {
-    addr:     "127.0.0.1:9050".parse().unwrap(),
-    username: None,
-    password: None,
-}),
+.socks5(Socks5Config::with_auth(
+    "proxy.example.com:1080",
+    "username",
+    "password",
+))
 ```
 
-> **NOTE:** When using Tor, Telegram connections may be slower and some DCs may block Tor exit nodes. Consider using Telegram's `.onion` address if available.
+### Tor
 
-## Obfuscated transport
-
-For networks that block Telegram, layer also supports the obfuscated transport:
+Point SOCKS5 at `127.0.0.1:9050` (default Tor SOCKS port):
 
 ```rust
-use layer_client::TransportKind;
-
-Config {
-    transport: TransportKind::ObfuscatedAbridged,
-    ..Default::default()
-}
+.socks5(Socks5Config::new("127.0.0.1:9050"))
 ```
 
-This disguises MTProto traffic to look like random bytes, making it harder for firewalls to detect and block.
+Tor exit nodes are sometimes blocked by Telegram DCs. If connections fail consistently, try a different circuit or use `TransportKind::Obfuscated` alongside it.
+
+---
+
+## MTProxy
+
+MTProxy is Telegram's own proxy protocol. It uses obfuscated transports and connects you directly to a Telegram DC via a third-party relay server.
+
+Use `parse_proxy_link` to decode a `tg://proxy?...` or `https://t.me/proxy?...` link. The transport is selected automatically from the secret prefix.
+
+```rust
+use layer_client::{Client, proxy::parse_proxy_link};
+
+let proxy = parse_proxy_link(
+    "tg://proxy?server=proxy.example.com&port=443&secret=eedeadbeef..."
+).expect("invalid proxy link");
+
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_hash")
+    .session("bot.session")
+    .mtproxy(proxy)
+    .connect()
+    .await?;
+```
+
+`.mtproxy()` sets the transport automatically. Do not also call `.transport()` when using MTProxy.
+
+### Secret format and transport mapping
+
+| Secret prefix | Transport selected |
+|---|---|
+| 32 hex chars (plain) | `Obfuscated` (Obfuscated2, Abridged framing) |
+| `dd` + 32 hex chars | `PaddedIntermediate` (Obfuscated2, padded framing) |
+| `ee` + 32 hex + domain | `FakeTls` (TLS 1.3 ClientHello disguise) |
+
+Secrets can be hex strings or base64url. `parse_proxy_link` handles both.
+
+### Building MtProxyConfig manually
+
+```rust
+use layer_client::proxy::{MtProxyConfig, secret_to_transport};
+
+let secret_hex = "dddeadbeefdeadbeefdeadbeefdeadbeef";
+let secret_bytes: Vec<u8> = (0..secret_hex.len())
+    .step_by(2)
+    .map(|i| u8::from_str_radix(&secret_hex[i..i+2], 16).unwrap())
+    .collect();
+
+let proxy = MtProxyConfig {
+    host:      "proxy.example.com".into(),
+    port:      443,
+    transport: secret_to_transport(&secret_bytes),
+    secret:    secret_bytes,
+};
+
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_hash")
+    .mtproxy(proxy)
+    .connect()
+    .await?;
+```
