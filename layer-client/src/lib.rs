@@ -4876,6 +4876,7 @@ impl Client {
 
     async fn rpc_call_raw<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let mut rl = RetryLoop::new(Arc::clone(&self.inner.retry_policy));
+        let mut auth_key_retries = 0u32;
         loop {
             match self.do_rpc_call(req).await {
                 Ok(body) => return Ok(body),
@@ -4884,12 +4885,21 @@ impl Client {
                     // Migrate transparently and retry: no error surfaces to caller.
                     self.migrate_to(e.migrate_dc_id().unwrap()).await?;
                 }
-                // AUTH_KEY_UNREGISTERED (401): the reader loop already handles this by
-                // detecting the stale key, clearing it, doing fresh DH, and reconnecting.
-                // Surfacing it here as an I/O error lets the RetryLoop back off and
-                // retry once the reader has finished establishing the new connection,
-                // instead of racing with it by calling shutdown() from both sides.
+                // AUTH_KEY_UNREGISTERED (401): the reader loop already handles fresh DH +
+                // reconnect on its own.  We must NOT call shutdown()/network_hint here —
+                // that would race with the reader and destroy the new key it just built.
+                // Instead, log the attempt, surface as ConnectionReset so RetryLoop backs
+                // off, and let the reader finish the reconnect before the next retry fires.
+                // After 3 attempts we give up and surface the real RPC error.
                 Err(InvocationError::Rpc(ref r)) if r.code == 401 => {
+                    auth_key_retries += 1;
+                    if auth_key_retries > 3 {
+                        return Err(InvocationError::Rpc(r.clone()));
+                    }
+                    tracing::warn!(
+                        "[layer] AUTH_KEY_UNREGISTERED on invoke (attempt {}/3): waiting for reader reconnect",
+                        auth_key_retries
+                    );
                     rl.advance(InvocationError::Io(std::io::Error::new(
                         std::io::ErrorKind::ConnectionReset,
                         r.to_string(),
