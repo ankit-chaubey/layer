@@ -96,11 +96,22 @@ Then head to [Installation](./installation.md) for credentials setup, or jump st
 
 ## What's new in v0.4.8
 
-- **`StringSessionBackend`**: portable base64 sessions, no file required
-- **`LibSqlBackend`**: libsql/Turso remote database sessions
-- **`Update::ChatAction`** and **`Update::UserStatus`**: new typed update variants
-- **`sync_update_state()`**: force immediate pts/seq reconciliation
-- 7 bug fixes (pagination, memory leaks, chunk alignment, and more)
+#### Proxy & Transport
+- **MTProxy support**: connect via `t.me/proxy` / `tg://proxy` links or manual host/port/secret config
+- **PaddedIntermediate transport** (`0xDD` secrets): randomized padding to mimic official Telegram traffic
+- **FakeTLS transport** (`0xEE` secrets): TLS-like framing to make MTProto traffic resemble HTTPS
+- **SOCKS5 proxy support** in `Config` with optional username/password authentication
+- **IPv6 connectivity** for Telegram DCs and proxy connections
+
+#### Session & Client
+- **Multiple session backend support** with new `Config` helpers and builder methods for MTProxy
+
+#### Protocol Fixes
+- **Auth key generation fixed**: now uses correct `PQInnerDataDc` constructor including the DC id — resolves auth failures on many DCs
+- **Incoming message validation**: rolling buffer of last 500 server `msg_id`s + ±300 s timestamp window to prevent replay attacks
+- **`dh_gen_retry` handling**: step 3 now retries with cached params, up to 5 attempts (matching Telegram Desktop)
+- **MTProxy routing bug fixed**: connections now correctly route through the proxy host instead of going directly to Telegram DCs
+- **Channel difference sync**: initial `getChannelDifference` starts at limit 100, subsequent calls increase to 1000
 
 See the full [CHANGELOG](https://github.com/ankit-chaubey/layer/blob/main/CHANGELOG.md).
 
