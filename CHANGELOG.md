@@ -9,6 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.8]: 2026-04-10
 
+### Added
+
+#### MTProto / Networking
+
+* **MTProxy support**: client can now connect through MTProxy servers using `t.me/proxy` / `tg://proxy` links or manual host/port/secret configuration.
+* **Automatic MTProxy transport detection** from secret prefix.
+* **PaddedIntermediate transport (0xDD secrets)**: intermediate framing with randomized padding to better mimic official Telegram traffic patterns.
+* **FakeTLS transport (0xEE secrets)**: TLS-like handshake and TLS application data framing to make MTProto traffic resemble HTTPS.
+* **SOCKS5 proxy support** in `Config` with optional username/password authentication.
+* **IPv6 connectivity support** for Telegram data centers and proxy connections.
+
+#### Session / Client
+
+* **Multiple session backend support** allowing different session storage implementations.
+* **New `Config` helpers** for easier proxy configuration.
+* **Builder helpers** for configuring MTProxy directly in the client builder.
+
+### Changed
+
+#### MTProto protocol
+
+* **Auth key generation fixed**: now uses the correct `PQInnerDataDc` constructor including the DC id. The legacy constructor previously used caused auth failures on many Telegram data centers.
+
+* **Incoming message validation tightened**:
+
+  * Rolling buffer of the last **500 server `msg_id`s** to prevent replay attacks.
+  * **Timestamp window validation**: server messages whose `msg_id` time component deviates more than **±300 seconds** from local time are rejected.
+  * Removed incorrect parity check for server `msg_id`s.
+
+* **Correct `dh_gen_retry` handling**:
+
+  * `finish()` now returns either **Done** or **Retry**.
+  * Step 3 of the auth flow is retried with cached parameters when required.
+  * Retry loop added (max **5 attempts**, matching Telegram Desktop behaviour).
+
+* **Channel difference sync improvements**:
+
+  * Initial `getChannelDifference` call now starts with `limit = 100`.
+  * Later calls increase limit to `1000`, matching Telegram Desktop behaviour.
+
+### Fixed
+
+* **MTProxy routing bug**: proxy links were parsed but connections still went directly to Telegram DCs. Connections now correctly open a TCP stream to the proxy host and route traffic through it.
+
+### Internal
+
+* Removed unused imports and constants.
+* Simplified `Step3` state in the auth handshake.
+* Added documentation for retry-related structures.
+* Cleaned up duplicate imports across modules.
+
+
+
+## [0.4.7]: 2026-04-02
+
 ### Fixed
 
 - **Double-dispatch of buffered updates after getDifference**: when `getDifference` completed, updates held in `PossibleGapBuffer` were drained and dispatched directly, then dispatched a second time as part of the diff result. Under message bursts this caused duplicate processing and state corruption. Fix: after getDifference, leave `possible_gap` alone; the returned updates go through the normal dispatch path only.
@@ -19,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.4.7]: 2026-04-02
+## [0.4.1-0.4.7]
 
 ### Added
 
@@ -59,7 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.4.0]: 2026-04-01
+## [0.4.0]: ~ 2026-03-01
 
 ### Added / Changed
 
