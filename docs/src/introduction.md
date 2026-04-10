@@ -117,8 +117,25 @@ See the full [CHANGELOG](https://github.com/ankit-chaubey/layer/blob/main/CHANGE
 
 ---
 
-## Acknowledgements
+## Author
 
-- [**Lonami**](https://codeberg.org/Lonami) for [**grammers**](https://codeberg.org/Lonami/grammers): the architecture, SRP math, and session design are deeply inspired by this fantastic library.
-- [**Telegram**](https://core.telegram.org/mtproto) for the detailed MTProto specification.
-- The Rust async ecosystem: `tokio`, `flate2`, `getrandom`, `sha2`, and friends.
+Developed by [**Ankit Chaubey**](https://github.com/ankit-chaubey) out of curiosity to explore.
+
+<div align="center">
+
+[![Crates.io](https://img.shields.io/crates/v/layer-client?style=flat-square\&color=fc8d62\&label=layer-client)](https://crates.io/crates/layer-client)
+[![docs.rs](https://img.shields.io/badge/docs.rs-layer--client-5865F2?style=flat-square)](https://docs.rs/layer-client)
+[![License](https://img.shields.io/badge/license-MIT%20%7C%20Apache--2.0-blue?style=flat-square)](LICENSE-MIT)
+[![TL Layer](https://img.shields.io/badge/TL%20Layer-224-8b5cf6?style=flat-square)](https://core.telegram.org/schema)
+[![Telegram](https://img.shields.io/badge/chat-%40layer__chat-2CA5E0?style=flat-square\&logo=telegram)](https://t.me/layer_chat)
+
+</div>
+
+Layer is developed as part of exploration, learning, and experimentation with the Telegram MTProto protocol.
+Use it at your own risk. Its future and stability are not yet guaranteed.
+
+---
+
+## Terms of Service
+
+Ensure your usage complies with [Telegram's Terms of Service](https://core.telegram.org/api/terms) and [API Terms of Service](https://core.telegram.org/api/terms). Misuse of the Telegram API, including spam, mass scraping, or automation of normal user accounts, may result in account limitations or permanent bans.
