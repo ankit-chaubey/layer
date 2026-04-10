@@ -14,6 +14,39 @@ use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 use std::path::Path;
 
+// DcFlags
+
+/// Per-DC option flags mirroring the tDesktop `DcOption` bitmask.
+///
+/// Stored in the session (v3+) so media DCs survive restarts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DcFlags(pub u8);
+
+impl DcFlags {
+    pub const NONE: DcFlags = DcFlags(0);
+    pub const IPV6: DcFlags = DcFlags(1 << 0);
+    pub const MEDIA_ONLY: DcFlags = DcFlags(1 << 1);
+    pub const TCPO_ONLY: DcFlags = DcFlags(1 << 2);
+    pub const CDN: DcFlags = DcFlags(1 << 3);
+    pub const STATIC: DcFlags = DcFlags(1 << 4);
+
+    pub fn contains(self, other: DcFlags) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    pub fn set(&mut self, flag: DcFlags) {
+        self.0 |= flag.0;
+    }
+}
+
+impl std::ops::BitOr for DcFlags {
+    type Output = DcFlags;
+    fn bitor(self, rhs: DcFlags) -> DcFlags {
+        DcFlags(self.0 | rhs.0)
+    }
+}
+
 // DcEntry
 
 /// One entry in the DC address table.
@@ -25,6 +58,60 @@ pub struct DcEntry {
     pub auth_key: Option<[u8; 256]>,
     pub first_salt: i64,
     pub time_offset: i32,
+    /// DC capability flags (IPv6, media-only, CDN, …).
+    pub flags: DcFlags,
+}
+
+impl DcEntry {
+    /// Returns `true` when this entry represents an IPv6 address.
+    #[inline]
+    pub fn is_ipv6(&self) -> bool {
+        self.flags.contains(DcFlags::IPV6)
+    }
+
+    /// Parse the stored `"ip:port"` / `"[ipv6]:port"` address into a
+    /// [`std::net::SocketAddr`].
+    ///
+    /// Both formats are valid:
+    /// - IPv4: `"149.154.175.53:443"`
+    /// - IPv6: `"[2001:b28:f23d:f001::a]:443"`
+    pub fn socket_addr(&self) -> io::Result<std::net::SocketAddr> {
+        self.addr.parse::<std::net::SocketAddr>().map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid DC address: {:?}", self.addr),
+            )
+        })
+    }
+
+    /// Construct a `DcEntry` from separate IP string, port, and flags.
+    ///
+    /// IPv6 addresses are automatically wrapped in brackets so that
+    /// `socket_addr()` can round-trip them correctly:
+    ///
+    /// ```text
+    /// DcEntry::from_parts(2, "2001:b28:f23d:f001::a", 443, DcFlags::IPV6)
+    /// // addr = "[2001:b28:f23d:f001::a]:443"
+    /// ```
+    ///
+    /// This is the preferred constructor when processing `help.getConfig`
+    /// `DcOption` objects from the Telegram API.
+    pub fn from_parts(dc_id: i32, ip: &str, port: u16, flags: DcFlags) -> Self {
+        // IPv6 addresses contain colons; wrap in brackets for SocketAddr compat.
+        let addr = if ip.contains(':') {
+            format!("[{ip}]:{port}")
+        } else {
+            format!("{ip}:{port}")
+        };
+        Self {
+            dc_id,
+            addr,
+            auth_key: None,
+            first_salt: 0,
+            time_offset: 0,
+            flags,
+        }
+    }
 }
 
 // UpdatesStateSnap
@@ -109,7 +196,7 @@ impl PersistedSession {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut b = Vec::with_capacity(512);
 
-        b.push(0x02u8); // version
+        b.push(0x03u8); // version
 
         b.extend_from_slice(&self.home_dc_id.to_le_bytes());
 
@@ -130,6 +217,7 @@ impl PersistedSession {
             let ab = d.addr.as_bytes();
             b.push(ab.len() as u8);
             b.extend_from_slice(ab);
+            b.push(d.flags.0); // v3: DC flags byte
         }
 
         // update state
@@ -208,14 +296,16 @@ impl PersistedSession {
 
         let first_byte = r_u8!();
 
-        let (home_dc_id, is_v2) = if first_byte == 0x02 {
-            (r_i32!(), true)
+        let (home_dc_id, version) = if first_byte == 0x03 {
+            (r_i32!(), 3u8)
+        } else if first_byte == 0x02 {
+            (r_i32!(), 2u8)
         } else {
             let rest = r!(3);
             let mut bytes = [0u8; 4];
             bytes[0] = first_byte;
             bytes[1..4].copy_from_slice(rest);
-            (i32::from_le_bytes(bytes), false)
+            (i32::from_le_bytes(bytes), 1u8)
         };
 
         let dc_count = r_u8!() as usize;
@@ -234,16 +324,22 @@ impl PersistedSession {
             let time_offset = r_i32!();
             let al = r_u8!() as usize;
             let addr = String::from_utf8_lossy(r!(al)).into_owned();
+            let flags = if version >= 3 {
+                DcFlags(r_u8!())
+            } else {
+                DcFlags::NONE
+            };
             dcs.push(DcEntry {
                 dc_id,
                 addr,
                 auth_key,
                 first_salt,
                 time_offset,
+                flags,
             });
         }
 
-        if !is_v2 {
+        if version < 2 {
             return Ok(Self {
                 home_dc_id,
                 dcs,
@@ -303,6 +399,40 @@ impl PersistedSession {
     pub fn load(path: &Path) -> io::Result<Self> {
         let buf = std::fs::read(path)?;
         Self::from_bytes(&buf)
+    }
+
+    // DC address helpers
+
+    /// Find the best DC entry for a given DC ID.
+    ///
+    /// When `prefer_ipv6` is `true`, returns the IPv6 entry if one is
+    /// stored, falling back to IPv4.  When `false`, returns IPv4,
+    /// falling back to IPv6.  Returns `None` only when the DC ID is
+    /// completely unknown.
+    ///
+    /// This correctly handles the case where both an IPv4 and an IPv6
+    /// `DcEntry` exist for the same `dc_id` (different `flags` bitmask).
+    pub fn dc_for(&self, dc_id: i32, prefer_ipv6: bool) -> Option<&DcEntry> {
+        let mut candidates = self.dcs.iter().filter(|d| d.dc_id == dc_id).peekable();
+        if candidates.peek().is_none() {
+            return None;
+        }
+        // Collect so we can search twice
+        let cands: Vec<&DcEntry> = self.dcs.iter().filter(|d| d.dc_id == dc_id).collect();
+        // Preferred family first, fall back to whatever is available
+        cands
+            .iter()
+            .copied()
+            .find(|d| d.is_ipv6() == prefer_ipv6)
+            .or_else(|| cands.first().copied())
+    }
+
+    /// Iterate over every stored DC entry for a given DC ID.
+    ///
+    /// Typically yields one IPv4 and one IPv6 entry per DC ID once
+    /// `help.getConfig` has been applied.
+    pub fn all_dcs_for(&self, dc_id: i32) -> impl Iterator<Item = &DcEntry> {
+        self.dcs.iter().filter(move |d| d.dc_id == dc_id)
     }
 }
 

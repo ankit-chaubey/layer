@@ -27,10 +27,11 @@ impl DcConnection {
         addr: &str,
         socks5: Option<&crate::socks5::Socks5Config>,
         transport: &TransportKind,
+        dc_id: i16,
     ) -> Result<Self, InvocationError> {
         tracing::debug!("[dc_pool] Connecting to {addr} …");
         let mut stream = Self::open_tcp(addr, socks5).await?;
-        Self::send_transport_init(&mut stream, transport).await?;
+        Self::send_transport_init(&mut stream, transport, dc_id).await?;
 
         let mut plain = Session::new();
 
@@ -38,8 +39,8 @@ impl DcConnection {
         Self::send_plain_frame(&mut stream, &plain.pack(&req1).to_plaintext_bytes()).await?;
         let res_pq: tl::enums::ResPq = Self::recv_plain_frame(&mut stream).await?;
 
-        let (req2, s2) =
-            auth::step2(s1, res_pq).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+        let (req2, s2) = auth::step2(s1, res_pq, dc_id as i32)
+            .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
         Self::send_plain_frame(&mut stream, &plain.pack(&req2).to_plaintext_bytes()).await?;
         let dh: tl::enums::ServerDhParams = Self::recv_plain_frame(&mut stream).await?;
 
@@ -48,8 +49,43 @@ impl DcConnection {
         Self::send_plain_frame(&mut stream, &plain.pack(&req3).to_plaintext_bytes()).await?;
         let ans: tl::enums::SetClientDhParamsAnswer = Self::recv_plain_frame(&mut stream).await?;
 
-        let done =
-            auth::finish(s3, ans).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+        // Retry loop for dh_gen_retry (up to 5 attempts, mirroring tDesktop).
+        let done = {
+            let mut result =
+                auth::finish(s3, ans).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+            let mut attempts = 0u8;
+            loop {
+                match result {
+                    auth::FinishResult::Done(d) => break d,
+                    auth::FinishResult::Retry {
+                        retry_id,
+                        dh_params,
+                        nonce,
+                        server_nonce,
+                        new_nonce,
+                    } => {
+                        attempts += 1;
+                        if attempts >= 5 {
+                            return Err(InvocationError::Deserialize(
+                                "dh_gen_retry exceeded 5 attempts".into(),
+                            ));
+                        }
+                        let (req_retry, s3_retry) =
+                            auth::retry_step3(&dh_params, nonce, server_nonce, new_nonce, retry_id)
+                                .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+                        Self::send_plain_frame(
+                            &mut stream,
+                            &plain.pack(&req_retry).to_plaintext_bytes(),
+                        )
+                        .await?;
+                        let ans_retry: tl::enums::SetClientDhParamsAnswer =
+                            Self::recv_plain_frame(&mut stream).await?;
+                        result = auth::finish(s3_retry, ans_retry)
+                            .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+                    }
+                }
+            }
+        };
         tracing::debug!("[dc_pool] DH complete ✓ for {addr}");
 
         Ok(Self {
@@ -66,9 +102,10 @@ impl DcConnection {
         time_offset: i32,
         socks5: Option<&crate::socks5::Socks5Config>,
         transport: &TransportKind,
+        dc_id: i16,
     ) -> Result<Self, InvocationError> {
         let mut stream = Self::open_tcp(addr, socks5).await?;
-        Self::send_transport_init(&mut stream, transport).await?;
+        Self::send_transport_init(&mut stream, transport, dc_id).await?;
         Ok(Self {
             stream,
             enc: EncryptedSession::new(auth_key, first_salt, time_offset),
@@ -88,6 +125,7 @@ impl DcConnection {
     async fn send_transport_init(
         stream: &mut TcpStream,
         transport: &TransportKind,
+        dc_id: i16,
     ) -> Result<(), InvocationError> {
         match transport {
             TransportKind::Abridged => {
@@ -96,20 +134,70 @@ impl DcConnection {
             TransportKind::Intermediate => {
                 stream.write_all(&[0xee, 0xee, 0xee, 0xee]).await?;
             }
-            TransportKind::Full => {} // no init byte
-            TransportKind::Obfuscated { secret: _ } => {
+            TransportKind::Full => {}
+            TransportKind::Obfuscated { secret } => {
+                use sha2::Digest;
                 let mut nonce = [0u8; 64];
-                getrandom::getrandom(&mut nonce)
-                    .map_err(|_| InvocationError::Deserialize("getrandom".into()))?;
+                loop {
+                    getrandom::getrandom(&mut nonce)
+                        .map_err(|_| InvocationError::Deserialize("getrandom".into()))?;
+                    let first = u32::from_le_bytes(nonce[0..4].try_into().unwrap());
+                    let second = u32::from_le_bytes(nonce[4..8].try_into().unwrap());
+                    let bad = nonce[0] == 0xEF
+                        || first == 0x44414548
+                        || first == 0x54534F50
+                        || first == 0x20544547
+                        || first == 0xEEEEEEEE
+                        || first == 0xDDDDDDDD
+                        || first == 0x02010316
+                        || second == 0x00000000;
+                    if !bad {
+                        break;
+                    }
+                }
+                let tx_raw: [u8; 32] = nonce[8..40].try_into().unwrap();
+                let tx_iv: [u8; 16] = nonce[40..56].try_into().unwrap();
+                let mut rev48 = nonce[8..56].to_vec();
+                rev48.reverse();
+                let rx_raw: [u8; 32] = rev48[0..32].try_into().unwrap();
+                let rx_iv: [u8; 16] = rev48[32..48].try_into().unwrap();
+                let (tx_key, rx_key): ([u8; 32], [u8; 32]) = if let Some(s) = secret {
+                    let mut h = sha2::Sha256::new();
+                    h.update(tx_raw);
+                    h.update(s.as_ref());
+                    let tx: [u8; 32] = h.finalize().into();
+                    let mut h = sha2::Sha256::new();
+                    h.update(rx_raw);
+                    h.update(s.as_ref());
+                    let rx: [u8; 32] = h.finalize().into();
+                    (tx, rx)
+                } else {
+                    (tx_raw, rx_raw)
+                };
                 nonce[56] = 0xef;
                 nonce[57] = 0xef;
                 nonce[58] = 0xef;
                 nonce[59] = 0xef;
-                let mut cipher = crate::transport_obfuscated::ObfuscatedCipher::new(&nonce);
-                let mut encrypted = nonce;
-                cipher.encrypt(&mut encrypted);
-                nonce[56..64].copy_from_slice(&encrypted[56..64]);
+                let dc_bytes = dc_id.to_le_bytes();
+                nonce[60] = dc_bytes[0];
+                nonce[61] = dc_bytes[1];
+                {
+                    let mut enc =
+                        layer_crypto::ObfuscatedCipher::from_keys(&tx_key, &tx_iv, &rx_key, &rx_iv);
+                    let mut skip = [0u8; 56];
+                    enc.encrypt(&mut skip);
+                    enc.encrypt(&mut nonce[56..64]);
+                }
                 stream.write_all(&nonce).await?;
+            }
+            // PaddedIntermediate and FakeTls are handled by the main Connection path
+            // (lib.rs apply_transport_init).  DcPool connections always use the
+            // transport supplied by the caller if a 0xDD/0xEE proxy is used,
+            // the caller should open the stream through Connection::open_stream_mtproxy
+            // and not use DcPool::connect_raw.  Treat these as Abridged fallback so
+            // dc_pool.rs compiles cleanly for non-proxy aux-DC connections.
+            TransportKind::PaddedIntermediate { .. } | TransportKind::FakeTls { .. } => {
+                stream.write_all(&[0xef]).await?;
             }
         }
         Ok(())

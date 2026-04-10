@@ -4,13 +4,14 @@
 //!
 //! ```text
 //! let (req, s1) = authentication::step1()?;
-//! // send req, receive resp
-//! let (req, s2) = authentication::step2(s1, resp)?;
-//! // send req, receive resp
+//! // send req, receive resp (ResPQ)
+//! let (req, s2) = authentication::step2(s1, resp, dc_id)?;
+//! // send req, receive resp (ServerDhParams)
 //! let (req, s3) = authentication::step3(s2, resp)?;
-//! // send req, receive resp
-//! let done = authentication::finish(s3, resp)?;
-//! // done.auth_key is ready
+//! // send req, receive resp (SetClientDhParamsAnswer)
+//! let result = authentication::finish(s3, resp)?;
+//! // on FinishResult::Done(d): d.auth_key is ready
+//! // on FinishResult::Retry{..}: call retry_step3() + finish() up to 5 times
 //! ```
 
 use std::fmt;
@@ -18,8 +19,64 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use layer_crypto::{AuthKey, aes, check_p_and_g, factorize, generate_key_data_from_nonce, rsa};
 use layer_tl_types::{Cursor, Deserializable, Serializable};
-use num_bigint::{BigUint, ToBigUint};
+use num_bigint::BigUint;
 use sha1::{Digest, Sha1};
+
+// ---------------------------------------------------------------------------
+// Manual TL serialization helper for PQInnerDataDc
+//
+// Constructor: p_q_inner_data_dc#a9f55f95
+//   pq:string p:string q:string nonce:int128 server_nonce:int128 new_nonce:int256 dc:int
+//
+// TL "string" (bytes) encoding: if len < 254 → [len_byte, data..., 0-pad to 4-align],
+// else [0xfe, len_lo, len_mid, len_hi, data..., 0-pad to 4-align].
+// ---------------------------------------------------------------------------
+fn tl_serialize_bytes(v: &[u8]) -> Vec<u8> {
+    let len = v.len();
+    let mut out = Vec::new();
+    if len < 254 {
+        out.push(len as u8);
+        out.extend_from_slice(v);
+        let total = 1 + len;
+        let pad = (4 - total % 4) % 4;
+        out.extend(std::iter::repeat(0u8).take(pad));
+    } else {
+        out.push(0xfe);
+        out.push((len & 0xff) as u8);
+        out.push(((len >> 8) & 0xff) as u8);
+        out.push(((len >> 16) & 0xff) as u8);
+        out.extend_from_slice(v);
+        let total = 4 + len;
+        let pad = (4 - total % 4) % 4;
+        out.extend(std::iter::repeat(0u8).take(pad));
+    }
+    out
+}
+
+/// Serialize a `p_q_inner_data_dc` (constructor 0xa9f55f95) from raw fields.
+/// This is needed because the generated TL bindings only expose `PQInnerData`
+/// (legacy, no DC id) which Telegram rejects for non-DC2 connections.
+fn serialize_pq_inner_data_dc(
+    pq: &[u8],
+    p: &[u8],
+    q: &[u8],
+    nonce: &[u8; 16],
+    server_nonce: &[u8; 16],
+    new_nonce: &[u8; 32],
+    dc_id: i32,
+) -> Vec<u8> {
+    let mut out = Vec::new();
+    // Constructor id (little-endian)
+    out.extend_from_slice(&0xa9f55f95_u32.to_le_bytes());
+    out.extend(tl_serialize_bytes(pq));
+    out.extend(tl_serialize_bytes(p));
+    out.extend(tl_serialize_bytes(q));
+    out.extend_from_slice(nonce);
+    out.extend_from_slice(server_nonce);
+    out.extend_from_slice(new_nonce);
+    out.extend_from_slice(&dc_id.to_le_bytes());
+    out
+}
 
 // Error
 
@@ -119,10 +176,29 @@ pub struct Step1 {
 }
 
 /// State after step 2.
+#[derive(Clone)]
 pub struct Step2 {
     nonce: [u8; 16],
     server_nonce: [u8; 16],
     new_nonce: [u8; 32],
+}
+
+/// Pre-processed server DH parameters retained so that step 3 can be
+/// repeated on `dh_gen_retry` without having to re-decrypt the server response.
+#[derive(Clone)]
+pub struct DhParamsForRetry {
+    /// Server-supplied DH prime (big-endian bytes).
+    pub dh_prime: Vec<u8>,
+    /// DH generator `g`.
+    pub g: u32,
+    /// Server's public DH value `g_a` (big-endian bytes).
+    pub g_a: Vec<u8>,
+    /// Server's reported Unix timestamp (used to compute `time_offset`).
+    pub server_time: i32,
+    /// AES key derived from nonces for this session's IGE encryption.
+    pub aes_key: [u8; 32],
+    /// AES IV derived from nonces for this session's IGE encryption.
+    pub aes_iv: [u8; 32],
 }
 
 /// State after step 3.
@@ -130,8 +206,33 @@ pub struct Step3 {
     nonce: [u8; 16],
     server_nonce: [u8; 16],
     new_nonce: [u8; 32],
-    gab: BigUint,
     time_offset: i32,
+    /// Auth key candidate bytes (needed to derive `auth_key_aux_hash` on retry).
+    auth_key: [u8; 256],
+    /// The processed DH parameters stored so `retry_step3` can re-derive g_b
+    /// without re-parsing the encrypted server response.
+    pub dh_params: DhParamsForRetry,
+}
+
+/// Result of [`finish`] either the handshake is done, or the server wants us
+/// to retry step 3 with the `auth_key_aux_hash` as `retry_id`.
+pub enum FinishResult {
+    /// Handshake complete.
+    Done(Finished),
+    /// Server sent `dh_gen_retry`.  Call [`retry_step3`] with the returned
+    /// `retry_id` and the stored [`DhParamsForRetry`] from the previous Step3.
+    Retry {
+        /// The `auth_key_aux_hash` to embed as `retry_id` in the next attempt.
+        retry_id: i64,
+        /// DH parameters to feed back into [`retry_step3`].
+        dh_params: DhParamsForRetry,
+        /// Client nonce from the original step 1.
+        nonce: [u8; 16],
+        /// Server nonce from the ResPQ response.
+        server_nonce: [u8; 16],
+        /// Fresh nonce generated in step 2.
+        new_nonce: [u8; 32],
+    },
 }
 
 /// The final output of a successful auth key handshake.
@@ -165,19 +266,25 @@ fn do_step1(random: &[u8; 16]) -> Result<(layer_tl_types::functions::ReqPqMulti,
 // Step 2: req_DH_params
 
 /// Process `ResPQ` and generate `req_DH_params`.
+///
+/// `dc_id` must be the numerical DC id of the server we are connecting to
+/// (e.g. 1 … 5).  It is embedded in the `PQInnerDataDc` payload so that
+/// Telegram can reject misrouted handshakes on non-DC2 endpoints.
 pub fn step2(
     data: Step1,
     response: layer_tl_types::enums::ResPq,
+    dc_id: i32,
 ) -> Result<(layer_tl_types::functions::ReqDhParams, Step2), Error> {
     let mut rnd = [0u8; 256];
     getrandom::getrandom(&mut rnd).expect("getrandom");
-    do_step2(data, response, &rnd)
+    do_step2(data, response, &rnd, dc_id)
 }
 
 fn do_step2(
     data: Step1,
     response: layer_tl_types::enums::ResPq,
     random: &[u8; 256],
+    dc_id: i32,
 ) -> Result<(layer_tl_types::functions::ReqDhParams, Step2), Error> {
     let Step1 { nonce } = data;
 
@@ -210,18 +317,18 @@ fn do_step2(
     let p_bytes = trim_be(p);
     let q_bytes = trim_be(q);
 
-    // Build PQInnerData using the first (non-DC, non-temp) constructor
-    // variant name: PQInnerData (same as type name since constructor name == type name)
-    let pq_inner =
-        layer_tl_types::enums::PQInnerData::PQInnerData(layer_tl_types::types::PQInnerData {
-            pq: pq.to_be_bytes().to_vec(),
-            p: p_bytes.clone(),
-            q: q_bytes.clone(),
-            nonce,
-            server_nonce: res_pq.server_nonce,
-            new_nonce,
-        })
-        .to_bytes();
+    // Serialize PQInnerDataDc (constructor 0xa9f55f95) manually.
+    // The legacy PQInnerData constructor (#83c95aec, no dc field) is rejected
+    // by Telegram servers for connections to non-DC2 endpoints.
+    let pq_inner = serialize_pq_inner_data_dc(
+        &pq.to_be_bytes(),
+        &p_bytes,
+        &q_bytes,
+        &nonce,
+        &res_pq.server_nonce,
+        &new_nonce,
+        dc_id,
+    );
 
     let fingerprint = res_pq
         .server_public_key_fingerprints
@@ -254,18 +361,122 @@ fn do_step2(
 
 // Step 3: set_client_DH_params
 
-/// Process `ServerDhParams` and generate `set_client_DH_params`.
+/// Process `ServerDhParams` into a reusable [`DhParamsForRetry`] + send the
+/// first `set_client_DH_params` request.
+///
+/// `retry_id` should be 0 on the first call, or `auth_key_aux_hash` (returned
+/// by [`finish`] as [`FinishResult::Retry`]) on subsequent attempts.
 pub fn step3(
     data: Step2,
     response: layer_tl_types::enums::ServerDhParams,
 ) -> Result<(layer_tl_types::functions::SetClientDhParams, Step3), Error> {
-    let mut rnd = [0u8; 272]; // 256 for DH b, 16 for padding
+    let mut rnd = [0u8; 272];
     getrandom::getrandom(&mut rnd).expect("getrandom");
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs() as i32;
-    do_step3(data, response, &rnd, now)
+    do_step3(data, response, &rnd, now, 0)
+}
+
+/// Re-run the client DH params generation after a `dh_gen_retry` response.
+/// Feed the `dh_params`, `nonce`, `server_nonce`, `new_nonce` from
+/// [`FinishResult::Retry`] and the `retry_id` (= `auth_key_aux_hash`).
+pub fn retry_step3(
+    dh_params: &DhParamsForRetry,
+    nonce: [u8; 16],
+    server_nonce: [u8; 16],
+    new_nonce: [u8; 32],
+    retry_id: i64,
+) -> Result<(layer_tl_types::functions::SetClientDhParams, Step3), Error> {
+    let mut rnd = [0u8; 272];
+    getrandom::getrandom(&mut rnd).expect("getrandom");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i32;
+    generate_client_dh_params(
+        dh_params,
+        nonce,
+        server_nonce,
+        new_nonce,
+        retry_id,
+        &rnd,
+        now,
+    )
+}
+
+fn generate_client_dh_params(
+    dh: &DhParamsForRetry,
+    nonce: [u8; 16],
+    server_nonce: [u8; 16],
+    new_nonce: [u8; 32],
+    retry_id: i64,
+    random: &[u8; 272],
+    now: i32,
+) -> Result<(layer_tl_types::functions::SetClientDhParams, Step3), Error> {
+    let dh_prime = BigUint::from_bytes_be(&dh.dh_prime);
+    let g = BigUint::from(dh.g);
+    let g_a = BigUint::from_bytes_be(&dh.g_a);
+    let time_offset = dh.server_time - now;
+
+    let b = BigUint::from_bytes_be(&random[..256]);
+    let g_b = g.modpow(&b, &dh_prime);
+
+    let one = BigUint::from(1u32);
+    let safety = one.clone() << (2048 - 64);
+    check_g_in_range(&g_b, &one, &(&dh_prime - &one))?;
+    check_g_in_range(&g_b, &safety, &(&dh_prime - &safety))?;
+
+    let client_dh_inner = layer_tl_types::enums::ClientDhInnerData::ClientDhInnerData(
+        layer_tl_types::types::ClientDhInnerData {
+            nonce,
+            server_nonce,
+            retry_id,
+            g_b: g_b.to_bytes_be(),
+        },
+    )
+    .to_bytes();
+
+    let digest: [u8; 20] = {
+        let mut sha = Sha1::new();
+        sha.update(&client_dh_inner);
+        sha.finalize().into()
+    };
+
+    let pad_len = (16 - ((20 + client_dh_inner.len()) % 16)) % 16;
+    let rnd16 = &random[256..256 + pad_len.min(16)];
+
+    let mut hashed = Vec::with_capacity(20 + client_dh_inner.len() + pad_len);
+    hashed.extend_from_slice(&digest);
+    hashed.extend_from_slice(&client_dh_inner);
+    hashed.extend_from_slice(&rnd16[..pad_len]);
+
+    let key: [u8; 32] = dh.aes_key;
+    let iv: [u8; 32] = dh.aes_iv;
+    aes::ige_encrypt(&mut hashed, &key, &iv);
+
+    // Compute auth_key = g_a^b mod dh_prime for this attempt.
+    let mut auth_key_bytes = [0u8; 256];
+    let gab_bytes = g_a.modpow(&b, &dh_prime).to_bytes_be();
+    let skip = 256 - gab_bytes.len();
+    auth_key_bytes[skip..].copy_from_slice(&gab_bytes);
+
+    Ok((
+        layer_tl_types::functions::SetClientDhParams {
+            nonce,
+            server_nonce,
+            encrypted_data: hashed,
+        },
+        Step3 {
+            nonce,
+            server_nonce,
+            new_nonce,
+            time_offset,
+            auth_key: auth_key_bytes,
+            dh_params: dh.clone(),
+        },
+    ))
 }
 
 fn do_step3(
@@ -273,6 +484,7 @@ fn do_step3(
     response: layer_tl_types::enums::ServerDhParams,
     random: &[u8; 272],
     now: i32,
+    retry_id: i64,
 ) -> Result<(layer_tl_types::functions::SetClientDhParams, Step3), Error> {
     let Step2 {
         nonce,
@@ -284,15 +496,6 @@ fn do_step3(
         layer_tl_types::enums::ServerDhParams::Fail(f) => {
             check_nonce(&f.nonce, &nonce)?;
             check_server_nonce(&f.server_nonce, &server_nonce)?;
-            // Verify new_nonce_hash
-            let digest: [u8; 20] = {
-                let mut sha = Sha1::new();
-                sha.update(new_nonce);
-                sha.finalize().into()
-            };
-            let mut expected_hash = [0u8; 16];
-            expected_hash.copy_from_slice(&digest[4..]);
-            check_new_nonce_hash(&f.new_nonce_hash, &expected_hash)?;
             return Err(Error::DhParamsFail);
         }
         layer_tl_types::enums::ServerDhParams::Ok(x) => x,
@@ -307,15 +510,13 @@ fn do_step3(
         });
     }
 
-    let (key, iv) = generate_key_data_from_nonce(&server_nonce, &new_nonce);
-    aes::ige_decrypt(&mut server_dh_ok.encrypted_answer, &key, &iv);
+    let (key_arr, iv_arr) = generate_key_data_from_nonce(&server_nonce, &new_nonce);
+    aes::ige_decrypt(&mut server_dh_ok.encrypted_answer, &key_arr, &iv_arr);
     let plain = server_dh_ok.encrypted_answer;
 
     let got_hash: [u8; 20] = plain[..20].try_into().unwrap();
     let mut cursor = Cursor::from_slice(&plain[20..]);
 
-    // ServerDhInnerData has single constructor server_DH_inner_data
-    // variant name = ServerDhInnerData (full name, since it equals type name)
     let inner = match layer_tl_types::enums::ServerDhInnerData::deserialize(&mut cursor) {
         Ok(layer_tl_types::enums::ServerDhInnerData::ServerDhInnerData(x)) => x,
         Err(e) => return Err(Error::InvalidDhInnerData { error: e }),
@@ -336,85 +537,47 @@ fn do_step3(
     check_nonce(&inner.nonce, &nonce)?;
     check_server_nonce(&inner.server_nonce, &server_nonce)?;
 
-    // validate server-supplied DH prime and generator against MTProto spec.
     check_p_and_g(&inner.dh_prime, inner.g as u32)
         .map_err(|source| Error::InvalidDhPrime { source })?;
 
-    let dh_prime = BigUint::from_bytes_be(&inner.dh_prime);
-    let g = inner.g.to_biguint().unwrap();
-    let g_a = BigUint::from_bytes_be(&inner.g_a);
-    let time_offset = inner.server_time - now;
-
-    let b = BigUint::from_bytes_be(&random[..256]);
-    let g_b = g.modpow(&b, &dh_prime);
-    let gab = g_a.modpow(&b, &dh_prime);
-
-    // Validate DH parameters
+    // Validate g_a range.
+    let dh_prime_bn = BigUint::from_bytes_be(&inner.dh_prime);
     let one = BigUint::from(1u32);
-    check_g_in_range(&g, &one, &(&dh_prime - &one))?;
-    check_g_in_range(&g_a, &one, &(&dh_prime - &one))?;
-    check_g_in_range(&g_b, &one, &(&dh_prime - &one))?;
+    let g_a_bn = BigUint::from_bytes_be(&inner.g_a);
     let safety = one.clone() << (2048 - 64);
-    check_g_in_range(&g_a, &safety, &(&dh_prime - &safety))?;
-    check_g_in_range(&g_b, &safety, &(&dh_prime - &safety))?;
+    check_g_in_range(&g_a_bn, &safety, &(&dh_prime_bn - &safety))?;
 
-    // ClientDhInnerData has single constructor client_DH_inner_data
-    // variant name = ClientDhInnerData
-    let client_dh_inner = layer_tl_types::enums::ClientDhInnerData::ClientDhInnerData(
-        layer_tl_types::types::ClientDhInnerData {
-            nonce,
-            server_nonce,
-            retry_id: 0,
-            g_b: g_b.to_bytes_be(),
-        },
-    )
-    .to_bytes();
-
-    let digest: [u8; 20] = {
-        let mut sha = Sha1::new();
-        sha.update(&client_dh_inner);
-        sha.finalize().into()
+    let dh = DhParamsForRetry {
+        dh_prime: inner.dh_prime,
+        g: inner.g as u32,
+        g_a: inner.g_a,
+        server_time: inner.server_time,
+        aes_key: key_arr,
+        aes_iv: iv_arr,
     };
 
-    let pad_len = (16 - ((20 + client_dh_inner.len()) % 16)) % 16;
-    let rnd16 = &random[256..256 + pad_len.min(16)];
-
-    let mut hashed = Vec::with_capacity(20 + client_dh_inner.len() + pad_len);
-    hashed.extend_from_slice(&digest);
-    hashed.extend_from_slice(&client_dh_inner);
-    hashed.extend_from_slice(&rnd16[..pad_len]);
-
-    aes::ige_encrypt(&mut hashed, &key, &iv);
-
-    Ok((
-        layer_tl_types::functions::SetClientDhParams {
-            nonce,
-            server_nonce,
-            encrypted_data: hashed,
-        },
-        Step3 {
-            nonce,
-            server_nonce,
-            new_nonce,
-            gab,
-            time_offset,
-        },
-    ))
+    generate_client_dh_params(&dh, nonce, server_nonce, new_nonce, retry_id, random, now)
 }
 
 // finish: create_key
 
-/// Finalise the handshake. Returns the ready [`Finished`] on success.
+/// Finalise the handshake.
+///
+/// Returns [`FinishResult::Done`] on success or [`FinishResult::Retry`] when
+/// the server sends `dh_gen_retry` (up to 5 attempts are typical). On retry,
+/// call [`retry_step3`] with the returned fields, send the new request, receive
+/// the answer, then call `finish` again.
 pub fn finish(
     data: Step3,
     response: layer_tl_types::enums::SetClientDhParamsAnswer,
-) -> Result<Finished, Error> {
+) -> Result<FinishResult, Error> {
     let Step3 {
         nonce,
         server_nonce,
         new_nonce,
-        gab,
         time_offset,
+        auth_key: auth_key_bytes,
+        dh_params,
     } = data;
 
     struct DhData {
@@ -449,12 +612,7 @@ pub fn finish(
     check_nonce(&dh.nonce, &nonce)?;
     check_server_nonce(&dh.server_nonce, &server_nonce)?;
 
-    let mut key_bytes = [0u8; 256];
-    let gab_bytes = gab.to_bytes_be();
-    let skip = 256 - gab_bytes.len();
-    key_bytes[skip..].copy_from_slice(&gab_bytes);
-
-    let auth_key = AuthKey::from_bytes(key_bytes);
+    let auth_key = AuthKey::from_bytes(auth_key_bytes);
     let expected_hash = auth_key.calc_new_nonce_hash(&new_nonce, dh.num);
     check_new_nonce_hash(&dh.hash, &expected_hash)?;
 
@@ -467,12 +625,27 @@ pub fn finish(
     };
 
     match dh.num {
-        1 => Ok(Finished {
+        1 => Ok(FinishResult::Done(Finished {
             auth_key: auth_key.to_bytes(),
             time_offset,
             first_salt,
-        }),
-        2 => Err(Error::DhGenRetry),
+        })),
+        2 => {
+            // dh_gen_retry: compute auth_key_aux_hash = SHA1(auth_key)[0..8] as i64 LE.
+            let aux_hash: [u8; 20] = {
+                let mut sha = Sha1::new();
+                sha.update(&auth_key.to_bytes());
+                sha.finalize().into()
+            };
+            let retry_id = i64::from_le_bytes(aux_hash[..8].try_into().unwrap());
+            Ok(FinishResult::Retry {
+                retry_id,
+                dh_params,
+                nonce,
+                server_nonce,
+                new_nonce,
+            })
+        }
         _ => Err(Error::DhGenFail),
     }
 }

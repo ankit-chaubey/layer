@@ -22,8 +22,6 @@ const POSSIBLE_GAP_DEADLINE_MS: u64 = 1_000;
 
 /// Bots are allowed a much larger diff window (Telegram server-side limit).
 const CHANNEL_DIFF_LIMIT_BOT: i32 = 100_000;
-/// Regular users get a smaller window.
-const CHANNEL_DIFF_LIMIT_USER: i32 = 100;
 
 /// Buffers updates received during a possible-gap window so we don't fire
 /// getDifference on every slightly out-of-order update.
@@ -126,6 +124,10 @@ pub struct PtsState {
     pub seq: i32,
     /// Per-channel pts counters.  `channel_id → pts`.
     pub channel_pts: HashMap<i64, i32>,
+    /// How many times getChannelDifference has been called per channel.
+    /// tDesktop starts at limit=100, then raises to 1000 after the first
+    /// successful response.  We track call count to implement the same ramp-up.
+    pub channel_diff_calls: HashMap<i64, u32>,
     /// Timestamp of last received update for deadline-based gap detection.
     pub last_update_at: Option<Instant>,
     /// Channels currently awaiting a getChannelDifference response.
@@ -149,6 +151,7 @@ impl PtsState {
             date: s.date,
             seq: s.seq,
             channel_pts: HashMap::new(),
+            channel_diff_calls: HashMap::new(),
             last_update_at: Some(Instant::now()),
             getting_diff_for: HashSet::new(),
             getting_global_diff: false,
@@ -549,11 +552,21 @@ impl Client {
             access_hash,
         });
 
-        // bots get a much larger diff window than regular users.
+        // tDesktop ramp-up: limit=100 on first call, 1000 on subsequent ones.
+        // Bots always use the server-side maximum (100_000).
         let diff_limit = if self.inner.is_bot.load(std::sync::atomic::Ordering::Relaxed) {
             CHANNEL_DIFF_LIMIT_BOT
         } else {
-            CHANNEL_DIFF_LIMIT_USER
+            let call_count = self
+                .inner
+                .pts_state
+                .lock()
+                .await
+                .channel_diff_calls
+                .get(&channel_id)
+                .copied()
+                .unwrap_or(0);
+            if call_count == 0 { 100 } else { 1000 }
         };
 
         let req = tl::functions::updates::GetChannelDifference {
@@ -565,7 +578,18 @@ impl Client {
         };
 
         let body = match self.rpc_call_raw_pub(&req).await {
-            Ok(b) => b,
+            Ok(b) => {
+                // Successful call bump the per-channel counter so next call uses 1000.
+                self.inner
+                    .pts_state
+                    .lock()
+                    .await
+                    .channel_diff_calls
+                    .entry(channel_id)
+                    .and_modify(|c| *c = c.saturating_add(1))
+                    .or_insert(1);
+                b
+            }
             Err(InvocationError::Rpc(ref e)) if e.name == "PERSISTENT_TIMESTAMP_OUTDATED" => {
                 // treat as empty diff: retry next gap
                 tracing::debug!("[layer] PERSISTENT_TIMESTAMP_OUTDATED: skipping diff");

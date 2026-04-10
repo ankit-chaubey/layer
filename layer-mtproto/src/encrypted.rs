@@ -4,10 +4,16 @@
 //! [`EncryptedSession`] and use it to serialize/deserialize all subsequent
 //! messages.
 
+use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use layer_crypto::{AuthKey, DequeBuffer, decrypt_data_v2, encrypt_data_v2};
 use layer_tl_types::RemoteCall;
+
+/// Rolling deduplication buffer – mirrors tDesktop's 500-entry seen-msg_id set.
+const SEEN_MSG_IDS_MAX: usize = 500;
+/// Maximum clock skew between client and server before a message is rejected.
+const MSG_ID_TIME_WINDOW_SECS: i64 = 300;
 
 /// Errors that can occur when decrypting a server message.
 #[derive(Debug)]
@@ -18,6 +24,10 @@ pub enum DecryptError {
     FrameTooShort,
     /// Session-ID mismatch (possible replay or wrong connection).
     SessionMismatch,
+    /// Server msg_id is outside the ±300 s window of corrected local time.
+    MsgIdTimeWindow,
+    /// This msg_id was already seen in the rolling 500-entry buffer.
+    DuplicateMsgId,
 }
 
 impl std::fmt::Display for DecryptError {
@@ -26,6 +36,8 @@ impl std::fmt::Display for DecryptError {
             Self::Crypto(e) => write!(f, "crypto: {e}"),
             Self::FrameTooShort => write!(f, "inner plaintext too short"),
             Self::SessionMismatch => write!(f, "session_id mismatch"),
+            Self::MsgIdTimeWindow => write!(f, "server msg_id outside ±300 s time window"),
+            Self::DuplicateMsgId => write!(f, "duplicate server msg_id (replay)"),
         }
     }
 }
@@ -46,11 +58,6 @@ pub struct DecryptedMessage {
 }
 
 /// MTProto 2.0 encrypted session state.
-///
-/// Wraps an `AuthKey` and tracks per-session counters (session_id, seq_no,
-/// last_msg_id, server salt).  Use [`EncryptedSession::pack`] to encrypt
-/// outgoing requests and [`EncryptedSession::unpack`] to decrypt incoming
-/// server frames.
 pub struct EncryptedSession {
     auth_key: AuthKey,
     session_id: i64,
@@ -60,6 +67,8 @@ pub struct EncryptedSession {
     pub salt: i64,
     /// Clock skew in seconds vs. server.
     pub time_offset: i32,
+    /// Rolling 500-entry dedup buffer of seen server msg_ids.
+    seen_msg_ids: std::sync::Mutex<VecDeque<i64>>,
 }
 
 impl EncryptedSession {
@@ -74,6 +83,7 @@ impl EncryptedSession {
             last_msg_id: 0,
             salt: first_salt,
             time_offset,
+            seen_msg_ids: std::sync::Mutex::new(VecDeque::with_capacity(SEEN_MSG_IDS_MAX)),
         }
     }
 
@@ -310,9 +320,29 @@ impl EncryptedSession {
             return Err(DecryptError::SessionMismatch);
         }
 
-        // Bounds-check BEFORE slicing. The old `.min()` silently truncated the body
-        // when body_len exceeded available plaintext (e.g. framing mismatch), which
-        // caused the TL deserializer downstream to hit "unexpected end of buffer".
+        // #3 reject if server time (upper 32 bits of msg_id) deviates > 300 s.
+        let server_secs = (msg_id as u64 >> 32) as i64;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let corrected = now + self.time_offset as i64;
+        if (server_secs - corrected).abs() > MSG_ID_TIME_WINDOW_SECS {
+            return Err(DecryptError::MsgIdTimeWindow);
+        }
+
+        // #2 rolling 500-entry dedup.
+        {
+            let mut seen = self.seen_msg_ids.lock().unwrap();
+            if seen.contains(&msg_id) {
+                return Err(DecryptError::DuplicateMsgId);
+            }
+            seen.push_back(msg_id);
+            if seen.len() > SEEN_MSG_IDS_MAX {
+                seen.pop_front();
+            }
+        }
+
         if 32 + body_len > plaintext.len() {
             return Err(DecryptError::FrameTooShort);
         }
@@ -341,10 +371,22 @@ impl EncryptedSession {
 impl EncryptedSession {
     /// Decrypt a frame using explicit key + session_id: no mutable state needed.
     /// Used by the split-reader task so it can decrypt without locking the writer.
+    /// `time_offset` is the session's current clock skew (seconds); pass 0 if unknown.
     pub fn decrypt_frame(
         auth_key: &[u8; 256],
         session_id: i64,
         frame: &mut [u8],
+    ) -> Result<DecryptedMessage, DecryptError> {
+        Self::decrypt_frame_with_offset(auth_key, session_id, frame, 0)
+    }
+
+    /// Like [`decrypt_frame`] but applies the time-window check with the given
+    /// `time_offset` (seconds, server_time − local_time).
+    pub fn decrypt_frame_with_offset(
+        auth_key: &[u8; 256],
+        session_id: i64,
+        frame: &mut [u8],
+        time_offset: i32,
     ) -> Result<DecryptedMessage, DecryptError> {
         let key = AuthKey::from_bytes(*auth_key);
         let plaintext = decrypt_data_v2(frame, &key).map_err(DecryptError::Crypto)?;
@@ -358,6 +400,16 @@ impl EncryptedSession {
         let body_len = u32::from_le_bytes(plaintext[28..32].try_into().unwrap()) as usize;
         if sid != session_id {
             return Err(DecryptError::SessionMismatch);
+        }
+        // Time-window check.
+        let server_secs = (msg_id as u64 >> 32) as i64;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let corrected = now + time_offset as i64;
+        if (server_secs - corrected).abs() > MSG_ID_TIME_WINDOW_SECS {
+            return Err(DecryptError::MsgIdTimeWindow);
         }
         if 32 + body_len > plaintext.len() {
             return Err(DecryptError::FrameTooShort);

@@ -48,6 +48,7 @@ pub struct ClientBuilder {
     retry_policy: Arc<dyn RetryPolicy>,
     restart_policy: Arc<dyn ConnectionRestartPolicy>,
     socks5: Option<Socks5Config>,
+    mtproxy: Option<crate::proxy::MtProxyConfig>,
     allow_ipv6: bool,
     transport: TransportKind,
     session_backend: Arc<dyn SessionBackend>,
@@ -63,6 +64,7 @@ impl Default for ClientBuilder {
             retry_policy: Arc::new(AutoSleep::default()),
             restart_policy: Arc::new(NeverRestart),
             socks5: None,
+            mtproxy: None,
             allow_ipv6: false,
             transport: TransportKind::Abridged,
             session_backend: Arc::new(BinaryFileBackend::new("layer.session")),
@@ -163,6 +165,18 @@ impl ClientBuilder {
         self
     }
 
+    /// Route all connections through an MTProxy.
+    ///
+    /// The proxy `transport` is set automatically from the secret prefix;
+    /// you do not need to also call `.transport()`.
+    /// Build the [`MtProxyConfig`] with [`crate::parse_proxy_link`].
+    pub fn mtproxy(mut self, proxy: crate::proxy::MtProxyConfig) -> Self {
+        // Override transport to match what the proxy requires.
+        self.transport = proxy.transport.clone();
+        self.mtproxy = Some(proxy);
+        self
+    }
+
     /// Allow IPv6 DC addresses (default: `false`).
     pub fn allow_ipv6(mut self, allow: bool) -> Self {
         self.allow_ipv6 = allow;
@@ -191,9 +205,6 @@ impl ClientBuilder {
     // Terminal
 
     /// Build the [`Config`] without connecting.
-    ///
-    /// Useful when you need to pass `Config` to a function that calls
-    /// `Client::connect` itself.
     pub fn build(self) -> Result<Config, BuilderError> {
         if self.api_id == 0 {
             return Err(BuilderError::MissingApiId);
@@ -208,6 +219,7 @@ impl ClientBuilder {
             retry_policy: self.retry_policy,
             restart_policy: self.restart_policy,
             socks5: self.socks5,
+            mtproxy: self.mtproxy,
             allow_ipv6: self.allow_ipv6,
             transport: self.transport,
             session_backend: self.session_backend,

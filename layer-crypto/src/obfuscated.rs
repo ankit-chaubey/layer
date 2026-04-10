@@ -38,6 +38,27 @@ impl ObfuscatedCipher {
         }
     }
 
+    /// Build cipher from explicit key/IV pairs (used when MTProxy secret
+    /// mixing has already been applied externally via SHA-256).
+    #[allow(deprecated)]
+    pub fn from_keys(
+        tx_key: &[u8; 32],
+        tx_iv: &[u8; 16],
+        rx_key: &[u8; 32],
+        rx_iv: &[u8; 16],
+    ) -> Self {
+        Self {
+            tx: ctr::Ctr128BE::<aes::Aes256>::new(
+                GenericArray::from_slice(tx_key),
+                GenericArray::from_slice(tx_iv),
+            ),
+            rx: ctr::Ctr128BE::<aes::Aes256>::new(
+                GenericArray::from_slice(rx_key),
+                GenericArray::from_slice(rx_iv),
+            ),
+        }
+    }
+
     /// Encrypt outgoing bytes in-place (TX direction).
     pub fn encrypt(&mut self, buf: &mut [u8]) {
         self.tx.apply_keystream(buf);

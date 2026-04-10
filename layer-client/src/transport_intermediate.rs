@@ -165,7 +165,7 @@ impl FullTransport {
 // CRC-32 (IEEE 802.3 polynomial)
 
 /// Compute CRC-32 using the standard IEEE 802.3 polynomial.
-fn crc32_ieee(data: &[u8]) -> u32 {
+pub(crate) fn crc32_ieee(data: &[u8]) -> u32 {
     const POLY: u32 = 0xedb88320;
     let mut crc: u32 = 0xffffffff;
     for &byte in data {

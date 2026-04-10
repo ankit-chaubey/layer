@@ -358,6 +358,7 @@ mod tests {
             auth_key: None,
             first_salt: 0,
             time_offset: 0,
+            flags: DcFlags::NONE,
         }
     }
 
@@ -538,5 +539,968 @@ mod tests {
         // Can't call snapshot() on trait object, but save/load must be consistent
         let loaded = b.load().unwrap().unwrap();
         assert_eq!(loaded.dcs.len(), 2);
+    }
+
+    // IPv6 tests
+
+    fn make_dc_v6(id: i32) -> DcEntry {
+        DcEntry {
+            dc_id: id,
+            addr: format!("[2001:b28:f23d:f00{}::a]:443", id),
+            auth_key: None,
+            first_salt: 0,
+            time_offset: 0,
+            flags: DcFlags::IPV6,
+        }
+    }
+
+    #[test]
+    fn dc_entry_from_parts_ipv4() {
+        let dc = DcEntry::from_parts(1, "149.154.175.53", 443, DcFlags::NONE);
+        assert_eq!(dc.addr, "149.154.175.53:443");
+        assert!(!dc.is_ipv6());
+        let sa = dc.socket_addr().unwrap();
+        assert_eq!(sa.port(), 443);
+    }
+
+    #[test]
+    fn dc_entry_from_parts_ipv6() {
+        let dc = DcEntry::from_parts(2, "2001:b28:f23d:f001::a", 443, DcFlags::IPV6);
+        assert_eq!(dc.addr, "[2001:b28:f23d:f001::a]:443");
+        assert!(dc.is_ipv6());
+        let sa = dc.socket_addr().unwrap();
+        assert_eq!(sa.port(), 443);
+    }
+
+    #[test]
+    fn persisted_session_dc_for_prefers_ipv6() {
+        let mut s = PersistedSession::default();
+        s.dcs.push(make_dc(2)); // IPv4
+        s.dcs.push(make_dc_v6(2)); // IPv6
+
+        let v6 = s.dc_for(2, true).unwrap();
+        assert!(v6.is_ipv6());
+
+        let v4 = s.dc_for(2, false).unwrap();
+        assert!(!v4.is_ipv6());
+    }
+
+    #[test]
+    fn persisted_session_dc_for_falls_back_when_only_ipv4() {
+        let mut s = PersistedSession::default();
+        s.dcs.push(make_dc(3)); // IPv4 only
+
+        // Asking for IPv6 should fall back to IPv4
+        let dc = s.dc_for(3, true).unwrap();
+        assert!(!dc.is_ipv6());
+    }
+
+    #[test]
+    fn persisted_session_all_dcs_for_returns_both() {
+        let mut s = PersistedSession::default();
+        s.dcs.push(make_dc(1));
+        s.dcs.push(make_dc_v6(1));
+        s.dcs.push(make_dc(2));
+
+        assert_eq!(s.all_dcs_for(1).count(), 2);
+        assert_eq!(s.all_dcs_for(2).count(), 1);
+        assert_eq!(s.all_dcs_for(5).count(), 0);
+    }
+
+    #[test]
+    fn inmemory_ipv4_and_ipv6_coexist() {
+        let b = InMemoryBackend::new();
+        b.update_dc(&make_dc(2)).unwrap(); // IPv4
+        b.update_dc(&make_dc_v6(2)).unwrap(); // IPv6
+
+        let s = b.snapshot().unwrap();
+        // Both entries must survive they have different flags
+        assert_eq!(s.dcs.iter().filter(|d| d.dc_id == 2).count(), 2);
+    }
+
+    #[test]
+    fn binary_roundtrip_ipv4_and_ipv6() {
+        let mut s = PersistedSession::default();
+        s.home_dc_id = 2;
+        s.dcs.push(make_dc(2));
+        s.dcs.push(make_dc_v6(2));
+
+        let bytes = s.to_bytes();
+        let loaded = PersistedSession::from_bytes(&bytes).unwrap();
+        assert_eq!(loaded.dcs.len(), 2);
+        assert_eq!(loaded.dcs.iter().filter(|d| d.is_ipv6()).count(), 1);
+        assert_eq!(loaded.dcs.iter().filter(|d| !d.is_ipv6()).count(), 1);
+    }
+}
+
+// ─── SqliteBackend ────────────────────────────────────────────────────────────
+
+/// SQLite-backed session (via `rusqlite`).
+///
+/// Enabled with the `sqlite-session` Cargo feature.
+///
+/// # Schema
+///
+/// Five tables are created on first open (idempotent):
+///
+/// | Table          | Purpose                                          |
+/// |----------------|--------------------------------------------------|
+/// | `meta`         | `home_dc_id` and future scalar values            |
+/// | `dcs`          | One row per DC (auth key, address, flags, …)     |
+/// | `update_state` | Single-row pts / qts / date / seq                |
+/// | `channel_pts`  | Per-channel pts                                  |
+/// | `peers`        | Access-hash cache                                |
+///
+/// # Granular writes
+///
+/// All [`SessionBackend`] extension methods (`update_dc`, `set_home_dc`,
+/// `apply_update_state`, `cache_peer`) issue **single-row SQL statements**
+/// instead of the default load-mutate-save round-trip, so they are safe to
+/// call frequently (e.g. on every update batch) without performance concerns.
+#[cfg(feature = "sqlite-session")]
+pub struct SqliteBackend {
+    conn: std::sync::Mutex<rusqlite::Connection>,
+    label: String,
+}
+
+#[cfg(feature = "sqlite-session")]
+impl SqliteBackend {
+    const SCHEMA: &'static str = "
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous  = NORMAL;
+
+        CREATE TABLE IF NOT EXISTS meta (
+            key   TEXT    PRIMARY KEY,
+            value INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS dcs (
+            dc_id       INTEGER NOT NULL,
+            flags       INTEGER NOT NULL DEFAULT 0,
+            addr        TEXT    NOT NULL,
+            auth_key    BLOB,
+            first_salt  INTEGER NOT NULL DEFAULT 0,
+            time_offset INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (dc_id, flags)
+        );
+
+        CREATE TABLE IF NOT EXISTS update_state (
+            id   INTEGER PRIMARY KEY CHECK (id = 1),
+            pts  INTEGER NOT NULL DEFAULT 0,
+            qts  INTEGER NOT NULL DEFAULT 0,
+            date INTEGER NOT NULL DEFAULT 0,
+            seq  INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS channel_pts (
+            channel_id INTEGER PRIMARY KEY,
+            pts        INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS peers (
+            id           INTEGER PRIMARY KEY,
+            access_hash  INTEGER NOT NULL,
+            is_channel   INTEGER NOT NULL DEFAULT 0
+        );
+    ";
+
+    /// Open (or create) the SQLite database at `path`.
+    pub fn open(path: impl Into<PathBuf>) -> io::Result<Self> {
+        let path = path.into();
+        let label = path.display().to_string();
+        let conn = rusqlite::Connection::open(&path)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        conn.execute_batch(Self::SCHEMA)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Ok(Self {
+            conn: std::sync::Mutex::new(conn),
+            label,
+        })
+    }
+
+    /// Open an in-process SQLite database (useful for tests).
+    pub fn in_memory() -> io::Result<Self> {
+        let conn = rusqlite::Connection::open_in_memory()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        conn.execute_batch(Self::SCHEMA)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Ok(Self {
+            conn: std::sync::Mutex::new(conn),
+            label: ":memory:".into(),
+        })
+    }
+
+    fn map_err(e: rusqlite::Error) -> io::Error {
+        io::Error::new(io::ErrorKind::Other, e)
+    }
+
+    /// Read the full session out of the database.
+    fn read_session(conn: &rusqlite::Connection) -> io::Result<PersistedSession> {
+        // home_dc_id
+        let home_dc_id: i32 = conn
+            .query_row("SELECT value FROM meta WHERE key = 'home_dc_id'", [], |r| {
+                r.get(0)
+            })
+            .unwrap_or(0);
+
+        // dcs
+        let mut stmt = conn
+            .prepare("SELECT dc_id, flags, addr, auth_key, first_salt, time_offset FROM dcs")
+            .map_err(Self::map_err)?;
+        let dcs = stmt
+            .query_map([], |row| {
+                let dc_id: i32 = row.get(0)?;
+                let flags_raw: u8 = row.get(1)?;
+                let addr: String = row.get(2)?;
+                let key_blob: Option<Vec<u8>> = row.get(3)?;
+                let first_salt: i64 = row.get(4)?;
+                let time_offset: i32 = row.get(5)?;
+                Ok((dc_id, addr, key_blob, first_salt, time_offset, flags_raw))
+            })
+            .map_err(Self::map_err)?
+            .filter_map(|r| r.ok())
+            .map(
+                |(dc_id, addr, key_blob, first_salt, time_offset, flags_raw)| {
+                    let auth_key = key_blob.and_then(|b| {
+                        if b.len() == 256 {
+                            let mut k = [0u8; 256];
+                            k.copy_from_slice(&b);
+                            Some(k)
+                        } else {
+                            None
+                        }
+                    });
+                    DcEntry {
+                        dc_id,
+                        addr,
+                        auth_key,
+                        first_salt,
+                        time_offset,
+                        flags: DcFlags(flags_raw),
+                    }
+                },
+            )
+            .collect();
+
+        // update_state
+        let updates_state = conn
+            .query_row(
+                "SELECT pts, qts, date, seq FROM update_state WHERE id = 1",
+                [],
+                |r| {
+                    Ok(UpdatesStateSnap {
+                        pts: r.get(0)?,
+                        qts: r.get(1)?,
+                        date: r.get(2)?,
+                        seq: r.get(3)?,
+                        channels: vec![],
+                    })
+                },
+            )
+            .unwrap_or_default();
+
+        // channel_pts
+        let mut ch_stmt = conn
+            .prepare("SELECT channel_id, pts FROM channel_pts")
+            .map_err(Self::map_err)?;
+        let channels: Vec<(i64, i32)> = ch_stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i32>(1)?)))
+            .map_err(Self::map_err)?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // peers
+        let mut peer_stmt = conn
+            .prepare("SELECT id, access_hash, is_channel FROM peers")
+            .map_err(Self::map_err)?;
+        let peers: Vec<CachedPeer> = peer_stmt
+            .query_map([], |r| {
+                Ok(CachedPeer {
+                    id: r.get(0)?,
+                    access_hash: r.get(1)?,
+                    is_channel: r.get::<_, i32>(2)? != 0,
+                })
+            })
+            .map_err(Self::map_err)?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(PersistedSession {
+            home_dc_id,
+            dcs,
+            updates_state: UpdatesStateSnap {
+                channels,
+                ..updates_state
+            },
+            peers,
+        })
+    }
+
+    /// Write the full session into the database inside a single transaction.
+    fn write_session(conn: &rusqlite::Connection, s: &PersistedSession) -> io::Result<()> {
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(Self::map_err)?;
+
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES ('home_dc_id', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![s.home_dc_id],
+        )
+        .map_err(Self::map_err)?;
+
+        // Replace all DCs
+        conn.execute("DELETE FROM dcs", []).map_err(Self::map_err)?;
+        for d in &s.dcs {
+            conn.execute(
+                "INSERT INTO dcs (dc_id, flags, addr, auth_key, first_salt, time_offset)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    d.dc_id,
+                    d.flags.0,
+                    d.addr,
+                    d.auth_key.as_ref().map(|k| k.as_ref()),
+                    d.first_salt,
+                    d.time_offset,
+                ],
+            )
+            .map_err(Self::map_err)?;
+        }
+
+        // update_state
+        let us = &s.updates_state;
+        conn.execute(
+            "INSERT INTO update_state (id, pts, qts, date, seq) VALUES (1, ?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET pts=excluded.pts, qts=excluded.qts,
+             date=excluded.date, seq=excluded.seq",
+            rusqlite::params![us.pts, us.qts, us.date, us.seq],
+        )
+        .map_err(Self::map_err)?;
+
+        conn.execute("DELETE FROM channel_pts", [])
+            .map_err(Self::map_err)?;
+        for &(cid, cpts) in &us.channels {
+            conn.execute(
+                "INSERT INTO channel_pts (channel_id, pts) VALUES (?1, ?2)",
+                rusqlite::params![cid, cpts],
+            )
+            .map_err(Self::map_err)?;
+        }
+
+        // peers
+        conn.execute("DELETE FROM peers", [])
+            .map_err(Self::map_err)?;
+        for p in &s.peers {
+            conn.execute(
+                "INSERT INTO peers (id, access_hash, is_channel) VALUES (?1, ?2, ?3)",
+                rusqlite::params![p.id, p.access_hash, p.is_channel as i32],
+            )
+            .map_err(Self::map_err)?;
+        }
+
+        conn.execute_batch("COMMIT").map_err(Self::map_err)
+    }
+}
+
+#[cfg(feature = "sqlite-session")]
+impl SessionBackend for SqliteBackend {
+    fn save(&self, session: &PersistedSession) -> io::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        Self::write_session(&conn, session)
+    }
+
+    fn load(&self) -> io::Result<Option<PersistedSession>> {
+        let conn = self.conn.lock().unwrap();
+        // If meta table is empty, no session has been saved yet.
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM meta", [], |r| r.get(0))
+            .map_err(Self::map_err)?;
+        if count == 0 {
+            return Ok(None);
+        }
+        Self::read_session(&conn).map(Some)
+    }
+
+    fn delete(&self) -> io::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(
+            "BEGIN IMMEDIATE;
+             DELETE FROM meta;
+             DELETE FROM dcs;
+             DELETE FROM update_state;
+             DELETE FROM channel_pts;
+             DELETE FROM peers;
+             COMMIT;",
+        )
+        .map_err(Self::map_err)
+    }
+
+    fn name(&self) -> &str {
+        &self.label
+    }
+
+    // ── Granular overrides (single-row SQL, no full round-trip) ──────────────
+
+    fn update_dc(&self, entry: &DcEntry) -> io::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO dcs (dc_id, flags, addr, auth_key, first_salt, time_offset)
+             VALUES (?1, ?6, ?2, ?3, ?4, ?5)
+             ON CONFLICT(dc_id, flags) DO UPDATE SET
+               addr        = excluded.addr,
+               auth_key    = excluded.auth_key,
+               first_salt  = excluded.first_salt,
+               time_offset = excluded.time_offset",
+            rusqlite::params![
+                entry.dc_id,
+                entry.addr,
+                entry.auth_key.as_ref().map(|k| k.as_ref()),
+                entry.first_salt,
+                entry.time_offset,
+                entry.flags.0,
+            ],
+        )
+        .map(|_| ())
+        .map_err(Self::map_err)
+    }
+
+    fn set_home_dc(&self, dc_id: i32) -> io::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES ('home_dc_id', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![dc_id],
+        )
+        .map(|_| ())
+        .map_err(Self::map_err)
+    }
+
+    fn apply_update_state(&self, update: UpdateStateChange) -> io::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        match update {
+            UpdateStateChange::All(snap) => {
+                conn.execute(
+                    "INSERT INTO update_state (id, pts, qts, date, seq) VALUES (1,?1,?2,?3,?4)
+                     ON CONFLICT(id) DO UPDATE SET
+                       pts=excluded.pts, qts=excluded.qts,
+                       date=excluded.date, seq=excluded.seq",
+                    rusqlite::params![snap.pts, snap.qts, snap.date, snap.seq],
+                )
+                .map_err(Self::map_err)?;
+                conn.execute("DELETE FROM channel_pts", [])
+                    .map_err(Self::map_err)?;
+                for &(cid, cpts) in &snap.channels {
+                    conn.execute(
+                        "INSERT INTO channel_pts (channel_id, pts) VALUES (?1, ?2)",
+                        rusqlite::params![cid, cpts],
+                    )
+                    .map_err(Self::map_err)?;
+                }
+                Ok(())
+            }
+            UpdateStateChange::Primary { pts, date, seq } => conn
+                .execute(
+                    "INSERT INTO update_state (id, pts, qts, date, seq) VALUES (1,?1,0,?2,?3)
+                     ON CONFLICT(id) DO UPDATE SET pts=excluded.pts, date=excluded.date,
+                     seq=excluded.seq",
+                    rusqlite::params![pts, date, seq],
+                )
+                .map(|_| ())
+                .map_err(Self::map_err),
+            UpdateStateChange::Secondary { qts } => conn
+                .execute(
+                    "INSERT INTO update_state (id, pts, qts, date, seq) VALUES (1,0,?1,0,0)
+                     ON CONFLICT(id) DO UPDATE SET qts = excluded.qts",
+                    rusqlite::params![qts],
+                )
+                .map(|_| ())
+                .map_err(Self::map_err),
+            UpdateStateChange::Channel { id, pts } => conn
+                .execute(
+                    "INSERT INTO channel_pts (channel_id, pts) VALUES (?1, ?2)
+                     ON CONFLICT(channel_id) DO UPDATE SET pts = excluded.pts",
+                    rusqlite::params![id, pts],
+                )
+                .map(|_| ())
+                .map_err(Self::map_err),
+        }
+    }
+
+    fn cache_peer(&self, peer: &CachedPeer) -> io::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO peers (id, access_hash, is_channel) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET
+               access_hash = excluded.access_hash,
+               is_channel  = excluded.is_channel",
+            rusqlite::params![peer.id, peer.access_hash, peer.is_channel as i32],
+        )
+        .map(|_| ())
+        .map_err(Self::map_err)
+    }
+}
+
+// ─── LibSqlBackend ────────────────────────────────────────────────────────────
+
+/// libSQL-backed session (Turso / embedded replica / in-process).
+///
+/// Enabled with the `libsql-session` Cargo feature.
+///
+/// The libSQL API is async; since [`SessionBackend`] methods are sync we
+/// block via `tokio::runtime::Handle::current().block_on(…)`.  Always
+/// call from inside a Tokio runtime (i.e. the same runtime as the rest of
+/// `layer-client`).
+///
+/// # Connecting
+///
+/// | Mode              | Constructor                        |
+/// |-------------------|------------------------------------|
+/// | Local file        | `LibSqlBackend::open_local(path)`  |
+/// | In-memory         | `LibSqlBackend::in_memory()`       |
+/// | Turso remote      | `LibSqlBackend::open_remote(url, token)` |
+/// | Embedded replica  | `LibSqlBackend::open_replica(path, url, token)` |
+#[cfg(feature = "libsql-session")]
+pub struct LibSqlBackend {
+    conn: libsql::Connection,
+    label: String,
+}
+
+#[cfg(feature = "libsql-session")]
+impl LibSqlBackend {
+    const SCHEMA: &'static str = "
+        CREATE TABLE IF NOT EXISTS meta (
+            key   TEXT    PRIMARY KEY,
+            value INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS dcs (
+            dc_id       INTEGER NOT NULL,
+            flags       INTEGER NOT NULL DEFAULT 0,
+            addr        TEXT    NOT NULL,
+            auth_key    BLOB,
+            first_salt  INTEGER NOT NULL DEFAULT 0,
+            time_offset INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (dc_id, flags)
+        );
+        CREATE TABLE IF NOT EXISTS update_state (
+            id   INTEGER PRIMARY KEY CHECK (id = 1),
+            pts  INTEGER NOT NULL DEFAULT 0,
+            qts  INTEGER NOT NULL DEFAULT 0,
+            date INTEGER NOT NULL DEFAULT 0,
+            seq  INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS channel_pts (
+            channel_id INTEGER PRIMARY KEY,
+            pts        INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS peers (
+            id          INTEGER PRIMARY KEY,
+            access_hash INTEGER NOT NULL,
+            is_channel  INTEGER NOT NULL DEFAULT 0
+        );
+    ";
+
+    fn block<F, T>(fut: F) -> io::Result<T>
+    where
+        F: std::future::Future<Output = Result<T, libsql::Error>>,
+    {
+        tokio::runtime::Handle::current()
+            .block_on(fut)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+
+    async fn apply_schema(conn: &libsql::Connection) -> Result<(), libsql::Error> {
+        conn.execute_batch(Self::SCHEMA).await
+    }
+
+    /// Open a local file database.
+    pub fn open_local(path: impl Into<PathBuf>) -> io::Result<Self> {
+        let path = path.into();
+        let label = path.display().to_string();
+        let db = Self::block(async { libsql::Builder::new_local(path).build().await })?;
+        let conn = Self::block(async { db.connect() })
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Self::block(Self::apply_schema(&conn))?;
+        Ok(Self {
+            conn: std::sync::Arc::new(tokio::sync::Mutex::new(conn)),
+            label,
+        })
+    }
+
+    /// Open an in-process in-memory database (useful for tests).
+    pub fn in_memory() -> io::Result<Self> {
+        let db = Self::block(async { libsql::Builder::new_local(":memory:").build().await })?;
+        let conn = Self::block(async { db.connect() })
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Self::block(Self::apply_schema(&conn))?;
+        Ok(Self {
+            conn: std::sync::Arc::new(tokio::sync::Mutex::new(conn)),
+            label: ":memory:".into(),
+        })
+    }
+
+    /// Connect to a remote Turso database.
+    pub fn open_remote(url: impl Into<String>, auth_token: impl Into<String>) -> io::Result<Self> {
+        let url = url.into();
+        let label = url.clone();
+        let db = Self::block(async {
+            libsql::Builder::new_remote(url, auth_token.into())
+                .build()
+                .await
+        })?;
+        let conn = Self::block(async { db.connect() })
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Self::block(Self::apply_schema(&conn))?;
+        Ok(Self {
+            conn: std::sync::Arc::new(tokio::sync::Mutex::new(conn)),
+            label,
+        })
+    }
+
+    /// Open an embedded replica (local file + Turso remote sync).
+    pub fn open_replica(
+        path: impl Into<PathBuf>,
+        url: impl Into<String>,
+        auth_token: impl Into<String>,
+    ) -> io::Result<Self> {
+        let path = path.into();
+        let label = format!("{} (replica of {})", path.display(), url.into());
+        let db = Self::block(async {
+            libsql::Builder::new_remote_replica(path, url.into(), auth_token.into())
+                .build()
+                .await
+        })?;
+        let conn = Self::block(async { db.connect() })
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Self::block(Self::apply_schema(&conn))?;
+        Ok(Self {
+            conn: std::sync::Arc::new(tokio::sync::Mutex::new(conn)),
+            label,
+        })
+    }
+
+    async fn read_session_async(
+        conn: &libsql::Connection,
+    ) -> Result<PersistedSession, libsql::Error> {
+        use libsql::de;
+
+        // home_dc_id
+        let home_dc_id: i32 = conn
+            .query("SELECT value FROM meta WHERE key = 'home_dc_id'", ())
+            .await?
+            .next()
+            .await?
+            .map(|r| r.get::<i32>(0))
+            .transpose()?
+            .unwrap_or(0);
+
+        // dcs
+        let mut rows = conn
+            .query(
+                "SELECT dc_id, flags, addr, auth_key, first_salt, time_offset FROM dcs",
+                (),
+            )
+            .await?;
+        let mut dcs = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let dc_id: i32 = row.get(0)?;
+            let flags_raw: u8 = row.get::<i64>(1)? as u8;
+            let addr: String = row.get(2)?;
+            let key_blob: Option<Vec<u8>> = row.get(3)?;
+            let first_salt: i64 = row.get(4)?;
+            let time_offset: i32 = row.get(5)?;
+            let auth_key = match key_blob {
+                Some(b) if b.len() == 256 => {
+                    let mut k = [0u8; 256];
+                    k.copy_from_slice(&b);
+                    Some(k)
+                }
+                Some(b) => {
+                    return Err(libsql::Error::Misuse(format!(
+                        "auth_key blob must be 256 bytes, got {}",
+                        b.len()
+                    )));
+                }
+                None => None,
+            };
+            dcs.push(DcEntry {
+                dc_id,
+                addr,
+                auth_key,
+                first_salt,
+                time_offset,
+                flags: DcFlags(flags_raw),
+            });
+        }
+
+        // update_state
+        let mut us_row = conn
+            .query(
+                "SELECT pts, qts, date, seq FROM update_state WHERE id = 1",
+                (),
+            )
+            .await?;
+        let updates_state = if let Some(r) = us_row.next().await? {
+            UpdatesStateSnap {
+                pts: r.get(0)?,
+                qts: r.get(1)?,
+                date: r.get(2)?,
+                seq: r.get(3)?,
+                channels: vec![],
+            }
+        } else {
+            UpdatesStateSnap::default()
+        };
+
+        // channel_pts
+        let mut ch_rows = conn
+            .query("SELECT channel_id, pts FROM channel_pts", ())
+            .await?;
+        let mut channels = Vec::new();
+        while let Some(r) = ch_rows.next().await? {
+            channels.push((r.get::<i64>(0)?, r.get::<i32>(1)?));
+        }
+
+        // peers
+        let mut peer_rows = conn
+            .query("SELECT id, access_hash, is_channel FROM peers", ())
+            .await?;
+        let mut peers = Vec::new();
+        while let Some(r) = peer_rows.next().await? {
+            peers.push(CachedPeer {
+                id: r.get(0)?,
+                access_hash: r.get(1)?,
+                is_channel: r.get::<i32>(2)? != 0,
+            });
+        }
+
+        Ok(PersistedSession {
+            home_dc_id,
+            dcs,
+            updates_state: UpdatesStateSnap {
+                channels,
+                ..updates_state
+            },
+            peers,
+        })
+    }
+
+    async fn write_session_async(
+        conn: &libsql::Connection,
+        s: &PersistedSession,
+    ) -> Result<(), libsql::Error> {
+        conn.execute_batch("BEGIN IMMEDIATE").await?;
+
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES ('home_dc_id', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            libsql::params![s.home_dc_id],
+        )
+        .await?;
+
+        conn.execute("DELETE FROM dcs", ()).await?;
+        for d in &s.dcs {
+            conn.execute(
+                "INSERT INTO dcs (dc_id, flags, addr, auth_key, first_salt, time_offset)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                libsql::params![
+                    d.dc_id,
+                    d.flags.0 as i64,
+                    d.addr.clone(),
+                    d.auth_key.map(|k| k.to_vec()),
+                    d.first_salt,
+                    d.time_offset,
+                ],
+            )
+            .await?;
+        }
+
+        let us = &s.updates_state;
+        conn.execute(
+            "INSERT INTO update_state (id, pts, qts, date, seq) VALUES (1,?1,?2,?3,?4)
+             ON CONFLICT(id) DO UPDATE SET pts=excluded.pts,qts=excluded.qts,
+             date=excluded.date,seq=excluded.seq",
+            libsql::params![us.pts, us.qts, us.date, us.seq],
+        )
+        .await?;
+
+        conn.execute("DELETE FROM channel_pts", ()).await?;
+        for &(cid, cpts) in &us.channels {
+            conn.execute(
+                "INSERT INTO channel_pts (channel_id, pts) VALUES (?1,?2)",
+                libsql::params![cid, cpts],
+            )
+            .await?;
+        }
+
+        conn.execute("DELETE FROM peers", ()).await?;
+        for p in &s.peers {
+            conn.execute(
+                "INSERT INTO peers (id, access_hash, is_channel) VALUES (?1,?2,?3)",
+                libsql::params![p.id, p.access_hash, p.is_channel as i32],
+            )
+            .await?;
+        }
+
+        conn.execute_batch("COMMIT").await
+    }
+}
+
+#[cfg(feature = "libsql-session")]
+impl SessionBackend for LibSqlBackend {
+    fn save(&self, session: &PersistedSession) -> io::Result<()> {
+        let conn = self.conn.clone();
+        let session = session.clone();
+        Self::block(async move {
+            let conn = conn.lock().await;
+            Self::write_session_async(&conn, session).await
+        })
+    }
+
+    fn load(&self) -> io::Result<Option<PersistedSession>> {
+        let conn = self.conn.clone();
+        let count: i64 = Self::block(async move {
+            let conn = conn.lock().await;
+            let mut rows = conn.query("SELECT COUNT(*) FROM meta", ()).await?;
+            Ok::<i64, libsql::Error>(rows.next().await?.and_then(|r| r.get(0).ok()).unwrap_or(0))
+        })?;
+        if count == 0 {
+            return Ok(None);
+        }
+        let conn = self.conn.clone();
+        Self::block(async move {
+            let conn = conn.lock().await;
+            Self::read_session_async(&conn).await
+        })
+        .map(Some)
+    }
+
+    fn delete(&self) -> io::Result<()> {
+        let conn = self.conn.clone();
+        Self::block(async move {
+            let conn = conn.lock().await;
+            conn.execute_batch(
+                "BEGIN IMMEDIATE;
+                 DELETE FROM meta;
+                 DELETE FROM dcs;
+                 DELETE FROM update_state;
+                 DELETE FROM channel_pts;
+                 DELETE FROM peers;
+                 COMMIT;",
+            )
+            .await
+        })
+    }
+
+    fn name(&self) -> &str {
+        &self.label
+    }
+
+    // ── Granular overrides ───────────────────────────────────────────────────
+
+    fn update_dc(&self, entry: &DcEntry) -> io::Result<()> {
+        let conn = self.conn.clone();
+        let (dc_id, addr, key, salt, off, flags) = (
+            entry.dc_id,
+            entry.addr.clone(),
+            entry.auth_key.map(|k| k.to_vec()),
+            entry.first_salt,
+            entry.time_offset,
+            entry.flags.0 as i64,
+        );
+        Self::block(async move {
+            let conn = conn.lock().await;
+            conn.execute(
+                "INSERT INTO dcs (dc_id, flags, addr, auth_key, first_salt, time_offset)
+                 VALUES (?1,?6,?2,?3,?4,?5)
+                 ON CONFLICT(dc_id, flags) DO UPDATE SET
+                   addr=excluded.addr, auth_key=excluded.auth_key,
+                   first_salt=excluded.first_salt, time_offset=excluded.time_offset",
+                libsql::params![dc_id, addr, key, salt, off, flags],
+            )
+            .await
+            .map(|_| ())
+        })
+    }
+
+    fn set_home_dc(&self, dc_id: i32) -> io::Result<()> {
+        let conn = self.conn.clone();
+        Self::block(async move {
+            let conn = conn.lock().await;
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('home_dc_id',?1)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                libsql::params![dc_id],
+            )
+            .await
+            .map(|_| ())
+        })
+    }
+
+    fn apply_update_state(&self, update: UpdateStateChange) -> io::Result<()> {
+        let conn = self.conn.clone();
+        Self::block(async move {
+            let conn = conn.lock().await;
+            match update {
+                UpdateStateChange::All(snap) => {
+                    conn.execute(
+                        "INSERT INTO update_state (id,pts,qts,date,seq) VALUES (1,?1,?2,?3,?4)
+                         ON CONFLICT(id) DO UPDATE SET pts=excluded.pts,qts=excluded.qts,
+                         date=excluded.date,seq=excluded.seq",
+                        libsql::params![snap.pts, snap.qts, snap.date, snap.seq],
+                    )
+                    .await?;
+                    conn.execute("DELETE FROM channel_pts", ()).await?;
+                    for &(cid, cpts) in &snap.channels {
+                        conn.execute(
+                            "INSERT INTO channel_pts (channel_id,pts) VALUES (?1,?2)",
+                            libsql::params![cid, cpts],
+                        )
+                        .await?;
+                    }
+                    Ok(())
+                }
+                UpdateStateChange::Primary { pts, date, seq } => conn
+                    .execute(
+                        "INSERT INTO update_state (id,pts,qts,date,seq) VALUES (1,?1,0,?2,?3)
+                         ON CONFLICT(id) DO UPDATE SET pts=excluded.pts,date=excluded.date,
+                         seq=excluded.seq",
+                        libsql::params![pts, date, seq],
+                    )
+                    .await
+                    .map(|_| ()),
+                UpdateStateChange::Secondary { qts } => conn
+                    .execute(
+                        "INSERT INTO update_state (id,pts,qts,date,seq) VALUES (1,0,?1,0,0)
+                         ON CONFLICT(id) DO UPDATE SET qts=excluded.qts",
+                        libsql::params![qts],
+                    )
+                    .await
+                    .map(|_| ()),
+                UpdateStateChange::Channel { id, pts } => conn
+                    .execute(
+                        "INSERT INTO channel_pts (channel_id,pts) VALUES (?1,?2)
+                         ON CONFLICT(channel_id) DO UPDATE SET pts=excluded.pts",
+                        libsql::params![id, pts],
+                    )
+                    .await
+                    .map(|_| ()),
+            }
+        })
+    }
+
+    fn cache_peer(&self, peer: &CachedPeer) -> io::Result<()> {
+        let conn = self.conn.clone();
+        let (id, hash, is_ch) = (peer.id, peer.access_hash, peer.is_channel as i32);
+        Self::block(async move {
+            let conn = conn.lock().await;
+            conn.execute(
+                "INSERT INTO peers (id,access_hash,is_channel) VALUES (?1,?2,?3)
+                 ON CONFLICT(id) DO UPDATE SET
+                   access_hash=excluded.access_hash,
+                   is_channel=excluded.is_channel",
+                libsql::params![id, hash, is_ch],
+            )
+            .await
+            .map(|_| ())
+        })
     }
 }

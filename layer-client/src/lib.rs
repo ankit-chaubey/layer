@@ -54,6 +54,7 @@ pub mod reactions;
 mod pts_tests;
 
 pub mod dc_migration;
+pub mod proxy;
 
 pub use builder::{BuilderError, ClientBuilder};
 pub use errors::{InvocationError, LoginToken, PasswordToken, RpcError, SignInError};
@@ -61,10 +62,12 @@ pub use keyboard::{Button, InlineKeyboard, ReplyKeyboard};
 pub use media::{Document, DownloadIter, Downloadable, Photo, Sticker, UploadedFile};
 pub use participants::{Participant, ProfilePhotoIter};
 pub use peer_ref::PeerRef;
+pub use proxy::{MtProxyConfig, parse_proxy_link};
 pub use restart::{ConnectionRestartPolicy, FixedInterval, NeverRestart};
 use retry::RetryLoop;
 pub use retry::{AutoSleep, NoRetries, RetryContext, RetryPolicy};
 pub use search::{GlobalSearchBuilder, SearchBuilder};
+pub use session::{DcEntry, DcFlags};
 #[cfg(feature = "libsql-session")]
 #[cfg_attr(docsrs, doc(cfg(feature = "libsql-session")))]
 pub use session_backend::LibSqlBackend;
@@ -72,7 +75,7 @@ pub use session_backend::LibSqlBackend;
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlite-session")))]
 pub use session_backend::SqliteBackend;
 pub use session_backend::{
-    BinaryFileBackend, InMemoryBackend, SessionBackend, StringSessionBackend,
+    BinaryFileBackend, InMemoryBackend, SessionBackend, StringSessionBackend, UpdateStateChange,
 };
 pub use socks5::Socks5Config;
 pub use types::ChannelKind;
@@ -94,7 +97,7 @@ use std::time::Duration;
 
 use layer_mtproto::{EncryptedSession, Session, authentication as auth};
 use layer_tl_types::{Cursor, Deserializable, RemoteCall};
-use session::{DcEntry, PersistedSession};
+use session::PersistedSession;
 use socket2::TcpKeepalive;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -428,10 +431,12 @@ impl From<String> for InputMessage {
 ///
 /// | Variant | Init bytes | Notes |
 /// |---------|-----------|-------|
-/// | `Abridged` | `0xef` | Default, smallest overhead |
+/// | `Abridged` | `0xef` | Smallest overhead |
 /// | `Intermediate` | `0xeeeeeeee` | Better proxy compat |
 /// | `Full` | none | Adds seqno + CRC32 |
 /// | `Obfuscated` | random 64B | Bypasses DPI / MTProxy: **default** |
+/// | `PaddedIntermediate` | random 64B (`0xDDDDDDDD` tag) | Obfuscated padded intermediate required for `0xDD` MTProxy secrets |
+/// | `FakeTls` | TLS 1.3 ClientHello | Most DPI-resistant; required for `0xEE` MTProxy secrets |
 #[derive(Clone, Debug)]
 pub enum TransportKind {
     /// MTProto [Abridged] transport: length prefix is 1 or 4 bytes.
@@ -454,6 +459,19 @@ pub enum TransportKind {
     ///
     /// [Obfuscated2]: https://core.telegram.org/mtproto/mtproto-transports#obfuscated-2
     Obfuscated { secret: Option<[u8; 16]> },
+    /// Obfuscated PaddedIntermediate transport (`0xDDDDDDDD` tag in nonce).
+    ///
+    /// Same AES-256-CTR obfuscation as `Obfuscated`, but uses Intermediate
+    /// framing and appends 0–15 random padding bytes to each frame so that
+    /// all frames are not 4-byte multiples.  Required for `0xDD` MTProxy secrets.
+    PaddedIntermediate { secret: Option<[u8; 16]> },
+    /// FakeTLS transport (`0xEE` prefix in MTProxy secret).
+    ///
+    /// Wraps all MTProto data in fake TLS 1.3 records.  The ClientHello
+    /// embeds an HMAC-SHA256 digest of the secret so the MTProxy server
+    /// can validate ownership without decrypting real TLS.  Most DPI-resistant
+    /// mode; required for `0xEE` MTProxy secrets.
+    FakeTls { secret: [u8; 16], domain: String },
 }
 
 impl Default for TransportKind {
@@ -497,6 +515,10 @@ pub struct Config {
     pub retry_policy: Arc<dyn RetryPolicy>,
     /// Optional SOCKS5 proxy: every Telegram connection is tunnelled through it.
     pub socks5: Option<crate::socks5::Socks5Config>,
+    /// Optional MTProxy: if set, all TCP connections go to the proxy host:port
+    /// instead of the Telegram DC address.  The `transport` field is overridden
+    /// by `mtproxy.transport` automatically.
+    pub mtproxy: Option<crate::proxy::MtProxyConfig>,
     /// Allow IPv6 DC addresses when populating the DC table (default: false).
     pub allow_ipv6: bool,
     /// Which MTProto transport framing to use (default: Abridged).
@@ -541,6 +563,7 @@ impl Default for Config {
             dc_addr: None,
             retry_policy: Arc::new(AutoSleep::default()),
             socks5: None,
+            mtproxy: None,
             allow_ipv6: false,
             transport: TransportKind::Obfuscated { secret: None },
             session_backend: Arc::new(crate::session_backend::BinaryFileBackend::new(
@@ -670,6 +693,8 @@ struct ClientInner {
     restart_policy: Arc<dyn ConnectionRestartPolicy>,
     home_dc_id: Mutex<i32>,
     dc_options: Mutex<HashMap<i32, DcEntry>>,
+    /// Media-only DC options (ipv6/media_only/cdn filtered separately from API DCs).
+    media_dc_options: Mutex<HashMap<i32, DcEntry>>,
     pub peer_cache: RwLock<PeerCache>,
     pub pts_state: Mutex<pts::PtsState>,
     /// Buffer for updates received during a possible-gap window.
@@ -678,6 +703,7 @@ struct ClientInner {
     api_hash: String,
     retry_policy: Arc<dyn RetryPolicy>,
     socks5: Option<crate::socks5::Socks5Config>,
+    mtproxy: Option<crate::proxy::MtProxyConfig>,
     allow_ipv6: bool,
     transport: TransportKind,
     session_backend: Arc<dyn crate::session_backend::SessionBackend>,
@@ -746,9 +772,10 @@ impl Client {
 
         // Load or fresh-connect
         let socks5 = config.socks5.clone();
+        let mtproxy = config.mtproxy.clone();
         let transport = config.transport.clone();
 
-        let (conn, home_dc_id, dc_opts, loaded_session) =
+        let (conn, home_dc_id, dc_opts, media_dc_opts, loaded_session) =
             match config.session_backend.load().map_err(InvocationError::Io)? {
                 Some(s) => {
                     if let Some(dc) = s.dcs.iter().find(|d| d.dc_id == s.home_dc_id) {
@@ -761,6 +788,7 @@ impl Client {
                                 dc.time_offset,
                                 socks5.as_ref(),
                                 &transport,
+                                s.home_dc_id as i16,
                             )
                             .await
                             {
@@ -776,14 +804,22 @@ impl Client {
                                                     auth_key: None,
                                                     first_salt: 0,
                                                     time_offset: 0,
+                                                    flags: DcFlags::NONE,
                                                 },
                                             )
                                         })
                                         .collect::<HashMap<_, _>>();
+                                    let mut media_opts: HashMap<i32, DcEntry> = HashMap::new();
                                     for d in &s.dcs {
-                                        opts.insert(d.dc_id, d.clone());
+                                        if d.flags.contains(DcFlags::MEDIA_ONLY)
+                                            || d.flags.contains(DcFlags::CDN)
+                                        {
+                                            media_opts.insert(d.dc_id, d.clone());
+                                        } else {
+                                            opts.insert(d.dc_id, d.clone());
+                                        }
                                     }
-                                    (c, s.home_dc_id, opts, Some(s))
+                                    (c, s.home_dc_id, opts, media_opts, Some(s))
                                 }
                                 Err(e) => {
                                     // never call fresh_connect on a TCP blip during
@@ -800,18 +836,21 @@ impl Client {
                             }
                         } else {
                             let (c, dc, opts) =
-                                Self::fresh_connect(socks5.as_ref(), &transport).await?;
-                            (c, dc, opts, None)
+                                Self::fresh_connect(socks5.as_ref(), mtproxy.as_ref(), &transport)
+                                    .await?;
+                            (c, dc, opts, HashMap::new(), None)
                         }
                     } else {
                         let (c, dc, opts) =
-                            Self::fresh_connect(socks5.as_ref(), &transport).await?;
-                        (c, dc, opts, None)
+                            Self::fresh_connect(socks5.as_ref(), mtproxy.as_ref(), &transport)
+                                .await?;
+                        (c, dc, opts, HashMap::new(), None)
                     }
                 }
                 None => {
-                    let (c, dc, opts) = Self::fresh_connect(socks5.as_ref(), &transport).await?;
-                    (c, dc, opts, None)
+                    let (c, dc, opts) =
+                        Self::fresh_connect(socks5.as_ref(), mtproxy.as_ref(), &transport).await?;
+                    (c, dc, opts, HashMap::new(), None)
                 }
             };
 
@@ -855,6 +894,7 @@ impl Client {
             restart_policy,
             home_dc_id: Mutex::new(home_dc_id),
             dc_options: Mutex::new(dc_opts),
+            media_dc_options: Mutex::new(media_dc_opts),
             peer_cache: RwLock::new(PeerCache::default()),
             pts_state: Mutex::new(pts::PtsState::default()),
             possible_gap: Mutex::new(pts::PossibleGapBuffer::new()),
@@ -862,6 +902,7 @@ impl Client {
             api_hash: config.api_hash,
             retry_policy: config.retry_policy,
             socks5: config.socks5,
+            mtproxy: config.mtproxy,
             allow_ipv6: config.allow_ipv6,
             transport: config.transport,
             session_backend: config.session_backend,
@@ -953,6 +994,7 @@ impl Client {
                 client.inner.pending.lock().await.clear();
 
                 let socks5_r = client.inner.socks5.clone();
+                let mtproxy_r = client.inner.mtproxy.clone();
                 let transport_r = client.inner.transport.clone();
 
                 // reconnect to the HOME DC with fresh DH, not DC2.
@@ -967,8 +1009,14 @@ impl Client {
                             crate::dc_migration::fallback_dc_addr(home_dc_id_r).to_string()
                         })
                 };
-                let new_conn =
-                    Connection::connect_raw(&addr_r, socks5_r.as_ref(), &transport_r).await?;
+                let new_conn = Connection::connect_raw(
+                    &addr_r,
+                    socks5_r.as_ref(),
+                    mtproxy_r.as_ref(),
+                    &transport_r,
+                    home_dc_id_r as i16,
+                )
+                .await?;
 
                 // Split first so we can read the new key/salt from the writer.
                 let (new_writer, new_wh, new_read, new_fk) = new_conn.into_writer();
@@ -1145,12 +1193,18 @@ impl Client {
 
     async fn fresh_connect(
         socks5: Option<&crate::socks5::Socks5Config>,
+        mtproxy: Option<&crate::proxy::MtProxyConfig>,
         transport: &TransportKind,
     ) -> Result<(Connection, i32, HashMap<i32, DcEntry>), InvocationError> {
         tracing::debug!("[layer] Fresh connect to DC2 …");
-        let conn =
-            Connection::connect_raw(crate::dc_migration::fallback_dc_addr(2), socks5, transport)
-                .await?;
+        let conn = Connection::connect_raw(
+            crate::dc_migration::fallback_dc_addr(2),
+            socks5,
+            mtproxy,
+            transport,
+            2i16,
+        )
+        .await?;
         let opts = session::default_dc_addresses()
             .into_iter()
             .map(|(id, addr)| {
@@ -1162,6 +1216,7 @@ impl Client {
                         auth_key: None,
                         first_salt: 0,
                         time_offset: 0,
+                        flags: DcFlags::NONE,
                     },
                 )
             })
@@ -1203,8 +1258,16 @@ impl Client {
                 } else {
                     e.time_offset
                 },
+                flags: e.flags,
             })
             .collect();
+        // Also persist media DCs so they survive restart.
+        {
+            let media_opts = self.inner.media_dc_options.lock().await;
+            for e in media_opts.values() {
+                dcs.push(e.clone());
+            }
+        }
         self.inner.dc_pool.lock().await.collect_keys(&mut dcs);
 
         let pts_snap = {
@@ -1265,6 +1328,31 @@ impl Client {
     /// without re-authenticating.
     pub async fn export_session_string(&self) -> Result<String, InvocationError> {
         Ok(self.build_persisted_session().await.to_string())
+    }
+
+    /// Return the media-only DC address for the given DC id, if known.
+    ///
+    /// Media DCs (`media_only = true` in `DcOption`) are preferred for file
+    /// uploads and downloads because they are not subject to the API rate
+    /// limits applied to the main DC connection.
+    pub async fn media_dc_addr(&self, dc_id: i32) -> Option<String> {
+        self.inner
+            .media_dc_options
+            .lock()
+            .await
+            .get(&dc_id)
+            .map(|e| e.addr.clone())
+    }
+
+    /// Return the best media DC address for the current home DC (falls back to
+    /// any known media DC if no home-DC media entry exists).
+    pub async fn best_media_dc_addr(&self) -> Option<(i32, String)> {
+        let home = *self.inner.home_dc_id.lock().await;
+        let media = self.inner.media_dc_options.lock().await;
+        media
+            .get(&home)
+            .map(|e| (home, e.addr.clone()))
+            .or_else(|| media.iter().next().map(|(&id, e)| (id, e.addr.clone())))
     }
 
     /// Returns `true` if the client is already authorized.
@@ -3248,6 +3336,7 @@ impl Client {
             }
         };
         let socks5 = self.inner.socks5.clone();
+        let mtproxy = self.inner.mtproxy.clone();
         let transport = self.inner.transport.clone();
 
         let new_conn = if let Some(key) = saved_key {
@@ -3259,21 +3348,24 @@ impl Client {
                 time_offset,
                 socks5.as_ref(),
                 &transport,
+                home_dc_id as i16,
             )
             .await
             {
                 Ok(c) => c,
                 Err(e) => {
-                    // a TCP failure during reconnect does NOT warrant a
-                    // fresh DH handshake (which generates a new auth key and
-                    // orphans the old one still registered on Telegram's servers).
-                    // Return the error: do_reconnect_loop will back off and retry
-                    // with the same saved key once the network recovers.
                     return Err(e);
                 }
             }
         } else {
-            Connection::connect_raw(&addr, socks5.as_ref(), &transport).await?
+            Connection::connect_raw(
+                &addr,
+                socks5.as_ref(),
+                mtproxy.as_ref(),
+                &transport,
+                home_dc_id as i16,
+            )
+            .await?
         };
 
         let (new_writer, new_wh, new_read, new_fk) = new_conn.into_writer();
@@ -4886,7 +4978,7 @@ impl Client {
                     self.migrate_to(e.migrate_dc_id().unwrap()).await?;
                 }
                 // AUTH_KEY_UNREGISTERED (401): the reader loop already handles fresh DH +
-                // reconnect on its own.  We must NOT call shutdown()/network_hint here —
+                // reconnect on its own.  We must NOT call shutdown()/network_hint here
                 // that would race with the reader and destroy the new key it just built.
                 // Instead, log the attempt, surface as ConnectionReset so RetryLoop backs
                 // off, and let the reader finish the reconnect before the next retry fires.
@@ -5086,23 +5178,53 @@ impl Client {
         if let Ok(tl::enums::Config::Config(cfg)) = tl::enums::Config::deserialize(&mut cur) {
             let allow_ipv6 = self.inner.allow_ipv6;
             let mut opts = self.inner.dc_options.lock().await;
+            let mut media_opts = self.inner.media_dc_options.lock().await;
             for opt in &cfg.dc_options {
                 let tl::enums::DcOption::DcOption(o) = opt;
-                if o.media_only || o.cdn || o.tcpo_only {
-                    continue;
-                }
                 if o.ipv6 && !allow_ipv6 {
                     continue;
                 }
                 let addr = format!("{}:{}", o.ip_address, o.port);
-                let entry = opts.entry(o.id).or_insert_with(|| DcEntry {
-                    dc_id: o.id,
-                    addr: addr.clone(),
-                    auth_key: None,
-                    first_salt: 0,
-                    time_offset: 0,
-                });
-                entry.addr = addr;
+                let mut flags = DcFlags::NONE;
+                if o.ipv6 {
+                    flags.set(DcFlags::IPV6);
+                }
+                if o.media_only {
+                    flags.set(DcFlags::MEDIA_ONLY);
+                }
+                if o.tcpo_only {
+                    flags.set(DcFlags::TCPO_ONLY);
+                }
+                if o.cdn {
+                    flags.set(DcFlags::CDN);
+                }
+                if o.r#static {
+                    flags.set(DcFlags::STATIC);
+                }
+
+                if o.media_only || o.cdn {
+                    let e = media_opts.entry(o.id).or_insert_with(|| DcEntry {
+                        dc_id: o.id,
+                        addr: addr.clone(),
+                        auth_key: None,
+                        first_salt: 0,
+                        time_offset: 0,
+                        flags,
+                    });
+                    e.addr = addr;
+                    e.flags = flags;
+                } else if !o.tcpo_only {
+                    let e = opts.entry(o.id).or_insert_with(|| DcEntry {
+                        dc_id: o.id,
+                        addr: addr.clone(),
+                        auth_key: None,
+                        first_salt: 0,
+                        time_offset: 0,
+                        flags,
+                    });
+                    e.addr = addr;
+                    e.flags = flags;
+                }
             }
             tracing::info!(
                 "[layer] initConnection ✓  ({} DCs, ipv6={})",
@@ -5130,11 +5252,28 @@ impl Client {
         };
 
         let socks5 = self.inner.socks5.clone();
+        let mtproxy = self.inner.mtproxy.clone();
         let transport = self.inner.transport.clone();
         let conn = if let Some(key) = saved_key {
-            Connection::connect_with_key(&addr, key, 0, 0, socks5.as_ref(), &transport).await?
+            Connection::connect_with_key(
+                &addr,
+                key,
+                0,
+                0,
+                socks5.as_ref(),
+                &transport,
+                new_dc_id as i16,
+            )
+            .await?
         } else {
-            Connection::connect_raw(&addr, socks5.as_ref(), &transport).await?
+            Connection::connect_raw(
+                &addr,
+                socks5.as_ref(),
+                mtproxy.as_ref(),
+                &transport,
+                new_dc_id as i16,
+            )
+            .await?
         };
 
         let new_key = conn.auth_key_bytes();
@@ -5146,6 +5285,7 @@ impl Client {
                 auth_key: None,
                 first_salt: 0,
                 time_offset: 0,
+                flags: DcFlags::NONE,
             });
             entry.auth_key = Some(new_key);
         }
@@ -5482,11 +5622,17 @@ impl Client {
                     0,
                     socks5.as_ref(),
                     &transport,
+                    dc_id as i16,
                 )
                 .await?
             } else {
-                let conn =
-                    dc_pool::DcConnection::connect_raw(&addr, socks5.as_ref(), &transport).await?;
+                let conn = dc_pool::DcConnection::connect_raw(
+                    &addr,
+                    socks5.as_ref(),
+                    &transport,
+                    dc_id as i16,
+                )
+                .await?;
                 // Export auth from home DC and import into worker DC
                 let home_dc_id = *self.inner.home_dc_id.lock().await;
                 if dc_id != home_dc_id
@@ -5806,12 +5952,19 @@ enum FrameKind {
     Intermediate,
     #[allow(dead_code)]
     Full {
-        send_seqno: u32,
-        recv_seqno: u32,
+        send_seqno: Arc<std::sync::atomic::AtomicU32>,
+        recv_seqno: Arc<std::sync::atomic::AtomicU32>,
     },
-    /// Obfuscated2 transport: AES-256-CTR over Abridged framing.
-    /// The Arc<Mutex<>> is cloned into both the writer and the reader task.
+    /// Obfuscated2 over Abridged framing.
     Obfuscated {
+        cipher: std::sync::Arc<tokio::sync::Mutex<layer_crypto::ObfuscatedCipher>>,
+    },
+    /// Obfuscated2 over Intermediate+padding framing (`0xDD` MTProxy).
+    PaddedIntermediate {
+        cipher: std::sync::Arc<tokio::sync::Mutex<layer_crypto::ObfuscatedCipher>>,
+    },
+    /// FakeTLS framing (`0xEE` MTProxy).
+    FakeTls {
         cipher: std::sync::Arc<tokio::sync::Mutex<layer_crypto::ObfuscatedCipher>>,
     },
 }
@@ -5951,28 +6104,15 @@ impl Connection {
         addr: &str,
         socks5: Option<&crate::socks5::Socks5Config>,
         transport: &TransportKind,
+        dc_id: i16,
     ) -> Result<(TcpStream, FrameKind), InvocationError> {
         let stream = match socks5 {
             Some(proxy) => proxy.connect(addr).await?,
             None => {
-                // Let tokio do the TCP handshake properly (await until connected),
-                // then apply socket2 keepalive options to the live socket.
                 let stream = TcpStream::connect(addr)
                     .await
                     .map_err(InvocationError::Io)?;
-
-                // TCP_NODELAY: disable Nagle's algorithm so small frames
-                // (MsgsAck, Ping, etc.) are sent immediately without waiting
-                // for a previous write to be ACK'd. Without this, a standalone
-                // MsgsAck followed by the app's Ping RPC causes Nagle to buffer
-                // the Ping until the ack is received (~1 extra RTT ≈ 80 ms).
                 stream.set_nodelay(true).ok();
-
-                // TCP-level keepalive: OS sends probes independently of our
-                // application-level pings. Catches cases where the network
-                // disappears without a TCP RST (e.g. mobile data switching,
-                // NAT table expiry) faster than a 15 s application ping would.
-                // We use socket2 only for the setsockopt call, not for connect.
                 {
                     let sock = socket2::SockRef::from(&stream);
                     let keepalive = TcpKeepalive::new()
@@ -5985,13 +6125,24 @@ impl Connection {
                 stream
             }
         };
-        Self::apply_transport_init(stream, transport).await
+        Self::apply_transport_init(stream, transport, dc_id).await
     }
 
-    /// Send the transport init bytes and return the stream + FrameKind.
+    /// Open a stream routed through an MTProxy (connects to proxy host:port,
+    /// not to the Telegram DC address).
+    async fn open_stream_mtproxy(
+        mtproxy: &crate::proxy::MtProxyConfig,
+        dc_id: i16,
+    ) -> Result<(TcpStream, FrameKind), InvocationError> {
+        let stream = mtproxy.connect().await?;
+        stream.set_nodelay(true).ok();
+        Self::apply_transport_init(stream, &mtproxy.transport, dc_id).await
+    }
+
     async fn apply_transport_init(
         mut stream: TcpStream,
         transport: &TransportKind,
+        dc_id: i16,
     ) -> Result<(TcpStream, FrameKind), InvocationError> {
         match transport {
             TransportKind::Abridged => {
@@ -6003,57 +6154,237 @@ impl Connection {
                 Ok((stream, FrameKind::Intermediate))
             }
             TransportKind::Full => {
-                // Full transport has no init byte
+                // Full transport has no init byte.
                 Ok((
                     stream,
                     FrameKind::Full {
-                        send_seqno: 0,
-                        recv_seqno: 0,
+                        send_seqno: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+                        recv_seqno: Arc::new(std::sync::atomic::AtomicU32::new(0)),
                     },
                 ))
             }
             TransportKind::Obfuscated { secret } => {
-                // Correct Obfuscated2 handshake (all 3 bugs fixed)
-                //
-                // use AES-256-CTR via layer_crypto::ObfuscatedCipher,
-                //        not the broken SHA-256 XOR ObfCipher.
-                //
-                // ObfuscatedCipher::new reverses the WHOLE 64-byte
-                //        nonce buffer to derive the RX key, not sub-slices.
-                //
-                // encrypt ALL 64 bytes so the cipher is at position 64
-                //        after the handshake; the cipher is STORED and applied
-                //        to every byte sent/received afterwards.
-                //
-                // Proxy secret is reserved for future MTProxy support.
-                let _ = secret; // not yet used
+                use sha2::Digest;
 
+                // Random 64-byte nonce: retry until it passes the reserved-pattern
+                // check (mirrors tDesktop isGoodStartNonce). Without this, the nonce
+                // could look like a plain HTTP request or another MTProto framing
+                // tag to a proxy or DPI filter, causing the connection to be reset.
                 let mut nonce = [0u8; 64];
-                getrandom::getrandom(&mut nonce)
-                    .map_err(|_| InvocationError::Deserialize("getrandom".into()))?;
+                loop {
+                    getrandom::getrandom(&mut nonce)
+                        .map_err(|_| InvocationError::Deserialize("getrandom".into()))?;
+                    let first = u32::from_le_bytes(nonce[0..4].try_into().unwrap());
+                    let second = u32::from_le_bytes(nonce[4..8].try_into().unwrap());
+                    let bad = nonce[0] == 0xEF
+                        || first == 0x44414548 // HEAD
+                        || first == 0x54534F50 // POST
+                        || first == 0x20544547 // GET
+                        || first == 0xEEEEEEEE
+                        || first == 0xDDDDDDDD
+                        || first == 0x02010316
+                        || second == 0x00000000;
+                    if !bad {
+                        break;
+                    }
+                }
 
-                // Stamp Abridged protocol tag at nonce[56..60].
+                // Key derivation from nonce[8..56]:
+                //   TX: key=nonce[8..40]  iv=nonce[40..56]
+                //   RX: key=rev[0..32]    iv=rev[32..48]   (rev = nonce[8..56] reversed)
+                // When an MTProxy secret is present, each 32-byte key becomes
+                // SHA-256(raw_key_slice || secret) tDesktop Version1::prepareKey.
+                let tx_raw: [u8; 32] = nonce[8..40].try_into().unwrap();
+                let tx_iv: [u8; 16] = nonce[40..56].try_into().unwrap();
+                let mut rev48 = nonce[8..56].to_vec();
+                rev48.reverse();
+                let rx_raw: [u8; 32] = rev48[0..32].try_into().unwrap();
+                let rx_iv: [u8; 16] = rev48[32..48].try_into().unwrap();
+
+                let (tx_key, rx_key): ([u8; 32], [u8; 32]) = if let Some(s) = secret {
+                    let mut h = sha2::Sha256::new();
+                    h.update(tx_raw);
+                    h.update(s.as_ref());
+                    let tx: [u8; 32] = h.finalize().into();
+
+                    let mut h = sha2::Sha256::new();
+                    h.update(rx_raw);
+                    h.update(s.as_ref());
+                    let rx: [u8; 32] = h.finalize().into();
+                    (tx, rx)
+                } else {
+                    (tx_raw, rx_raw)
+                };
+
+                // Stamp protocol id (Abridged = 0xEFEFEFEF) at nonce[56..60]
+                // and DC id as little-endian i16 at nonce[60..62].
                 nonce[56] = 0xef;
                 nonce[57] = 0xef;
                 nonce[58] = 0xef;
                 nonce[59] = 0xef;
+                let dc_bytes = dc_id.to_le_bytes();
+                nonce[60] = dc_bytes[0];
+                nonce[61] = dc_bytes[1];
 
-                let mut cipher = layer_crypto::ObfuscatedCipher::new(&nonce);
+                // Encrypt nonce[56..64] in-place using the TX cipher advanced
+                // past the first 56 bytes (which are sent as plaintext).
+                //
+                // IMPORTANT: we must use the *same* cipher instance for both the
+                // nonce tail encryption AND all subsequent TX data.  tDesktop uses a
+                // single continuous AES-CTR stream after encrypting the full 64-byte
+                // nonce the TX position is at byte 64.  Using a separate instance here
+                // and storing a fresh-at-0 cipher was the dual-instance bug: the stored
+                // cipher would re-encrypt from byte 0 instead of continuing from 64.
+                let mut cipher =
+                    layer_crypto::ObfuscatedCipher::from_keys(&tx_key, &tx_iv, &rx_key, &rx_iv);
+                // Advance TX past nonce[0..56] (sent as plaintext, not encrypted).
+                let mut skip = [0u8; 56];
+                cipher.encrypt(&mut skip);
+                // Encrypt nonce[56..64] in-place; cipher TX is now at position 64.
+                cipher.encrypt(&mut nonce[56..64]);
 
-                // Encrypt the full nonce; borrow only [56..64] from the result.
-                // TX cipher is now at position 64.
-                let mut encrypted = nonce;
-                cipher.encrypt(&mut encrypted);
-                nonce[56..64].copy_from_slice(&encrypted[56..64]);
-
-                // Send: nonce[0..56] plaintext + encrypted[56..64]
                 stream.write_all(&nonce).await?;
 
-                // Wrap cipher in Arc<Mutex<>> so it can be shared between the
-                // ConnectionWriter (encrypt/TX) and the reader task (decrypt/RX).
                 let cipher_arc = std::sync::Arc::new(tokio::sync::Mutex::new(cipher));
-
                 Ok((stream, FrameKind::Obfuscated { cipher: cipher_arc }))
+            }
+            TransportKind::PaddedIntermediate { secret } => {
+                use sha2::Digest;
+                let mut nonce = [0u8; 64];
+                loop {
+                    getrandom::getrandom(&mut nonce)
+                        .map_err(|_| InvocationError::Deserialize("getrandom".into()))?;
+                    let first = u32::from_le_bytes(nonce[0..4].try_into().unwrap());
+                    let second = u32::from_le_bytes(nonce[4..8].try_into().unwrap());
+                    let bad = nonce[0] == 0xEF
+                        || first == 0x44414548
+                        || first == 0x54534F50
+                        || first == 0x20544547
+                        || first == 0xEEEEEEEE
+                        || first == 0xDDDDDDDD
+                        || first == 0x02010316
+                        || second == 0x00000000;
+                    if !bad {
+                        break;
+                    }
+                }
+                let tx_raw: [u8; 32] = nonce[8..40].try_into().unwrap();
+                let tx_iv: [u8; 16] = nonce[40..56].try_into().unwrap();
+                let mut rev48 = nonce[8..56].to_vec();
+                rev48.reverse();
+                let rx_raw: [u8; 32] = rev48[0..32].try_into().unwrap();
+                let rx_iv: [u8; 16] = rev48[32..48].try_into().unwrap();
+                let (tx_key, rx_key): ([u8; 32], [u8; 32]) = if let Some(s) = secret {
+                    let mut h = sha2::Sha256::new();
+                    h.update(tx_raw);
+                    h.update(s.as_ref());
+                    let tx: [u8; 32] = h.finalize().into();
+                    let mut h = sha2::Sha256::new();
+                    h.update(rx_raw);
+                    h.update(s.as_ref());
+                    let rx: [u8; 32] = h.finalize().into();
+                    (tx, rx)
+                } else {
+                    (tx_raw, rx_raw)
+                };
+                // PaddedIntermediate tag = 0xDDDDDDDD
+                nonce[56] = 0xdd;
+                nonce[57] = 0xdd;
+                nonce[58] = 0xdd;
+                nonce[59] = 0xdd;
+                let dc_bytes = dc_id.to_le_bytes();
+                nonce[60] = dc_bytes[0];
+                nonce[61] = dc_bytes[1];
+                let mut cipher =
+                    layer_crypto::ObfuscatedCipher::from_keys(&tx_key, &tx_iv, &rx_key, &rx_iv);
+                let mut skip = [0u8; 56];
+                cipher.encrypt(&mut skip);
+                cipher.encrypt(&mut nonce[56..64]);
+                stream.write_all(&nonce).await?;
+                let cipher_arc = std::sync::Arc::new(tokio::sync::Mutex::new(cipher));
+                Ok((stream, FrameKind::PaddedIntermediate { cipher: cipher_arc }))
+            }
+            TransportKind::FakeTls { secret, domain } => {
+                // Fake TLS 1.3 ClientHello with HMAC-SHA256 random field.
+                // After the handshake, data flows as TLS Application Data records
+                // over a shared Obfuscated2 cipher seeded from the secret+HMAC.
+                let domain_bytes = domain.as_bytes();
+                let mut session_id = [0u8; 32];
+                getrandom::getrandom(&mut session_id)
+                    .map_err(|_| InvocationError::Deserialize("getrandom".into()))?;
+
+                // Build ClientHello body (random placeholder = zeros)
+                let cipher_suites: &[u8] = &[0x00, 0x04, 0x13, 0x01, 0x13, 0x02];
+                let compression: &[u8] = &[0x01, 0x00];
+                let sni_name_len = domain_bytes.len() as u16;
+                let sni_list_len = sni_name_len + 3;
+                let sni_ext_len = sni_list_len + 2;
+                let mut sni_ext = Vec::new();
+                sni_ext.extend_from_slice(&[0x00, 0x00]);
+                sni_ext.extend_from_slice(&sni_ext_len.to_be_bytes());
+                sni_ext.extend_from_slice(&sni_list_len.to_be_bytes());
+                sni_ext.push(0x00);
+                sni_ext.extend_from_slice(&sni_name_len.to_be_bytes());
+                sni_ext.extend_from_slice(domain_bytes);
+                let sup_ver: &[u8] = &[0x00, 0x2b, 0x00, 0x03, 0x02, 0x03, 0x04];
+                let sup_grp: &[u8] = &[0x00, 0x0a, 0x00, 0x04, 0x00, 0x02, 0x00, 0x1d];
+                let sess_tick: &[u8] = &[0x00, 0x23, 0x00, 0x00];
+                let ext_body_len = sni_ext.len() + sup_ver.len() + sup_grp.len() + sess_tick.len();
+                let mut extensions = Vec::new();
+                extensions.extend_from_slice(&(ext_body_len as u16).to_be_bytes());
+                extensions.extend_from_slice(&sni_ext);
+                extensions.extend_from_slice(sup_ver);
+                extensions.extend_from_slice(sup_grp);
+                extensions.extend_from_slice(sess_tick);
+
+                let mut hello_body = Vec::new();
+                hello_body.extend_from_slice(&[0x03, 0x03]);
+                hello_body.extend_from_slice(&[0u8; 32]); // random placeholder
+                hello_body.push(session_id.len() as u8);
+                hello_body.extend_from_slice(&session_id);
+                hello_body.extend_from_slice(cipher_suites);
+                hello_body.extend_from_slice(compression);
+                hello_body.extend_from_slice(&extensions);
+
+                let hs_len = hello_body.len() as u32;
+                let mut handshake = Vec::new();
+                handshake.push(0x01);
+                handshake.push(((hs_len >> 16) & 0xff) as u8);
+                handshake.push(((hs_len >> 8) & 0xff) as u8);
+                handshake.push((hs_len & 0xff) as u8);
+                handshake.extend_from_slice(&hello_body);
+
+                let rec_len = handshake.len() as u16;
+                let mut record = Vec::new();
+                record.push(0x16);
+                record.extend_from_slice(&[0x03, 0x01]);
+                record.extend_from_slice(&rec_len.to_be_bytes());
+                record.extend_from_slice(&handshake);
+
+                // HMAC-SHA256(secret, record) → fill random field at offset 11
+                use sha2::Digest;
+                let random_offset = 5 + 4 + 2; // TLS-rec(5) + HS-hdr(4) + version(2)
+                let hmac_result: [u8; 32] = {
+                    use hmac::{Hmac, Mac};
+                    type HmacSha256 = Hmac<sha2::Sha256>;
+                    let mut mac = HmacSha256::new_from_slice(secret)
+                        .map_err(|_| InvocationError::Deserialize("HMAC key error".into()))?;
+                    mac.update(&record);
+                    mac.finalize().into_bytes().into()
+                };
+                record[random_offset..random_offset + 32].copy_from_slice(&hmac_result);
+                stream.write_all(&record).await?;
+
+                // Derive Obfuscated2 key from secret + HMAC
+                let mut h = sha2::Sha256::new();
+                h.update(secret.as_ref());
+                h.update(&hmac_result);
+                let derived: [u8; 32] = h.finalize().into();
+                let iv = [0u8; 16];
+                let cipher =
+                    layer_crypto::ObfuscatedCipher::from_keys(&derived, &iv, &derived, &iv);
+                let cipher_arc = std::sync::Arc::new(tokio::sync::Mutex::new(cipher));
+                Ok((stream, FrameKind::FakeTls { cipher: cipher_arc }))
             }
         }
     }
@@ -6061,20 +6392,23 @@ impl Connection {
     async fn connect_raw(
         addr: &str,
         socks5: Option<&crate::socks5::Socks5Config>,
+        mtproxy: Option<&crate::proxy::MtProxyConfig>,
         transport: &TransportKind,
+        dc_id: i16,
     ) -> Result<Self, InvocationError> {
         tracing::debug!("[layer] Connecting to {addr} (DH) …");
 
-        // Wrap the entire DH handshake in a timeout so a silent server
-        // response (e.g. a mis-framed transport error) never causes an
-        // infinite hang.
         let addr2 = addr.to_string();
         let socks5_c = socks5.cloned();
+        let mtproxy_c = mtproxy.cloned();
         let transport_c = transport.clone();
 
         let fut = async move {
-            let (mut stream, frame_kind) =
-                Self::open_stream(&addr2, socks5_c.as_ref(), &transport_c).await?;
+            let (mut stream, frame_kind) = if let Some(ref mp) = mtproxy_c {
+                Self::open_stream_mtproxy(mp, dc_id).await?
+            } else {
+                Self::open_stream(&addr2, socks5_c.as_ref(), &transport_c, dc_id).await?
+            };
 
             let mut plain = Session::new();
 
@@ -6088,8 +6422,8 @@ impl Connection {
             .await?;
             let res_pq: tl::enums::ResPq = recv_frame_plain(&mut stream, &frame_kind).await?;
 
-            let (req2, s2) =
-                auth::step2(s1, res_pq).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+            let (req2, s2) = auth::step2(s1, res_pq, dc_id as i32)
+                .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
             send_frame(
                 &mut stream,
                 &plain.pack(&req2).to_plaintext_bytes(),
@@ -6109,8 +6443,49 @@ impl Connection {
             let ans: tl::enums::SetClientDhParamsAnswer =
                 recv_frame_plain(&mut stream, &frame_kind).await?;
 
-            let done =
-                auth::finish(s3, ans).map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+            // Retry loop for dh_gen_retry (up to 5 attempts, mirroring tDesktop).
+            let done = {
+                let mut result = auth::finish(s3, ans)
+                    .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+                let mut attempts = 0u8;
+                loop {
+                    match result {
+                        auth::FinishResult::Done(d) => break d,
+                        auth::FinishResult::Retry {
+                            retry_id,
+                            dh_params,
+                            nonce,
+                            server_nonce,
+                            new_nonce,
+                        } => {
+                            attempts += 1;
+                            if attempts >= 5 {
+                                return Err(InvocationError::Deserialize(
+                                    "dh_gen_retry exceeded 5 attempts".into(),
+                                ));
+                            }
+                            let (req_retry, s3_retry) = auth::retry_step3(
+                                &dh_params,
+                                nonce,
+                                server_nonce,
+                                new_nonce,
+                                retry_id,
+                            )
+                            .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+                            send_frame(
+                                &mut stream,
+                                &plain.pack(&req_retry).to_plaintext_bytes(),
+                                &frame_kind,
+                            )
+                            .await?;
+                            let ans_retry: tl::enums::SetClientDhParamsAnswer =
+                                recv_frame_plain(&mut stream, &frame_kind).await?;
+                            result = auth::finish(s3_retry, ans_retry)
+                                .map_err(|e| InvocationError::Deserialize(e.to_string()))?;
+                        }
+                    }
+                }
+            };
             tracing::debug!("[layer] DH complete ✓");
 
             Ok::<Self, InvocationError>(Self {
@@ -6136,6 +6511,7 @@ impl Connection {
         time_offset: i32,
         socks5: Option<&crate::socks5::Socks5Config>,
         transport: &TransportKind,
+        dc_id: i16,
     ) -> Result<Self, InvocationError> {
         let addr2 = addr.to_string();
         let socks5_c = socks5.cloned();
@@ -6143,7 +6519,7 @@ impl Connection {
 
         let fut = async move {
             let (stream, frame_kind) =
-                Self::open_stream(&addr2, socks5_c.as_ref(), &transport_c).await?;
+                Self::open_stream(&addr2, socks5_c.as_ref(), &transport_c, dc_id).await?;
             Ok::<Self, InvocationError>(Self {
                 stream,
                 enc: EncryptedSession::new(auth_key, first_salt, time_offset),
@@ -6190,12 +6566,25 @@ async fn send_frame(
 ) -> Result<(), InvocationError> {
     match kind {
         FrameKind::Abridged => send_abridged(stream, data).await,
-        FrameKind::Intermediate | FrameKind::Full { .. } => {
-            // Single combined write (fix #1).
+        FrameKind::Intermediate => {
             let mut frame = Vec::with_capacity(4 + data.len());
             frame.extend_from_slice(&(data.len() as u32).to_le_bytes());
             frame.extend_from_slice(data);
             stream.write_all(&frame).await?;
+            Ok(())
+        }
+        FrameKind::Full { send_seqno, .. } => {
+            // Full: [total_len(4)][seq(4)][payload][crc32(4)]
+            // total_len covers all 4 fields including itself.
+            let seq = send_seqno.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let total_len = (data.len() as u32) + 12;
+            let mut packet = Vec::with_capacity(total_len as usize);
+            packet.extend_from_slice(&total_len.to_le_bytes());
+            packet.extend_from_slice(&seq.to_le_bytes());
+            packet.extend_from_slice(data);
+            let crc = crate::transport_intermediate::crc32_ieee(&packet);
+            packet.extend_from_slice(&crc.to_le_bytes());
+            stream.write_all(&packet).await?;
             Ok(())
         }
         FrameKind::Obfuscated { cipher } => {
@@ -6218,6 +6607,44 @@ async fn send_frame(
             frame.extend_from_slice(data);
             cipher.lock().await.encrypt(&mut frame);
             stream.write_all(&frame).await?;
+            Ok(())
+        }
+        FrameKind::PaddedIntermediate { cipher } => {
+            // Intermediate framing + 0–15 random padding bytes, encrypted.
+            let mut pad_len_buf = [0u8; 1];
+            getrandom::getrandom(&mut pad_len_buf).ok();
+            let pad_len = (pad_len_buf[0] & 0x0f) as usize;
+            let total_payload = data.len() + pad_len;
+            let mut frame = Vec::with_capacity(4 + total_payload);
+            frame.extend_from_slice(&(total_payload as u32).to_le_bytes());
+            frame.extend_from_slice(data);
+            let mut pad = vec![0u8; pad_len];
+            getrandom::getrandom(&mut pad).ok();
+            frame.extend_from_slice(&pad);
+            cipher.lock().await.encrypt(&mut frame);
+            stream.write_all(&frame).await?;
+            Ok(())
+        }
+        FrameKind::FakeTls { cipher } => {
+            // Wrap each MTProto message as a TLS Application Data record (type 0x17).
+            // Telegram's FakeTLS sends one MTProto frame per TLS record, encrypted
+            // with the Obfuscated2 cipher (no real TLS encryption).
+            const TLS_APP_DATA: u8 = 0x17;
+            const TLS_VER: [u8; 2] = [0x03, 0x03];
+            // Split into 2878-byte chunks if needed (tDesktop limit).
+            const CHUNK: usize = 2878;
+            let mut locked = cipher.lock().await;
+            for chunk in data.chunks(CHUNK) {
+                let chunk_len = chunk.len() as u16;
+                let mut record = Vec::with_capacity(5 + chunk.len());
+                record.push(TLS_APP_DATA);
+                record.extend_from_slice(&TLS_VER);
+                record.extend_from_slice(&chunk_len.to_be_bytes());
+                record.extend_from_slice(chunk);
+                // Encrypt only the payload portion (after the 5-byte header).
+                locked.encrypt(&mut record[5..]);
+                stream.write_all(&record).await?;
+            }
             Ok(())
         }
     }
@@ -6306,11 +6733,24 @@ async fn send_frame_write(
             stream.write_all(&frame).await?;
             Ok(())
         }
-        FrameKind::Intermediate | FrameKind::Full { .. } => {
+        FrameKind::Intermediate => {
             let mut frame = Vec::with_capacity(4 + data.len());
             frame.extend_from_slice(&(data.len() as u32).to_le_bytes());
             frame.extend_from_slice(data);
             stream.write_all(&frame).await?;
+            Ok(())
+        }
+        FrameKind::Full { send_seqno, .. } => {
+            // Full: [total_len(4)][seq(4)][payload][crc32(4)]
+            let seq = send_seqno.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let total_len = (data.len() as u32) + 12;
+            let mut packet = Vec::with_capacity(total_len as usize);
+            packet.extend_from_slice(&total_len.to_le_bytes());
+            packet.extend_from_slice(&seq.to_le_bytes());
+            packet.extend_from_slice(data);
+            let crc = crate::transport_intermediate::crc32_ieee(&packet);
+            packet.extend_from_slice(&crc.to_le_bytes());
+            stream.write_all(&packet).await?;
             Ok(())
         }
         FrameKind::Obfuscated { cipher } => {
@@ -6335,6 +6775,38 @@ async fn send_frame_write(
             stream.write_all(&frame).await?;
             Ok(())
         }
+        FrameKind::PaddedIntermediate { cipher } => {
+            let mut pad_len_buf = [0u8; 1];
+            getrandom::getrandom(&mut pad_len_buf).ok();
+            let pad_len = (pad_len_buf[0] & 0x0f) as usize;
+            let total_payload = data.len() + pad_len;
+            let mut frame = Vec::with_capacity(4 + total_payload);
+            frame.extend_from_slice(&(total_payload as u32).to_le_bytes());
+            frame.extend_from_slice(data);
+            let mut pad = vec![0u8; pad_len];
+            getrandom::getrandom(&mut pad).ok();
+            frame.extend_from_slice(&pad);
+            cipher.lock().await.encrypt(&mut frame);
+            stream.write_all(&frame).await?;
+            Ok(())
+        }
+        FrameKind::FakeTls { cipher } => {
+            const TLS_APP_DATA: u8 = 0x17;
+            const TLS_VER: [u8; 2] = [0x03, 0x03];
+            const CHUNK: usize = 2878;
+            let mut locked = cipher.lock().await;
+            for chunk in data.chunks(CHUNK) {
+                let chunk_len = chunk.len() as u16;
+                let mut record = Vec::with_capacity(5 + chunk.len());
+                record.push(TLS_APP_DATA);
+                record.extend_from_slice(&TLS_VER);
+                record.extend_from_slice(&chunk_len.to_be_bytes());
+                record.extend_from_slice(chunk);
+                locked.encrypt(&mut record[5..]);
+                stream.write_all(&record).await?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -6357,8 +6829,6 @@ async fn recv_frame_read(
             let len = words * 4;
             let mut buf = vec![0u8; len];
             stream.read_exact(&mut buf).await?;
-            // Transport error: Telegram sends word_count=1 followed by a negative i32 code.
-            // Mirror recv_abridged's detection so post-DH frames fail fast like DH frames.
             if buf.len() == 4 {
                 let code = i32::from_le_bytes(buf[..4].try_into().unwrap());
                 if code < 0 {
@@ -6370,11 +6840,9 @@ async fn recv_frame_read(
             }
             Ok(buf)
         }
-        FrameKind::Intermediate | FrameKind::Full { .. } => {
+        FrameKind::Intermediate => {
             let mut len_buf = [0u8; 4];
             stream.read_exact(&mut len_buf).await?;
-            // Read as i32 so a negative length (raw transport error code) doesn't
-            // cause a ~4 GB allocation via u32 cast. Matches ' intermediate.
             let len_i32 = i32::from_le_bytes(len_buf);
             if len_i32 < 0 {
                 return Err(InvocationError::Rpc(RpcError::from_telegram(
@@ -6383,7 +6851,6 @@ async fn recv_frame_read(
                 )));
             }
             if len_i32 <= 4 {
-                // Telegram encodes a transport error as len=4 followed by the error code.
                 let mut code_buf = [0u8; 4];
                 stream.read_exact(&mut code_buf).await?;
                 let code = i32::from_le_bytes(code_buf);
@@ -6397,9 +6864,45 @@ async fn recv_frame_read(
             stream.read_exact(&mut buf).await?;
             Ok(buf)
         }
+        FrameKind::Full { recv_seqno, .. } => {
+            let mut len_buf = [0u8; 4];
+            stream.read_exact(&mut len_buf).await?;
+            let total_len_i32 = i32::from_le_bytes(len_buf);
+            if total_len_i32 < 0 {
+                return Err(InvocationError::Rpc(RpcError::from_telegram(
+                    total_len_i32,
+                    "transport error",
+                )));
+            }
+            let total_len = total_len_i32 as usize;
+            if total_len < 12 {
+                return Err(InvocationError::Deserialize(
+                    "Full transport: packet too short".into(),
+                ));
+            }
+            let mut rest = vec![0u8; total_len - 4];
+            stream.read_exact(&mut rest).await?;
+            let (body, crc_bytes) = rest.split_at(rest.len() - 4);
+            let expected_crc = u32::from_le_bytes(crc_bytes.try_into().unwrap());
+            let mut check_input = Vec::with_capacity(4 + body.len());
+            check_input.extend_from_slice(&len_buf);
+            check_input.extend_from_slice(body);
+            let actual_crc = crate::transport_intermediate::crc32_ieee(&check_input);
+            if actual_crc != expected_crc {
+                return Err(InvocationError::Deserialize(format!(
+                    "Full transport: CRC mismatch (got {actual_crc:#010x}, expected {expected_crc:#010x})"
+                )));
+            }
+            let recv_seq = u32::from_le_bytes(body[..4].try_into().unwrap());
+            let expected_seq = recv_seqno.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if recv_seq != expected_seq {
+                return Err(InvocationError::Deserialize(format!(
+                    "Full transport: seqno mismatch (got {recv_seq}, expected {expected_seq})"
+                )));
+            }
+            Ok(body[4..].to_vec())
+        }
         FrameKind::Obfuscated { cipher } => {
-            // Obfuscated2: Abridged framing with AES-256-CTR decryption.
-            // cipher is stored and continues from where handshake left off.
             let mut h = [0u8; 1];
             stream.read_exact(&mut h).await?;
             cipher.lock().await.decrypt(&mut h);
@@ -6414,7 +6917,6 @@ async fn recv_frame_read(
             let mut buf = vec![0u8; words * 4];
             stream.read_exact(&mut buf).await?;
             cipher.lock().await.decrypt(&mut buf);
-            // Transport error: same detection as Abridged: negative i32 in 4-byte payload.
             if buf.len() == 4 {
                 let code = i32::from_le_bytes(buf[..4].try_into().unwrap());
                 if code < 0 {
@@ -6424,6 +6926,42 @@ async fn recv_frame_read(
                     )));
                 }
             }
+            Ok(buf)
+        }
+        FrameKind::PaddedIntermediate { cipher } => {
+            // Read 4-byte encrypted length prefix, then payload+padding.
+            let mut len_buf = [0u8; 4];
+            stream.read_exact(&mut len_buf).await?;
+            cipher.lock().await.decrypt(&mut len_buf);
+            let total_len = i32::from_le_bytes(len_buf);
+            if total_len < 0 {
+                return Err(InvocationError::Rpc(RpcError::from_telegram(
+                    total_len,
+                    "transport error",
+                )));
+            }
+            let mut buf = vec![0u8; total_len as usize];
+            stream.read_exact(&mut buf).await?;
+            cipher.lock().await.decrypt(&mut buf);
+            // The actual MTProto payload starts at byte 0; padding is at the tail.
+            // We don't know the inner length here the caller (EncryptedSession::unpack)
+            // uses body_len from the plaintext header, so padding is harmlessly ignored.
+            Ok(buf)
+        }
+        FrameKind::FakeTls { cipher } => {
+            // Read TLS Application Data record: 5-byte header + payload.
+            let mut hdr = [0u8; 5];
+            stream.read_exact(&mut hdr).await?;
+            if hdr[0] != 0x17 {
+                return Err(InvocationError::Deserialize(format!(
+                    "FakeTLS: unexpected record type 0x{:02x}",
+                    hdr[0]
+                )));
+            }
+            let payload_len = u16::from_be_bytes([hdr[3], hdr[4]]) as usize;
+            let mut buf = vec![0u8; payload_len];
+            stream.read_exact(&mut buf).await?;
+            cipher.lock().await.decrypt(&mut buf);
             Ok(buf)
         }
     }
@@ -6498,7 +7036,7 @@ async fn recv_frame_plain<T: Deserializable>(
     // Every single subsequent decrypt then failed with AuthKeyMismatch.
     let raw = match kind {
         FrameKind::Abridged => recv_abridged(stream).await?,
-        FrameKind::Intermediate | FrameKind::Full { .. } => {
+        FrameKind::Intermediate => {
             let mut len_buf = [0u8; 4];
             stream.read_exact(&mut len_buf).await?;
             let len = u32::from_le_bytes(len_buf) as usize;
@@ -6510,6 +7048,43 @@ async fn recv_frame_plain<T: Deserializable>(
             let mut buf = vec![0u8; len];
             stream.read_exact(&mut buf).await?;
             buf
+        }
+        FrameKind::Full { recv_seqno, .. } => {
+            // Full: [total_len(4)][seq(4)][payload][crc32(4)]
+            let mut len_buf = [0u8; 4];
+            stream.read_exact(&mut len_buf).await?;
+            let total_len = u32::from_le_bytes(len_buf) as usize;
+            if total_len < 12 || total_len > (1 << 24) + 12 {
+                return Err(InvocationError::Deserialize(format!(
+                    "Full plaintext frame: implausible total_len {total_len}"
+                )));
+            }
+            let mut rest = vec![0u8; total_len - 4];
+            stream.read_exact(&mut rest).await?;
+
+            // Verify CRC-32.
+            let (body, crc_bytes) = rest.split_at(rest.len() - 4);
+            let expected_crc = u32::from_le_bytes(crc_bytes.try_into().unwrap());
+            let mut check_input = Vec::with_capacity(4 + body.len());
+            check_input.extend_from_slice(&len_buf);
+            check_input.extend_from_slice(body);
+            let actual_crc = crate::transport_intermediate::crc32_ieee(&check_input);
+            if actual_crc != expected_crc {
+                return Err(InvocationError::Deserialize(format!(
+                    "Full plaintext: CRC mismatch (got {actual_crc:#010x}, expected {expected_crc:#010x})"
+                )));
+            }
+
+            // Validate and advance seqno.
+            let recv_seq = u32::from_le_bytes(body[..4].try_into().unwrap());
+            let expected_seq = recv_seqno.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if recv_seq != expected_seq {
+                return Err(InvocationError::Deserialize(format!(
+                    "Full plaintext: seqno mismatch (got {recv_seq}, expected {expected_seq})"
+                )));
+            }
+
+            body[4..].to_vec()
         }
         FrameKind::Obfuscated { cipher } => {
             // Obfuscated2: Abridged framing with AES-256-CTR decryption.
@@ -6525,6 +7100,36 @@ async fn recv_frame_plain<T: Deserializable>(
                 b[0] as usize | (b[1] as usize) << 8 | (b[2] as usize) << 16
             };
             let mut buf = vec![0u8; words * 4];
+            stream.read_exact(&mut buf).await?;
+            cipher.lock().await.decrypt(&mut buf);
+            buf
+        }
+        FrameKind::PaddedIntermediate { cipher } => {
+            let mut len_buf = [0u8; 4];
+            stream.read_exact(&mut len_buf).await?;
+            cipher.lock().await.decrypt(&mut len_buf);
+            let len = u32::from_le_bytes(len_buf) as usize;
+            if len == 0 || len > 1 << 24 {
+                return Err(InvocationError::Deserialize(format!(
+                    "PaddedIntermediate plaintext: implausible length {len}"
+                )));
+            }
+            let mut buf = vec![0u8; len];
+            stream.read_exact(&mut buf).await?;
+            cipher.lock().await.decrypt(&mut buf);
+            buf
+        }
+        FrameKind::FakeTls { cipher } => {
+            let mut hdr = [0u8; 5];
+            stream.read_exact(&mut hdr).await?;
+            if hdr[0] != 0x17 {
+                return Err(InvocationError::Deserialize(format!(
+                    "FakeTLS plaintext: unexpected record type 0x{:02x}",
+                    hdr[0]
+                )));
+            }
+            let payload_len = u16::from_be_bytes([hdr[3], hdr[4]]) as usize;
+            let mut buf = vec![0u8; payload_len];
             stream.read_exact(&mut buf).await?;
             cipher.lock().await.decrypt(&mut buf);
             buf
