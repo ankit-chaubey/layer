@@ -16,6 +16,11 @@ const API_ID: i32 = 0;
 const API_HASH: &str = "";
 const BOT_TOKEN: &str = "";
 
+// Proxy: paste a t.me/proxy link, or set to "" to disable.
+// Supports all secret types: plain (hex), dd (padded), ee (fake-TLS).
+// Example: "https://t.me/proxy?server=HOST&port=PORT&secret=SECRET"
+const PROXY: &str = "";
+
 static MSG_COUNT: AtomicU64 = AtomicU64::new(0);
 static START_TS: AtomicU64 = AtomicU64::new(0);
 
@@ -50,7 +55,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (client, _shutdown) = Client::connect(Config {
         api_id: API_ID,
         api_hash: API_HASH.to_string(),
-        ..Default::default()
+        ..Config::default().proxy_link(PROXY)
     })
     .await?;
 

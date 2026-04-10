@@ -553,6 +553,96 @@ impl Config {
             ..Config::default()
         }
     }
+
+    /// Set an MTProxy from a `https://t.me/proxy?...` or `tg://proxy?...` link.
+    ///
+    /// Empty string is a no-op; proxy stays unset. Invalid link panics.
+    /// Transport is selected from the secret prefix:
+    /// plain hex = Obfuscated, `dd` prefix = PaddedIntermediate, `ee` prefix = FakeTLS.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use layer_client::Config;
+    /// const PROXY: &str = "https://t.me/proxy?server=HOST&port=443&secret=dd...";
+    ///
+    /// let cfg = Config {
+    ///     api_id:   12345,
+    ///     api_hash: "abc".into(),
+    ///     ..Config::default().proxy_link(PROXY)
+    /// };
+    /// ```
+    pub fn proxy_link(mut self, url: &str) -> Self {
+        if url.is_empty() {
+            return self;
+        }
+        let cfg = crate::proxy::parse_proxy_link(url)
+            .unwrap_or_else(|| panic!("invalid MTProxy link: {url:?}"));
+        self.mtproxy = Some(cfg);
+        self
+    }
+
+    /// Set an MTProxy from raw fields: `host`, `port`, and `secret` (hex or base64).
+    ///
+    /// Secret decoding: 32+ hex chars are parsed as hex bytes, anything else as URL-safe base64.
+    /// Transport is selected from the secret prefix, same as `proxy_link`.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use layer_client::Config;
+    ///
+    /// let cfg = Config {
+    ///     api_id:   12345,
+    ///     api_hash: "abc".into(),
+    ///     // dd prefix = PaddedIntermediate, ee prefix = FakeTLS, plain = Obfuscated
+    ///     ..Config::default().proxy("proxy.example.com", 443, "ee0000000000000000000000000000000000706578616d706c652e636f6d")
+    /// };
+    /// ```
+    pub fn proxy(self, host: impl Into<String>, port: u16, secret: &str) -> Self {
+        let host = host.into();
+        let url = format!("tg://proxy?server={host}&port={port}&secret={secret}");
+        self.proxy_link(&url)
+    }
+
+    /// Set a SOCKS5 proxy (no authentication).
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use layer_client::Config;
+    ///
+    /// let cfg = Config {
+    ///     api_id:   12345,
+    ///     api_hash: "abc".into(),
+    ///     ..Config::default().socks5("127.0.0.1:1080")
+    /// };
+    /// ```
+    pub fn socks5(mut self, addr: impl Into<String>) -> Self {
+        self.socks5 = Some(crate::socks5::Socks5Config::new(addr));
+        self
+    }
+
+    /// Set a SOCKS5 proxy with username/password authentication.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use layer_client::Config;
+    ///
+    /// let cfg = Config {
+    ///     api_id:   12345,
+    ///     api_hash: "abc".into(),
+    ///     ..Config::default().socks5_auth("proxy.example.com:1080", "user", "pass")
+    /// };
+    /// ```
+    pub fn socks5_auth(
+        mut self,
+        addr: impl Into<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
+        self.socks5 = Some(crate::socks5::Socks5Config::with_auth(
+            addr, username, password,
+        ));
+        self
+    }
 }
 
 impl Default for Config {
