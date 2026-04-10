@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-acf26dd3.js";
+            window.path_to_searchindex_js = "searchindex-186a9ff6.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-51a31796.js"></script>
+        <script src="toc-3a947583.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -282,7 +282,7 @@
 <hr>
 <h2 id="quick-install"><a class="header" href="#quick-install">Quick install</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.7"
+layer-client = "0.4.8"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p>Then head to <a href="#installation">Installation</a> for credentials setup, or jump straight to:</p>
@@ -291,7 +291,7 @@ tokio        = { version = "1", features = ["full"] }
 <li><a href="#quick-start-bot">Quick Start: Bot</a>: bot token login, commands, callbacks</li>
 </ul>
 <hr>
-<h2 id="whats-new-in-v047"><a class="header" href="#whats-new-in-v047">What’s new in v0.4.7</a></h2>
+<h2 id="whats-new-in-v048"><a class="header" href="#whats-new-in-v048">What’s new in v0.4.8</a></h2>
 <ul>
 <li><strong><code>StringSessionBackend</code></strong>: portable base64 sessions, no file required</li>
 <li><strong><code>LibSqlBackend</code></strong>: libsql/Turso remote database sessions</li>
@@ -311,7 +311,7 @@ tokio        = { version = "1", features = ["full"] }
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
 <h2 id="add-to-cargotoml"><a class="header" href="#add-to-cargotoml">Add to Cargo.toml</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.7"
+layer-client = "0.4.8"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p><code>layer-client</code> re-exports everything you need for both user clients and bots.</p>
@@ -352,11 +352,11 @@ let api_hash = "deadbeef..."; // ← never do this in a public repo
 <hr>
 <h2 id="optional-features"><a class="header" href="#optional-features">Optional features</a></h2>
 <h3 id="sqlite-session-storage"><a class="header" href="#sqlite-session-storage">SQLite session storage</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.7", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.8", features = ["sqlite-session"] }
 </code></pre>
 <p>Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.</p>
-<h3 id="libsql--turso-session-storage-new-in-v047"><a class="header" href="#libsql--turso-session-storage-new-in-v047">LibSQL / Turso session storage: New in v0.4.7</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.7", features = ["libsql-session"] }
+<h3 id="libsql--turso-session-storage-new-in-v048"><a class="header" href="#libsql--turso-session-storage-new-in-v048">LibSQL / Turso session storage: New in v0.4.8</a></h3>
+<pre><code class="language-toml">layer-client = { version = "0.4.8", features = ["libsql-session"] }
 </code></pre>
 <p>Backed by <a href="https://github.com/tursodatabase/libsql">libsql</a>: supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -372,7 +372,7 @@ let backend = LibSqlBackend::open_remote(
     "your-turso-auth-token",
 ).await?;
 <span class="boring">}</span></code></pre>
-<h3 id="string-session-portable-no-extra-deps-new-in-v047"><a class="header" href="#string-session-portable-no-extra-deps-new-in-v047">String session (portable, no extra deps): New in v0.4.7</a></h3>
+<h3 id="string-session-portable-no-extra-deps-new-in-v048"><a class="header" href="#string-session-portable-no-extra-deps-new-in-v048">String session (portable, no extra deps): New in v0.4.8</a></h3>
 <p>No feature flag needed. Encode a session as a base64 string and restore it anywhere:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -387,10 +387,10 @@ let (client, _shutdown) = Client::with_string_session(
 <p>See <a href="#session-backends">Session Backends</a> for the full guide.</p>
 <h3 id="html-entity-parsing"><a class="header" href="#html-entity-parsing">HTML entity parsing</a></h3>
 <pre><code class="language-toml"># Built-in hand-rolled HTML parser (no extra deps)
-layer-client = { version = "0.4.7", features = ["html"] }
+layer-client = { version = "0.4.8", features = ["html"] }
 
 # OR: spec-compliant html5ever tokenizer (overrides built-in)
-layer-client = { version = "0.4.7", features = ["html5ever"] }
+layer-client = { version = "0.4.8", features = ["html5ever"] }
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -405,7 +405,7 @@ layer-client = { version = "0.4.7", features = ["html5ever"] }
 </div>
 <h3 id="raw-type-system-features-layer-tl-types"><a class="header" href="#raw-type-system-features-layer-tl-types">Raw type system features (<code>layer-tl-types</code>)</a></h3>
 <p>If you use <code>layer-tl-types</code> directly for raw API access:</p>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.7", features = [
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.8", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)
@@ -965,7 +965,7 @@ let (client, _shutdown) = Client::builder()
 <p>Login is required on every run since nothing persists.</p>
 <hr>
 <h2 id="sqlite-robust-long-running-servers"><a class="header" href="#sqlite-robust-long-running-servers">SQLite (robust, long-running servers)</a></h2>
-<pre><code class="language-toml">layer-client = { version = "0.4.7", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.8", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -975,7 +975,7 @@ let (client, _shutdown) = Client::builder()
 <span class="boring">}</span></code></pre>
 <p>SQLite is more resilient against crash-corruption than the binary format. Ideal for production bots.</p>
 <hr>
-<h2 id="string-session-new-in-v047"><a class="header" href="#string-session-new-in-v047">String session: New in v0.4.7</a></h2>
+<h2 id="string-session-new-in-v048"><a class="header" href="#string-session-new-in-v048">String session: New in v0.4.8</a></h2>
 <p>Encode the entire session as a portable base64 string. Store it in an env var, a DB column, or CI secrets:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1141,7 +1141,7 @@ let backend = Arc::new(StringSessionBackend::new(session_string));
 <hr>
 <h2 id="sqlitebackend-local-database"><a class="header" href="#sqlitebackend-local-database"><code>SqliteBackend</code>: local database</a></h2>
 <p>Requires feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.7", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.8", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1159,7 +1159,7 @@ let (client, _shutdown) = Client::builder()
 <hr>
 <h2 id="libsqlbackend-libsql--turso"><a class="header" href="#libsqlbackend-libsql--turso"><code>LibSqlBackend</code>: libsql / Turso</a></h2>
 <p>Requires feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.7", features = ["libsql-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.4.8", features = ["libsql-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2874,7 +2874,7 @@ Opens a TCP connection to Telegram, performs the full 3-step DH key exchange, an
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge">sync</span>
-<span class="api-card-sig">Client::with_string_session(session: &amp;str, api_id: i32, api_hash: &amp;str) → Result&lt;(Client, ShutdownToken), InvocationError&gt; <span class="api-badge-new">New 0.4.7</span></span>
+<span class="api-card-sig">Client::with_string_session(session: &amp;str, api_id: i32, api_hash: &amp;str) → Result&lt;(Client, ShutdownToken), InvocationError&gt; <span class="api-badge-new">New 0.4.8</span></span>
 </div>
 
 <div class="api-card-body">
@@ -2910,7 +2910,7 @@ Writes the current session (auth key + DC info + peer cache) to the backend. Cal
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge api-badge-async">async</span>
-<span class="api-card-sig">client.export_session_string() → Result&lt;String, InvocationError&gt; <span class="api-badge-new">New 0.4.7</span></span>
+<span class="api-card-sig">client.export_session_string() → Result&lt;String, InvocationError&gt; <span class="api-badge-new">New 0.4.8</span></span>
 </div>
 
 <div class="api-card-body">
@@ -2949,7 +2949,7 @@ Immediately closes the TCP connection and stops the reader task without waiting 
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge api-badge-async">async</span>
-<span class="api-card-sig">client.sync_update_state() <span class="api-badge-new">New 0.4.7</span></span>
+<span class="api-card-sig">client.sync_update_state() <span class="api-badge-new">New 0.4.8</span></span>
 </div>
 
 <div class="api-card-body">
@@ -3367,7 +3367,7 @@ Send a one-shot typing / uploading / recording indicator. Expires after ~5 secon
 <span class="api-card-sig">client.iter_participants(peer: Peer) → ParticipantIter</span>
 </div>
 
-<div class="api-card-body">Lazy async iterator that pages through all members, including beyond the 200-member limit. Fixed in v0.4.7 to paginate correctly for large channels.</div>
+<div class="api-card-body">Lazy async iterator that pages through all members, including beyond the 200-member limit. Fixed in v0.4.8 to paginate correctly for large channels.</div>
 
 </div>
 
@@ -3471,7 +3471,7 @@ Send a one-shot typing / uploading / recording indicator. Expires after ~5 secon
 <span class="api-card-sig">client.answer_inline_query(query_id: i64, results: Vec&lt;InputBotInlineResult&gt;, cache_time: i32, is_personal: bool, next_offset: Option&lt;&amp;str&gt;) → Result&lt;(), InvocationError&gt;</span>
 </div>
 
-<div class="api-card-body">Respond to an inline query with a list of results. <code>cache_time</code> in seconds. Empty result list now handled correctly (fixed in v0.4.7).</div>
+<div class="api-card-body">Respond to an inline query with a list of results. <code>cache_time</code> in seconds. Empty result list now handled correctly (fixed in v0.4.8).</div>
 
 </div>
 
@@ -5274,59 +5274,98 @@ let (client, _shutdown) = Client::connect(Config {
 <h2 id="dc-pool-for-media"><a class="header" href="#dc-pool-for-media">DC pool (for media)</a></h2>
 <p>When downloading media, Telegram may route large files through CDN DCs different from your account’s home DC. <code>layer-client</code> maintains a connection pool across DCs and handles this automatically via <code>invoke_on_dc</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="socks5-proxy"><a class="header" href="#socks5-proxy">Socks5 Proxy</a></h1>
-<p><code>layer-client</code> supports SOCKS5 proxies, including those with username/password authentication.</p>
-<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<h1 id="proxies"><a class="header" href="#proxies">Proxies</a></h1>
+<p><code>layer-client</code> supports two proxy types: SOCKS5 (generic TCP tunnel) and MTProxy (Telegram’s native obfuscated proxy protocol).</p>
+<h2 id="socks5"><a class="header" href="#socks5">SOCKS5</a></h2>
+<h3 id="without-authentication"><a class="header" href="#without-authentication">Without authentication</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::{Client, Config, Socks5Config};
+</span>use layer_client::{Client, socks5::Socks5Config};
 
-let (client, _shutdown) = Client::connect(Config {
-    api_id:       12345,
-    api_hash:     "your_hash".into(),
-    socks5:       Some(Socks5Config {
-        addr:     "127.0.0.1:1080".parse().unwrap(),
-        username: None,
-        password: None,
-    }),
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_hash")
+    .session("bot.session")
+    .socks5(Socks5Config::new("127.0.0.1:1080"))
+    .connect()
+    .await?;
 <span class="boring">}</span></code></pre>
-<h2 id="with-authentication"><a class="header" href="#with-authentication">With authentication</a></h2>
+<h3 id="with-usernamepassword-authentication"><a class="header" href="#with-usernamepassword-authentication">With username/password authentication</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>socks5: Some(Socks5Config {
-    addr:     "proxy.example.com:1080".parse().unwrap(),
-    username: Some("user".into()),
-    password: Some("pass".into()),
-}),
+</span>.socks5(Socks5Config::with_auth(
+    "proxy.example.com:1080",
+    "username",
+    "password",
+))
 <span class="boring">}</span></code></pre>
-<h2 id="common-use-cases"><a class="header" href="#common-use-cases">Common use cases</a></h2>
-<p><strong>MTProxy</strong> is a Telegram-specific proxy format. <code>layer-client</code> uses standard SOCKS5. To use an MTProxy, you’ll need a SOCKS5 bridge or use the <code>transport_obfuscated</code> module for protocol obfuscation.</p>
-<p><strong>Tor</strong>: Point SOCKS5 at <code>127.0.0.1:9050</code> (the default Tor port) to route all Telegram traffic through the Tor network.</p>
+<h3 id="tor"><a class="header" href="#tor">Tor</a></h3>
+<p>Point SOCKS5 at <code>127.0.0.1:9050</code> (default Tor SOCKS port):</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>socks5: Some(Socks5Config {
-    addr:     "127.0.0.1:9050".parse().unwrap(),
-    username: None,
-    password: None,
-}),
+</span>.socks5(Socks5Config::new("127.0.0.1:9050"))
 <span class="boring">}</span></code></pre>
-<blockquote>
-<p><strong>NOTE:</strong> When using Tor, Telegram connections may be slower and some DCs may block Tor exit nodes. Consider using Telegram’s <code>.onion</code> address if available.</p>
-</blockquote>
-<h2 id="obfuscated-transport"><a class="header" href="#obfuscated-transport">Obfuscated transport</a></h2>
-<p>For networks that block Telegram, layer also supports the obfuscated transport:</p>
+<p>Tor exit nodes are sometimes blocked by Telegram DCs. If connections fail consistently, try a different circuit or use <code>TransportKind::Obfuscated</code> alongside it.</p>
+<hr>
+<h2 id="mtproxy"><a class="header" href="#mtproxy">MTProxy</a></h2>
+<p>MTProxy is Telegram’s own proxy protocol. It uses obfuscated transports and connects you directly to a Telegram DC via a third-party relay server.</p>
+<p>Use <code>parse_proxy_link</code> to decode a <code>tg://proxy?...</code> or <code>https://t.me/proxy?...</code> link. The transport is selected automatically from the secret prefix.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::TransportKind;
+</span>use layer_client::{Client, proxy::parse_proxy_link};
 
-Config {
-    transport: TransportKind::ObfuscatedAbridged,
-    ..Default::default()
-}
+let proxy = parse_proxy_link(
+    "tg://proxy?server=proxy.example.com&amp;port=443&amp;secret=eedeadbeef..."
+).expect("invalid proxy link");
+
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_hash")
+    .session("bot.session")
+    .mtproxy(proxy)
+    .connect()
+    .await?;
 <span class="boring">}</span></code></pre>
-<p>This disguises MTProto traffic to look like random bytes, making it harder for firewalls to detect and block.</p>
+<p><code>.mtproxy()</code> sets the transport automatically. Do not also call <code>.transport()</code> when using MTProxy.</p>
+<h3 id="secret-format-and-transport-mapping"><a class="header" href="#secret-format-and-transport-mapping">Secret format and transport mapping</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Secret prefix</th><th>Transport selected</th></tr>
+</thead>
+<tbody>
+<tr><td>32 hex chars (plain)</td><td><code>Obfuscated</code> (Obfuscated2, Abridged framing)</td></tr>
+<tr><td><code>dd</code> + 32 hex chars</td><td><code>PaddedIntermediate</code> (Obfuscated2, padded framing)</td></tr>
+<tr><td><code>ee</code> + 32 hex + domain</td><td><code>FakeTls</code> (TLS 1.3 ClientHello disguise)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Secrets can be hex strings or base64url. <code>parse_proxy_link</code> handles both.</p>
+<h3 id="building-mtproxyconfig-manually"><a class="header" href="#building-mtproxyconfig-manually">Building MtProxyConfig manually</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::proxy::{MtProxyConfig, secret_to_transport};
+
+let secret_hex = "dddeadbeefdeadbeefdeadbeefdeadbeef";
+let secret_bytes: Vec&lt;u8&gt; = (0..secret_hex.len())
+    .step_by(2)
+    .map(|i| u8::from_str_radix(&amp;secret_hex[i..i+2], 16).unwrap())
+    .collect();
+
+let proxy = MtProxyConfig {
+    host:      "proxy.example.com".into(),
+    port:      443,
+    transport: secret_to_transport(&amp;secret_bytes),
+    secret:    secret_bytes,
+};
+
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_hash")
+    .mtproxy(proxy)
+    .connect()
+    .await?;
+<span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="upgrading-the-tl-layer"><a class="header" href="#upgrading-the-tl-layer">Upgrading the TL Layer</a></h1>
 <p>The Telegram API evolves continuously. Each new <strong>layer</strong> adds constructors, modifies existing types, and deprecates old ones. Upgrading <code>layer</code> is designed to be a one-file operation.</p>
@@ -5393,7 +5432,7 @@ _ =&gt; {}
 <span class="boring">}</span></code></pre>
 <h2 id="step-4-bump-version-and-publish"><a class="header" href="#step-4-bump-version-and-publish">Step 4: Bump version and publish</a></h2>
 <pre><code class="language-bash"># In Cargo.toml workspace section
-version = "0.4.7"
+version = "0.4.8"
 </code></pre>
 <p>Then publish in dependency order (see <a href="#installation">Publishing</a>).</p>
 <h2 id="what-propagates-automatically"><a class="header" href="#what-propagates-automatically">What propagates automatically</a></h2>
@@ -5416,114 +5455,154 @@ version = "0.4.7"
 </code></pre>
 <p>This shows you exactly which constructors changed, helping you anticipate which <code>layer-client</code> files need updating.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h1>
-<p><code>Config</code> is the single struct passed to <code>Client::connect</code>. All fields except <code>api_id</code> and <code>api_hash</code> have defaults.</p>
+<h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p><code>Config</code> is the struct passed to <code>Client::connect</code>. The recommended way to build it is via <code>Client::builder()</code>. All fields except <code>api_id</code> and <code>api_hash</code> have defaults.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::{Config, AutoSleep, TransportKind, Socks5Config};
-use layer_client::session_backend::{BinaryFileBackend, InMemoryBackend};
-use std::sync::Arc;
+</span>use layer_client::{Client, TransportKind};
 
-let (client, _shutdown) = Client::connect(Config {
-    // Required
-    api_id:   12345,
-    api_hash: "your_api_hash".into(),
-
-    // Session (default: BinaryFileBackend("session.session"))
-    
-
-    // DC override (default: DC2)
-    dc_addr: None,
-
-    // Transport (default: Abridged)
-    transport: TransportKind::Abridged,
-
-    // Flood wait retry (default: AutoSleep)
-    retry_policy: Arc::new(AutoSleep::default()),
-
-    // Proxy (default: None)
-    socks5: None,
-
-    ..Default::default()
-}).await?;
+let (client, _shutdown) = Client::builder()
+    .api_id(12345)
+    .api_hash("your_api_hash")
+    .session("bot.session")       // default: "layer.session"
+    .transport(TransportKind::Obfuscated { secret: None })
+    .catch_up(false)
+    .connect()
+    .await?;
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="all-fields"><a class="header" href="#all-fields">All fields</a></h2>
-<h3 id="api_id-required"><a class="header" href="#api_id-required"><code>api_id</code>: required</a></h3>
-<p>Your Telegram app’s numeric ID from <a href="https://my.telegram.org">my.telegram.org</a>.</p>
+<h2 id="builder-methods-1"><a class="header" href="#builder-methods-1">Builder methods</a></h2>
+<h3 id="api_id--api_hash"><a class="header" href="#api_id--api_hash"><code>api_id</code> / <code>api_hash</code></a></h3>
+<p>Required. Get these from <a href="https://my.telegram.org">my.telegram.org</a>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>api_id: 12345_i32,
+</span>.api_id(12345)
+.api_hash("your_hash")
 <span class="boring">}</span></code></pre>
-<h3 id="api_hash-required"><a class="header" href="#api_hash-required"><code>api_hash</code>: required</a></h3>
-<p>Your Telegram app’s hex hash string from <a href="https://my.telegram.org">my.telegram.org</a>.</p>
+<h3 id="session"><a class="header" href="#session"><code>session</code></a></h3>
+<p>Path to a binary session file. Default: <code>"layer.session"</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>api_hash: "deadbeef01234567...".into(),
+</span>.session("mybot.session")
+<span class="boring">}</span></code></pre>
+<h3 id="session_string"><a class="header" href="#session_string"><code>session_string</code></a></h3>
+<p>Portable base64 session (for serverless / env-var storage). Pass an empty string to start fresh.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.session_string(std::env::var("SESSION").unwrap_or_default())
+<span class="boring">}</span></code></pre>
+<h3 id="in_memory"><a class="header" href="#in_memory"><code>in_memory</code></a></h3>
+<p>Non-persistent session. Useful for tests.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.in_memory()
 <span class="boring">}</span></code></pre>
 <h3 id="session_backend"><a class="header" href="#session_backend"><code>session_backend</code></a></h3>
-<p>Path to the binary session file. Default: <code>"session.session"</code>.</p>
+<p>Inject a custom <code>SessionBackend</code> directly, e.g. <code>LibSqlBackend</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>
-<span class="boring">}</span></code></pre>
-<h3 id="dc_addr"><a class="header" href="#dc_addr"><code>dc_addr</code></a></h3>
-<p>Override the initial DC address. Default: <code>None</code> (uses DC2 = <code>149.154.167.51:443</code>). After login, the correct DC is cached in the session.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>dc_addr: Some("149.154.175.53:443".parse().unwrap()), // DC1
+</span>use std::sync::Arc;
+use layer_client::LibSqlBackend;
+
+.session_backend(Arc::new(LibSqlBackend::new("remote.db")))
 <span class="boring">}</span></code></pre>
 <h3 id="transport"><a class="header" href="#transport"><code>transport</code></a></h3>
-<p>The MTProto transport protocol. Default: <code>TransportKind::Abridged</code>.</p>
+<p>Which MTProto framing to use. Default: <code>TransportKind::Abridged</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Variant</th><th>Description</th></tr>
+<tr><th>Variant</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Abridged</code></td><td>Minimal overhead, default</td></tr>
-<tr><td><code>Intermediate</code></td><td>Fixed-length framing</td></tr>
-<tr><td><code>ObfuscatedAbridged</code></td><td>Disguised for firewall evasion</td></tr>
+<tr><td><code>Abridged</code></td><td>Minimal overhead. Default.</td></tr>
+<tr><td><code>Intermediate</code></td><td>4-byte LE length prefix. Better compat with some proxies.</td></tr>
+<tr><td><code>Full</code></td><td>Intermediate + seqno + CRC32 integrity check.</td></tr>
+<tr><td><code>Obfuscated { secret }</code></td><td>AES-256-CTR (Obfuscated2). Pass <code>secret: None</code> for direct connections, or a 16-byte key for MTProxy with a plain secret.</td></tr>
+<tr><td><code>PaddedIntermediate { secret }</code></td><td>Obfuscated2 with padded Intermediate framing. Required for <code>0xDD</code> MTProxy secrets.</td></tr>
+<tr><td><code>FakeTls { secret, domain }</code></td><td>Disguises traffic as a TLS 1.3 ClientHello. Required for <code>0xEE</code> MTProxy secrets.</td></tr>
 </tbody>
 </table>
 </div>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>transport: TransportKind::ObfuscatedAbridged,
+</span>use layer_client::TransportKind;
+
+// plain obfuscation, no proxy
+.transport(TransportKind::Obfuscated { secret: None })
+
+// Intermediate framing
+.transport(TransportKind::Intermediate)
+
+// FakeTLS (manual, normally set by .mtproxy())
+.transport(TransportKind::FakeTls {
+    secret: [0xab; 16],
+    domain: "example.com".into(),
+})
+<span class="boring">}</span></code></pre>
+<p>When using <code>.mtproxy()</code>, the transport is set automatically. Do not also call <code>.transport()</code>.</p>
+<h3 id="socks5-1"><a class="header" href="#socks5-1"><code>socks5</code></a></h3>
+<p>Route connections through a SOCKS5 proxy.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::socks5::Socks5Config;
+
+// no auth
+.socks5(Socks5Config::new("127.0.0.1:1080"))
+
+// with auth
+.socks5(Socks5Config::with_auth("proxy.example.com:1080", "user", "pass"))
+<span class="boring">}</span></code></pre>
+<h3 id="mtproxy-1"><a class="header" href="#mtproxy-1"><code>mtproxy</code></a></h3>
+<p>Route connections through an MTProxy relay. The transport is auto-selected from the secret.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use layer_client::proxy::parse_proxy_link;
+
+let proxy = parse_proxy_link("tg://proxy?server=...&amp;port=443&amp;secret=...").unwrap();
+.mtproxy(proxy)
+<span class="boring">}</span></code></pre>
+<p>See <a href="#proxies">Proxies &amp; Transports</a> for full details.</p>
+<h3 id="dc_addr"><a class="header" href="#dc_addr"><code>dc_addr</code></a></h3>
+<p>Override the initial DC address. After login the correct DC is cached in the session, so this is only needed if you know exactly which DC to target.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.dc_addr("149.154.167.51:443")  // DC2
+<span class="boring">}</span></code></pre>
+<h3 id="catch_up"><a class="header" href="#catch_up"><code>catch_up</code></a></h3>
+<p>When <code>true</code>, replays missed updates via <code>updates.getDifference</code> on reconnect. Default: <code>false</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.catch_up(true)
+<span class="boring">}</span></code></pre>
+<h3 id="allow_ipv6"><a class="header" href="#allow_ipv6"><code>allow_ipv6</code></a></h3>
+<p>Allow IPv6 DC addresses. Default: <code>false</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.allow_ipv6(true)
 <span class="boring">}</span></code></pre>
 <h3 id="retry_policy"><a class="header" href="#retry_policy"><code>retry_policy</code></a></h3>
-<p>How to handle <code>FLOOD_WAIT</code> errors. Default: <code>AutoSleep</code>.</p>
+<p>How to handle <code>FLOOD_WAIT</code> errors. Default: <code>AutoSleep</code> (sleep the required duration and retry).</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use layer_client::{AutoSleep, NoRetries};
+</span>use std::sync::Arc;
+use layer_client::retry::{AutoSleep, NoRetries};
 
-retry_policy: Arc::new(AutoSleep::default()),  // auto-sleep and retry
-retry_policy: Arc::new(NoRetries),             // propagate immediately
-<span class="boring">}</span></code></pre>
-<h3 id="socks5"><a class="header" href="#socks5"><code>socks5</code></a></h3>
-<p>Optional SOCKS5 proxy configuration.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>socks5: Some(Socks5Config {
-    addr:     "127.0.0.1:1080".parse().unwrap(),
-    username: None,
-    password: None,
-}),
+.retry_policy(Arc::new(AutoSleep::default()))   // sleep and retry
+.retry_policy(Arc::new(NoRetries))              // propagate immediately
 <span class="boring">}</span></code></pre>
 <hr>
-<h2 id="full-default-values"><a class="header" href="#full-default-values">Full default values</a></h2>
+<h2 id="building-config-without-connecting"><a class="header" href="#building-config-without-connecting">Building Config without connecting</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Config {
-    api_id:        0,
-    api_hash:      String::new(),
-    
-    dc_addr:       None,
-    transport:     TransportKind::Abridged,
-    retry_policy:  Arc::new(AutoSleep::default()),
-    socks5:        None,
-}
+</span>let config = Client::builder()
+    .api_id(12345)
+    .api_hash("hash")
+    .build()?;
+
+// later
+let (client, _shutdown) = Client::connect(config).await?;
 <span class="boring">}</span></code></pre>
+<p><code>build()</code> returns <code>Err(BuilderError::MissingApiId)</code> or <code>Err(BuilderError::MissingApiHash)</code> if those fields are missing, before touching the network.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="error-types"><a class="header" href="#error-types">Error Types</a></h1>
 <hr>
@@ -5831,7 +5910,7 @@ Client::builder().retry_policy(Arc::new(NoRetries))
 </thead>
 <tbody>
 <tr><td><code>sqlite-session</code></td><td>❌</td><td>SQLite-backed session storage via <code>rusqlite</code></td></tr>
-<tr><td><code>libsql-session</code></td><td>❌</td><td>libsql / Turso session storage: local or remote (<strong>New in v0.4.7</strong>)</td></tr>
+<tr><td><code>libsql-session</code></td><td>❌</td><td>libsql / Turso session storage: local or remote (<strong>Added in v0.4.7</strong>)</td></tr>
 <tr><td><code>html</code></td><td>❌</td><td>Built-in hand-rolled HTML parser (<code>parse_html</code>, <code>generate_html</code>)</td></tr>
 <tr><td><code>html5ever</code></td><td>❌</td><td>Spec-compliant html5ever tokenizer: overrides the built-in <code>html</code> parser</td></tr>
 <tr><td><code>serde</code></td><td>❌</td><td><code>serde::Serialize</code> / <code>Deserialize</code> on <code>Config</code> and public structs</td></tr>
@@ -5852,19 +5931,19 @@ Client::builder().retry_policy(Arc::new(NoRetries))
 <li><code>ClientBuilder</code>: fluent connection builder</li>
 </ul>
 <pre><code class="language-toml"># SQLite session only
-layer-client = { version = "0.4.7", features = ["sqlite-session"] }
+layer-client = { version = "0.4.8", features = ["sqlite-session"] }
 
-# LibSQL / Turso session (new in 0.4.7)
-layer-client = { version = "0.4.7", features = ["libsql-session"] }
+# LibSQL / Turso session (new in 0.4.8)
+layer-client = { version = "0.4.8", features = ["libsql-session"] }
 
 # HTML parsing (minimal, no extra deps)
-layer-client = { version = "0.4.7", features = ["html"] }
+layer-client = { version = "0.4.8", features = ["html"] }
 
 # HTML parsing (spec-compliant, adds html5ever dep)
-layer-client = { version = "0.4.7", features = ["html5ever"] }
+layer-client = { version = "0.4.8", features = ["html5ever"] }
 
 # Multiple features at once
-layer-client = { version = "0.4.7", features = ["sqlite-session", "html"] }
+layer-client = { version = "0.4.8", features = ["sqlite-session", "html"] }
 </code></pre>
 <hr>
 <h2 id="layer-tl-types-1"><a class="header" href="#layer-tl-types-1">layer-tl-types</a></h2>
@@ -5886,14 +5965,14 @@ layer-client = { version = "0.4.7", features = ["sqlite-session", "html"] }
 </table>
 </div>
 <h3 id="example-enable-serde"><a class="header" href="#example-enable-serde">Example: enable serde</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.7", features = ["tl-api", "impl-serde"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.8", features = ["tl-api", "impl-serde"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let json = serde_json::to_string(&amp;some_tl_type)?;
 <span class="boring">}</span></code></pre>
 <h3 id="example-name_for_id-debugging"><a class="header" href="#example-name_for_id-debugging">Example: name_for_id (debugging)</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.7", features = ["tl-api", "name-for-id"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.8", features = ["tl-api", "name-for-id"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -5904,13 +5983,13 @@ if let Some(name) = name_for_id(0x74ae4240) {
 }
 <span class="boring">}</span></code></pre>
 <h3 id="example-minimal-no-debug-no-conversions"><a class="header" href="#example-minimal-no-debug-no-conversions">Example: minimal (no Debug, no conversions)</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.7", default-features = false, features = ["tl-api"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.4.8", default-features = false, features = ["tl-api"] }
 </code></pre>
 <p>Reduces compile time when you don’t need convenience traits.</p>
 <hr>
 <h2 id="string-session-no-feature-flag-needed"><a class="header" href="#string-session-no-feature-flag-needed">String session: no feature flag needed</a></h2>
 <p><code>StringSessionBackend</code> and <code>export_session_string()</code> are available in the default build: no feature flag required:</p>
-<pre><code class="language-toml">layer-client = "0.4.7"   # already includes StringSessionBackend
+<pre><code class="language-toml">layer-client = "0.4.8"   # already includes StringSessionBackend
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
