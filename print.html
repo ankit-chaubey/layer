@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-186a9ff6.js";
+            window.path_to_searchindex_js = "searchindex-b99270d4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3a947583.js"></script>
@@ -292,12 +292,25 @@ tokio        = { version = "1", features = ["full"] }
 </ul>
 <hr>
 <h2 id="whats-new-in-v048"><a class="header" href="#whats-new-in-v048">What’s new in v0.4.8</a></h2>
+<h4 id="proxy--transport"><a class="header" href="#proxy--transport">Proxy &amp; Transport</a></h4>
 <ul>
-<li><strong><code>StringSessionBackend</code></strong>: portable base64 sessions, no file required</li>
-<li><strong><code>LibSqlBackend</code></strong>: libsql/Turso remote database sessions</li>
-<li><strong><code>Update::ChatAction</code></strong> and <strong><code>Update::UserStatus</code></strong>: new typed update variants</li>
-<li><strong><code>sync_update_state()</code></strong>: force immediate pts/seq reconciliation</li>
-<li>7 bug fixes (pagination, memory leaks, chunk alignment, and more)</li>
+<li><strong>MTProxy support</strong>: connect via <code>t.me/proxy</code> / <code>tg://proxy</code> links or manual host/port/secret config</li>
+<li><strong>PaddedIntermediate transport</strong> (<code>0xDD</code> secrets): randomized padding to mimic official Telegram traffic</li>
+<li><strong>FakeTLS transport</strong> (<code>0xEE</code> secrets): TLS-like framing to make MTProto traffic resemble HTTPS</li>
+<li><strong>SOCKS5 proxy support</strong> in <code>Config</code> with optional username/password authentication</li>
+<li><strong>IPv6 connectivity</strong> for Telegram DCs and proxy connections</li>
+</ul>
+<h4 id="session--client"><a class="header" href="#session--client">Session &amp; Client</a></h4>
+<ul>
+<li><strong>Multiple session backend support</strong> with new <code>Config</code> helpers and builder methods for MTProxy</li>
+</ul>
+<h4 id="protocol-fixes"><a class="header" href="#protocol-fixes">Protocol Fixes</a></h4>
+<ul>
+<li><strong>Auth key generation fixed</strong>: now uses correct <code>PQInnerDataDc</code> constructor including the DC id — resolves auth failures on many DCs</li>
+<li><strong>Incoming message validation</strong>: rolling buffer of last 500 server <code>msg_id</code>s + ±300 s timestamp window to prevent replay attacks</li>
+<li><strong><code>dh_gen_retry</code> handling</strong>: step 3 now retries with cached params, up to 5 attempts (matching Telegram Desktop)</li>
+<li><strong>MTProxy routing bug fixed</strong>: connections now correctly route through the proxy host instead of going directly to Telegram DCs</li>
+<li><strong>Channel difference sync</strong>: initial <code>getChannelDifference</code> starts at limit 100, subsequent calls increase to 1000</li>
 </ul>
 <p>See the full <a href="https://github.com/ankit-chaubey/layer/blob/main/CHANGELOG.md">CHANGELOG</a>.</p>
 <hr>
