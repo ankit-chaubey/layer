@@ -1977,24 +1977,50 @@ impl Client {
                     }
                 };
                 if result.is_ok() {
-                    // init_connection confirmed the key is live —
-                    // no pre-getDifference sleep needed.
-                    let missed = match c.get_difference().await {
-                        Ok(updates) => updates,
-                        Err(ref e)
-                            if matches!(e,
-                            InvocationError::Rpc(r) if r.code == 401) =>
-                        {
-                            tracing::warn!(
-                                "[layer] getDifference AUTH_KEY_UNREGISTERED after \
-                                 fresh DH: falling back to sync_pts_state"
-                            );
-                            let _ = c.sync_pts_state().await;
-                            vec![]
-                        }
-                        Err(e) => {
-                            tracing::warn!("[layer] getDifference failed after reconnect: {e}");
-                            vec![]
+                    // init_connection succeeded on one Telegram server, but
+                    // getDifference may land on a different server that hasn't
+                    // replicated the new key yet.  Retry on 401 with exponential
+                    // backoff (500 ms → 1 s → 2 s → 4 s → 8 s) before giving up
+                    // and falling back to sync_pts_state.
+                    let missed = {
+                        let mut attempt = 0u32;
+                        const MAX_ATTEMPTS: u32 = 5;
+                        loop {
+                            match c.get_difference().await {
+                                Ok(updates) => break updates,
+                                Err(ref e)
+                                    if matches!(e,
+                                        InvocationError::Rpc(r) if r.code == 401)
+                                        && attempt < MAX_ATTEMPTS =>
+                                {
+                                    let delay = Duration::from_millis(500 * (1u64 << attempt));
+                                    tracing::warn!(
+                                        "[layer] getDifference AUTH_KEY_UNREGISTERED \
+                                         (attempt {}/{MAX_ATTEMPTS}): retrying in {delay:?}",
+                                        attempt + 1,
+                                    );
+                                    sleep(delay).await;
+                                    attempt += 1;
+                                }
+                                Err(ref e)
+                                    if matches!(e,
+                                        InvocationError::Rpc(r) if r.code == 401) =>
+                                {
+                                    tracing::warn!(
+                                        "[layer] getDifference AUTH_KEY_UNREGISTERED \
+                                         after {MAX_ATTEMPTS} retries: falling back to \
+                                         sync_pts_state"
+                                    );
+                                    let _ = c.sync_pts_state().await;
+                                    break vec![];
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "[layer] getDifference failed after reconnect: {e}"
+                                    );
+                                    break vec![];
+                                }
+                            }
                         }
                     };
                     for u in missed {
@@ -3470,26 +3496,52 @@ impl Client {
                             }
                         };
                         if result.is_ok() {
-                            // init_connection confirmed the key is live —
-                            // no pre-getDifference sleep needed.
-                            let missed = match c.get_difference().await {
-                                Ok(updates) => updates,
-                                Err(ref e)
-                                    if matches!(e,
-                                    InvocationError::Rpc(r) if r.code == 401) =>
-                                {
-                                    tracing::warn!(
-                                        "[layer] getDifference AUTH_KEY_UNREGISTERED after \
-                                         fresh DH: falling back to sync_pts_state"
-                                    );
-                                    let _ = c.sync_pts_state().await;
-                                    vec![]
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "[layer] getDifference failed after reconnect: {e}"
-                                    );
-                                    vec![]
+                            // init_connection succeeded on one Telegram server, but
+                            // getDifference may land on a different server that hasn't
+                            // replicated the new key yet.  Retry on 401 with exponential
+                            // backoff before giving up and falling back to sync_pts_state.
+                            let missed = {
+                                let mut attempt = 0u32;
+                                const MAX_ATTEMPTS: u32 = 5;
+                                loop {
+                                    match c.get_difference().await {
+                                        Ok(updates) => break updates,
+                                        Err(ref e)
+                                            if matches!(e,
+                                                InvocationError::Rpc(r) if r.code == 401)
+                                                && attempt < MAX_ATTEMPTS =>
+                                        {
+                                            let delay =
+                                                Duration::from_millis(500 * (1u64 << attempt));
+                                            tracing::warn!(
+                                                "[layer] getDifference AUTH_KEY_UNREGISTERED \
+                                                 (attempt {}/{MAX_ATTEMPTS}): retrying in \
+                                                 {delay:?}",
+                                                attempt + 1,
+                                            );
+                                            sleep(delay).await;
+                                            attempt += 1;
+                                        }
+                                        Err(ref e)
+                                            if matches!(e,
+                                                InvocationError::Rpc(r) if r.code == 401) =>
+                                        {
+                                            tracing::warn!(
+                                                "[layer] getDifference AUTH_KEY_UNREGISTERED \
+                                                 after {MAX_ATTEMPTS} retries: falling back \
+                                                 to sync_pts_state"
+                                            );
+                                            let _ = c.sync_pts_state().await;
+                                            break vec![];
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                "[layer] getDifference failed after reconnect: \
+                                                 {e}"
+                                            );
+                                            break vec![];
+                                        }
+                                    }
                                 }
                             };
                             for u in missed {
