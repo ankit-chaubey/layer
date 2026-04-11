@@ -8,10 +8,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [0.4.9]: 2026-04-11
+### Fix
 
-### Fixed
+* Fix `AUTH_KEY_UNREGISTERED (401)` occurring immediately after a fresh DH key exchange.
+* The client now retries 401 errors within a **30s post-DH propagation window** using backoff instead of propagating immediately.
+* This improves reliability when sending the first RPC requests after authentication.
 
-* **`AUTH_KEY_UNREGISTERED` on first RPC after fresh DH**: after a cold start with no saved session, the newly generated auth key may not have propagated to all Telegram app servers yet. The first RPC call could therefore receive a `401 AUTH_KEY_UNREGISTERED` before any reconnect logic had a chance to run. Added a 2-second propagation pause in the initial connect path when `loaded_session.is_none()`, mirroring the guard already present for mid-session reconnects in the supervisor loop.
+## Features
+
+### Parser Improvements
+
+* Full Markdown and HTML parse mode support
+* Added `InputMessage::markdown()` and `InputMessage::html()` constructors
+* Markdown parser now supports `_italic_`, `*bold*`, `![emoji](tg://emoji?id=...)`, and backslash escapes
+* Fixed `generate_markdown` to properly handle:
+
+  * `Pre`
+  * `TextUrl`
+  * `MentionName`
+  * `CustomEmoji`
+  * Escaping special characters in plain text
+* Added **16 tests** covering syntax parsing and roundtrip generation
+* Refactored example apps to use the new constructors
+* Added demo commands `/fmt_md` and `/fmt_html` to the bot example
+
+### Client Configuration
+
+* `initConnection` fields are now configurable via `ClientBuilder`
+* Added configuration options:
+
+  * `device_model`
+  * `system_version`
+  * `app_version`
+  * `system_lang_code`
+  * `lang_pack`
+  * `lang_code`
+* Added `proxy_link()` support in `ClientBuilder`
+* Updated example applications to use builder configuration with constants
 
 ---
 
