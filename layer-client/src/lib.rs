@@ -1110,24 +1110,16 @@ impl Client {
         }
 
         // Only clear the auth key on definitive bad-key signals from Telegram.
-        // Network errors (EOF mid-session, ConnectionReset, Rpc(-404)) mean the
-        // server rejected our key. Any other error (I/O, etc.) is left intact
-        // no RPC timeout exists anymore, so there is no "timed out = stale key" case.
+        // Only Rpc(-404) means Telegram explicitly rejected our auth key.
+        // EOF / ConnectionReset are plain TCP disconnects  the key is still
+        // valid; reconnect with it rather than doing an unnecessary fresh DH
+        // (which requires key propagation across DC servers and causes
+        // AUTH_KEY_UNREGISTERED on getDifference for up to 15+ seconds).
         if let Err(e) = client.init_connection().await {
             let key_is_stale = match &e {
                 InvocationError::Rpc(r) if r.code == -404 => true,
-                // -429 = TRANSPORT_FLOOD (rate limit). The auth key is valid
-                // Telegram is just throttling us. Do NOT do fresh DH here; it
-                // would race with the reader task's error handler and produce two
-                // concurrent DH handshakes whose keys clobber each other, leading
-                // to AUTH_KEY_UNREGISTERED on every post-reconnect RPC call.
-                InvocationError::Rpc(r) if r.code == -429 => false,
-                InvocationError::Io(io)
-                    if io.kind() == std::io::ErrorKind::UnexpectedEof
-                        || io.kind() == std::io::ErrorKind::ConnectionReset =>
-                {
-                    true
-                }
+                // EOF / ConnectionReset = network drop, NOT a stale key.
+                // Do NOT do fresh DH here: reconnect with the existing key.
                 _ => false,
             };
 
@@ -2160,22 +2152,17 @@ impl Client {
                             tracing::warn!("[layer] Reader: connection error: {e}");
                             drop(init_rx.take()); // discard any in-flight init
 
-                            // Detect definitive auth-key rejection.  Telegram signals
-                            // this with a -404 transport error (now surfaced as Rpc(-404)
-                            // by recv_frame_read) or an immediate EOF/RST.  In that case
-                            // we clear the saved key so do_reconnect_loop falls through to
-                            // connect_raw (fresh DH) rather than reconnecting with the same
-                            // expired key and getting -404 forever.
-                            //
-                            // -429 = TRANSPORT_FLOOD (rate limit). The key is fine: do NOT
-                            // clear it. Clearing on -429 causes a double-DH race with the
-                            // startup path, producing AUTH_KEY_UNREGISTERED post-reconnect.
+                            // Detect definitive auth-key rejection.  Only Telegram's
+                            // explicit -404 transport error means the key is unknown.
+                            // EOF / ConnectionReset are plain TCP disconnects  the key
+                            // is still valid; reconnect with it via connect_with_key so
+                            // no DH propagation delay occurs.  Treating EOF as stale key
+                            // causes unnecessary fresh DH whose new key takes 15+ s to
+                            // replicate across DC servers, making getDifference return
+                            // AUTH_KEY_UNREGISTERED for all 5 retry attempts.
                             let key_is_stale = match &e {
                                 InvocationError::Rpc(r) if r.code == -404 => true,
-                                InvocationError::Rpc(r) if r.code == -429 => false,
-                                InvocationError::Io(io)
-                                    if io.kind() == std::io::ErrorKind::UnexpectedEof
-                                    || io.kind() == std::io::ErrorKind::ConnectionReset => true,
+                                // EOF / ConnectionReset = network drop, NOT a stale key.
                                 _ => false,
                             };
                             // Only clear the key if no DH is already in progress.
@@ -2279,13 +2266,11 @@ impl Client {
 
                         Ok(Err(e)) => {
                             // TCP connected but init RPC failed.
-                            // Only clear auth key on definitive bad-key signals from Telegram.
-                            // -429 = TRANSPORT_FLOOD: key is valid, just throttled: do NOT clear.
+                            // Only clear auth key on Telegram's explicit -404 rejection.
+                            // EOF / ConnectionReset = network drop during init, NOT stale key.
+                            // Reconnect with the same key; no fresh DH needed.
                             let key_is_stale = match &e {
                                 InvocationError::Rpc(r) if r.code == -404 => true,
-                                InvocationError::Rpc(r) if r.code == -429 => false,
-                                InvocationError::Io(io) if io.kind() == std::io::ErrorKind::UnexpectedEof
-                                    || io.kind() == std::io::ErrorKind::ConnectionReset => true,
                                 _ => false,
                             };
                             // Use compare_exchange so we don't stomp on another in-progress DH.
