@@ -1,8 +1,23 @@
 //! Text formatting parsers: HTML and Markdown ↔ Telegram [`MessageEntity`]
 //!
 //! # Markdown (Telegram-flavoured)
-//! Supported: `**bold**`, `__italic__`, `~~strike~~`, `||spoiler||`, `` `code` ``,
-//! ` ```lang\npre``` `, `[text](url)`, `[text](tg://user?id=123)`
+//! ## Parsing (`parse_markdown`)
+//! | Syntax | Entity |
+//! |--------|--------|
+//! | `**bold**` or `*bold*` | Bold |
+//! | `__italic__` or `_italic_` | Italic |
+//! | `~~strike~~` | Strikethrough |
+//! | `\|\|spoiler\|\|` | Spoiler |
+//! | `` `code` `` | Code |
+//! | ` ```lang\npre\n``` ` | Pre (code block) |
+//! | `[text](url)` | TextUrl |
+//! | `[text](tg://user?id=123)` | MentionName |
+//! | `![text](tg://emoji?id=123)` | CustomEmoji |
+//! | `\*`, `\_`, `\~` … | Escaped literal char |
+//!
+//! ## Generating (`generate_markdown`)
+//! Produces the same syntax above for all supported entity types.
+//! `Underline` has no unambiguous markdown delimiter and is silently skipped.
 //!
 //! # HTML
 //! Supported tags: `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<del>`,
@@ -38,7 +53,20 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
     }
 
     while i < n {
-        // code block ```lang\n...```
+        // backslash escape: \X → literal X (for any special char)
+        if chars[i] == '\\' && i + 1 < n {
+            let next = chars[i + 1];
+            if matches!(
+                next,
+                '*' | '_' | '~' | '|' | '[' | ']' | '(' | ')' | '`' | '\\' | '!'
+            ) {
+                push_char!(next);
+                i += 2;
+                continue;
+            }
+        }
+
+        // code block: ```lang\n...```
         if i + 2 < n && chars[i] == '`' && chars[i + 1] == '`' && chars[i + 2] == '`' {
             let start = i + 3;
             let mut j = start;
@@ -70,7 +98,7 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
             }
         }
 
-        // inline code
+        // inline code: `code`
         if chars[i] == '`' {
             let start = i + 1;
             let mut j = start;
@@ -95,7 +123,45 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
             }
         }
 
-        // [text](url)
+        // custom emoji: ![text](tg://emoji?id=12345)
+        if chars[i] == '!' && i + 1 < n && chars[i + 1] == '[' {
+            let text_start = i + 2;
+            let mut j = text_start;
+            while j < n && chars[j] != ']' {
+                j += 1;
+            }
+            if j < n && j + 1 < n && chars[j + 1] == '(' {
+                let link_start = j + 2;
+                let mut k = link_start;
+                while k < n && chars[k] != ')' {
+                    k += 1;
+                }
+                if k < n {
+                    let inner_text: String = chars[text_start..j].iter().collect();
+                    let url: String = chars[link_start..k].iter().collect();
+                    const EMOJI_PFX: &str = "tg://emoji?id=";
+                    if let Some(stripped) = url.strip_prefix(EMOJI_PFX) {
+                        if let Ok(doc_id) = stripped.parse::<i64>() {
+                            let ent_off = utf16_off;
+                            for c in inner_text.chars() {
+                                push_char!(c);
+                            }
+                            ents.push(tl::enums::MessageEntity::CustomEmoji(
+                                tl::types::MessageEntityCustomEmoji {
+                                    offset: ent_off,
+                                    length: utf16_off - ent_off,
+                                    document_id: doc_id,
+                                },
+                            ));
+                            i = k + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // inline link / mention: [text](url) or [text](tg://user?id=123)
         if chars[i] == '[' {
             let text_start = i + 1;
             let mut j = text_start;
@@ -152,51 +218,25 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
             }
         }
 
-        // two-char delimiters
-        let two: Option<(&str, MarkdownTag)> = if i + 1 < n {
+        // two-char delimiters: **, __, ~~, ||
+        let two: Option<MarkdownTag> = if i + 1 < n {
             match [chars[i], chars[i + 1]] {
-                ['*', '*'] => Some(("**", MarkdownTag::Bold)),
-                ['_', '_'] => Some(("__", MarkdownTag::Italic)),
-                ['~', '~'] => Some(("~~", MarkdownTag::Strike)),
-                ['|', '|'] => Some(("||", MarkdownTag::Spoiler)),
+                ['*', '*'] => Some(MarkdownTag::Bold),
+                ['_', '_'] => Some(MarkdownTag::Italic),
+                ['~', '~'] => Some(MarkdownTag::Strike),
+                ['|', '|'] => Some(MarkdownTag::Spoiler),
                 _ => None,
             }
         } else {
             None
         };
 
-        if let Some((_delim, tag)) = two {
+        if let Some(tag) = two {
             if let Some(pos) = open_stack.iter().rposition(|(t, _)| *t == tag) {
                 let (_, start_off) = open_stack.remove(pos);
                 let length = utf16_off - start_off;
-                let entity = match tag {
-                    MarkdownTag::Bold => {
-                        tl::enums::MessageEntity::Bold(tl::types::MessageEntityBold {
-                            offset: start_off,
-                            length,
-                        })
-                    }
-                    MarkdownTag::Italic => {
-                        tl::enums::MessageEntity::Italic(tl::types::MessageEntityItalic {
-                            offset: start_off,
-                            length,
-                        })
-                    }
-                    MarkdownTag::Strike => {
-                        tl::enums::MessageEntity::Strike(tl::types::MessageEntityStrike {
-                            offset: start_off,
-                            length,
-                        })
-                    }
-                    MarkdownTag::Spoiler => {
-                        tl::enums::MessageEntity::Spoiler(tl::types::MessageEntitySpoiler {
-                            offset: start_off,
-                            length,
-                        })
-                    }
-                };
                 if length > 0 {
-                    ents.push(entity);
+                    ents.push(make_entity(tag, start_off, length));
                 }
             } else {
                 open_stack.push((tag, utf16_off));
@@ -205,11 +245,50 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
             continue;
         }
 
+        // single-char delimiters: *bold*, _italic_
+        // Only fires when the current char is NOT part of a two-char sequence.
+        let one: Option<MarkdownTag> = match chars[i] {
+            '*' => Some(MarkdownTag::Bold),
+            '_' => Some(MarkdownTag::Italic),
+            _ => None,
+        };
+
+        if let Some(tag) = one {
+            if let Some(pos) = open_stack.iter().rposition(|(t, _)| *t == tag) {
+                let (_, start_off) = open_stack.remove(pos);
+                let length = utf16_off - start_off;
+                if length > 0 {
+                    ents.push(make_entity(tag, start_off, length));
+                }
+            } else {
+                open_stack.push((tag, utf16_off));
+            }
+            i += 1;
+            continue;
+        }
+
         push_char!(chars[i]);
         i += 1;
     }
 
     (out, ents)
+}
+
+fn make_entity(tag: MarkdownTag, offset: i32, length: i32) -> tl::enums::MessageEntity {
+    match tag {
+        MarkdownTag::Bold => {
+            tl::enums::MessageEntity::Bold(tl::types::MessageEntityBold { offset, length })
+        }
+        MarkdownTag::Italic => {
+            tl::enums::MessageEntity::Italic(tl::types::MessageEntityItalic { offset, length })
+        }
+        MarkdownTag::Strike => {
+            tl::enums::MessageEntity::Strike(tl::types::MessageEntityStrike { offset, length })
+        }
+        MarkdownTag::Spoiler => {
+            tl::enums::MessageEntity::Spoiler(tl::types::MessageEntitySpoiler { offset, length })
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,51 +300,99 @@ enum MarkdownTag {
 }
 
 /// Generate Telegram markdown from plain text + entities.
+///
+/// All entity types are handled. `Underline` has no unambiguous markdown
+/// delimiter and is silently skipped (use `generate_html` if you need it).
 pub fn generate_markdown(text: &str, entities: &[tl::enums::MessageEntity]) -> String {
     use tl::enums::MessageEntity as ME;
-    let mut insertions: Vec<(i32, &'static str)> = Vec::new();
+
+    // Each entry is (utf16_position, is_open, marker_string).
+    // Pre blocks need a trailing newline before the closing ```.
+    let mut insertions: Vec<(i32, bool, String)> = Vec::new();
+
     for ent in entities {
         match ent {
             ME::Bold(e) => {
-                insertions.push((e.offset, "**"));
-                insertions.push((e.offset + e.length, "**"));
+                insertions.push((e.offset, true, "**".into()));
+                insertions.push((e.offset + e.length, false, "**".into()));
             }
             ME::Italic(e) => {
-                insertions.push((e.offset, "__"));
-                insertions.push((e.offset + e.length, "__"));
+                insertions.push((e.offset, true, "__".into()));
+                insertions.push((e.offset + e.length, false, "__".into()));
             }
             ME::Strike(e) => {
-                insertions.push((e.offset, "~~"));
-                insertions.push((e.offset + e.length, "~~"));
+                insertions.push((e.offset, true, "~~".into()));
+                insertions.push((e.offset + e.length, false, "~~".into()));
             }
             ME::Spoiler(e) => {
-                insertions.push((e.offset, "||"));
-                insertions.push((e.offset + e.length, "||"));
+                insertions.push((e.offset, true, "||".into()));
+                insertions.push((e.offset + e.length, false, "||".into()));
             }
             ME::Code(e) => {
-                insertions.push((e.offset, "`"));
-                insertions.push((e.offset + e.length, "`"));
+                insertions.push((e.offset, true, "`".into()));
+                insertions.push((e.offset + e.length, false, "`".into()));
             }
+            ME::Pre(e) => {
+                let lang = e.language.trim();
+                insertions.push((e.offset, true, format!("```{lang}\n")));
+                insertions.push((e.offset + e.length, false, "\n```".into()));
+            }
+            ME::TextUrl(e) => {
+                insertions.push((e.offset, true, "[".into()));
+                insertions.push((e.offset + e.length, false, format!("]({})", e.url)));
+            }
+            ME::MentionName(e) => {
+                insertions.push((e.offset, true, "[".into()));
+                insertions.push((
+                    e.offset + e.length,
+                    false,
+                    format!("](tg://user?id={})", e.user_id),
+                ));
+            }
+            ME::CustomEmoji(e) => {
+                insertions.push((e.offset, true, "![".into()));
+                insertions.push((
+                    e.offset + e.length,
+                    false,
+                    format!("](tg://emoji?id={})", e.document_id),
+                ));
+            }
+            // Underline has no clean markdown delimiter; skip it.
             _ => {}
         }
     }
-    insertions.sort_by_key(|&(pos, _)| pos);
 
-    let mut result = String::with_capacity(text.len() + insertions.len() * 4);
+    // Sort: by position, opens before closes at the same position.
+    insertions.sort_by(|(a_pos, a_open, _), (b_pos, b_open, _)| {
+        a_pos.cmp(b_pos).then_with(|| b_open.cmp(a_open))
+    });
+
+    let mut result = String::with_capacity(
+        text.len() + insertions.iter().map(|(_, _, s)| s.len()).sum::<usize>(),
+    );
     let mut ins_idx = 0;
     let mut utf16_pos: i32 = 0;
+
     for ch in text.chars() {
         while ins_idx < insertions.len() && insertions[ins_idx].0 <= utf16_pos {
-            result.push_str(insertions[ins_idx].1);
+            result.push_str(&insertions[ins_idx].2);
             ins_idx += 1;
         }
-        result.push(ch);
+        // Escape markdown special chars in plain text.
+        match ch {
+            '*' | '_' | '~' | '|' | '[' | ']' | '(' | ')' | '`' | '\\' | '!' => {
+                result.push('\\');
+                result.push(ch);
+            }
+            c => result.push(c),
+        }
         utf16_pos += ch.len_utf16() as i32;
     }
     while ins_idx < insertions.len() {
-        result.push_str(insertions[ins_idx].1);
+        result.push_str(&insertions[ins_idx].2);
         ins_idx += 1;
     }
+
     result
 }
 
@@ -889,10 +1016,200 @@ mod tests {
     }
 
     #[test]
+    fn markdown_bold_single_asterisk() {
+        let (text, ents) = parse_markdown("*bold*");
+        assert_eq!(text, "bold");
+        assert!(matches!(ents[0], tl::enums::MessageEntity::Bold(_)));
+    }
+
+    #[test]
+    fn markdown_italic_double_underscore() {
+        let (text, ents) = parse_markdown("__italic__");
+        assert_eq!(text, "italic");
+        assert!(matches!(ents[0], tl::enums::MessageEntity::Italic(_)));
+    }
+
+    #[test]
+    fn markdown_italic_single_underscore() {
+        let (text, ents) = parse_markdown("_italic_");
+        assert_eq!(text, "italic");
+        assert!(matches!(ents[0], tl::enums::MessageEntity::Italic(_)));
+    }
+
+    #[test]
     fn markdown_inline_code() {
         let (text, ents) = parse_markdown("Use `foo()` to do it");
         assert_eq!(text, "Use foo() to do it");
         assert!(matches!(ents[0], tl::enums::MessageEntity::Code(_)));
+    }
+
+    #[test]
+    fn markdown_code_block_with_lang() {
+        let (text, ents) = parse_markdown("```rust\nfn main() {}\n```");
+        assert_eq!(text, "fn main() {}");
+        if let tl::enums::MessageEntity::Pre(p) = &ents[0] {
+            assert_eq!(p.language, "rust");
+            assert_eq!(p.offset, 0);
+        } else {
+            panic!("expected pre");
+        }
+    }
+
+    #[test]
+    fn markdown_code_block_no_lang() {
+        let (text, ents) = parse_markdown("```\nhello\n```");
+        assert_eq!(text, "hello");
+        if let tl::enums::MessageEntity::Pre(p) = &ents[0] {
+            assert_eq!(p.language, "");
+        } else {
+            panic!("expected pre");
+        }
+    }
+
+    #[test]
+    fn markdown_strike() {
+        let (text, ents) = parse_markdown("~~strike~~");
+        assert_eq!(text, "strike");
+        assert!(matches!(ents[0], tl::enums::MessageEntity::Strike(_)));
+    }
+
+    #[test]
+    fn markdown_spoiler() {
+        let (text, ents) = parse_markdown("||spoiler||");
+        assert_eq!(text, "spoiler");
+        assert!(matches!(ents[0], tl::enums::MessageEntity::Spoiler(_)));
+    }
+
+    #[test]
+    fn markdown_text_url() {
+        let (text, ents) = parse_markdown("[click](https://example.com)");
+        assert_eq!(text, "click");
+        if let tl::enums::MessageEntity::TextUrl(e) = &ents[0] {
+            assert_eq!(e.url, "https://example.com");
+        } else {
+            panic!("expected text url");
+        }
+    }
+
+    #[test]
+    fn markdown_mention() {
+        let (text, ents) = parse_markdown("[User](tg://user?id=42)");
+        assert_eq!(text, "User");
+        if let tl::enums::MessageEntity::MentionName(e) = &ents[0] {
+            assert_eq!(e.user_id, 42);
+        } else {
+            panic!("expected mention name");
+        }
+    }
+
+    #[test]
+    fn markdown_custom_emoji() {
+        let (text, ents) = parse_markdown("![👍](tg://emoji?id=5368324170671202286)");
+        assert_eq!(text, "👍");
+        if let tl::enums::MessageEntity::CustomEmoji(e) = &ents[0] {
+            assert_eq!(e.document_id, 5368324170671202286);
+        } else {
+            panic!("expected custom emoji");
+        }
+    }
+
+    #[test]
+    fn markdown_backslash_escape() {
+        let (text, ents) = parse_markdown(r"\*not bold\*");
+        assert_eq!(text, "*not bold*");
+        assert!(ents.is_empty());
+    }
+
+    #[test]
+    fn markdown_nested() {
+        let (text, ents) = parse_markdown("**bold __italic__ end**");
+        assert_eq!(text, "bold italic end");
+        assert_eq!(ents.len(), 2);
+        assert!(
+            ents.iter()
+                .any(|e| matches!(e, tl::enums::MessageEntity::Bold(_)))
+        );
+        assert!(
+            ents.iter()
+                .any(|e| matches!(e, tl::enums::MessageEntity::Italic(_)))
+        );
+    }
+
+    #[test]
+    fn generate_markdown_pre() {
+        let entities = vec![tl::enums::MessageEntity::Pre(tl::types::MessageEntityPre {
+            offset: 0,
+            length: 12,
+            language: "rust".into(),
+        })];
+        let md = generate_markdown("fn main() {}", &entities);
+        assert_eq!(md, "```rust\nfn main() {}\n```");
+    }
+
+    #[test]
+    fn generate_markdown_text_url() {
+        let entities = vec![tl::enums::MessageEntity::TextUrl(
+            tl::types::MessageEntityTextUrl {
+                offset: 0,
+                length: 5,
+                url: "https://example.com".into(),
+            },
+        )];
+        let md = generate_markdown("click", &entities);
+        assert_eq!(md, "[click](https://example.com)");
+    }
+
+    #[test]
+    fn generate_markdown_mention() {
+        let entities = vec![tl::enums::MessageEntity::MentionName(
+            tl::types::MessageEntityMentionName {
+                offset: 0,
+                length: 4,
+                user_id: 99,
+            },
+        )];
+        let md = generate_markdown("User", &entities);
+        assert_eq!(md, "[User](tg://user?id=99)");
+    }
+
+    #[test]
+    fn generate_markdown_custom_emoji() {
+        let entities = vec![tl::enums::MessageEntity::CustomEmoji(
+            tl::types::MessageEntityCustomEmoji {
+                offset: 0,
+                length: 2,
+                document_id: 123456,
+            },
+        )];
+        let md = generate_markdown("👍", &entities);
+        assert_eq!(md, "![👍](tg://emoji?id=123456)");
+    }
+
+    #[test]
+    fn generate_markdown_escapes_special_chars() {
+        let (_, empty): (_, Vec<_>) = (String::new(), vec![]);
+        let md = generate_markdown("1 * 2 = 2", &empty);
+        assert_eq!(md, r"1 \* 2 = 2");
+    }
+
+    #[test]
+    fn markdown_roundtrip_url() {
+        let original = "click";
+        let entities = vec![tl::enums::MessageEntity::TextUrl(
+            tl::types::MessageEntityTextUrl {
+                offset: 0,
+                length: 5,
+                url: "https://example.com".into(),
+            },
+        )];
+        let md = generate_markdown(original, &entities);
+        let (back, ents2) = parse_markdown(&md);
+        assert_eq!(back, original);
+        if let tl::enums::MessageEntity::TextUrl(e) = &ents2[0] {
+            assert_eq!(e.url, "https://example.com");
+        } else {
+            panic!("roundtrip url failed");
+        }
     }
 
     #[test]

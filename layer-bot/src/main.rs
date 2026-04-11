@@ -9,7 +9,7 @@ use chrono::Utc;
 use rand::{Rng, thread_rng};
 use sha2::{Digest, Sha256};
 
-use layer_client::{Client, InputMessage, parsers::parse_html, update::Update};
+use layer_client::{Client, InputMessage, update::Update};
 use layer_tl_types as tl;
 
 const API_ID: i32 = 0;
@@ -224,6 +224,8 @@ async fn dispatch(upd: Update, client: Arc<Client>, me: Arc<tl::types::User>, bo
                     )
                     .await;
                 }
+                Some("/fmt_md") => h_fmt_md(&client, peer, msg_id).await,
+                Some("/fmt_html") => h_fmt_html(&client, peer, msg_id).await,
                 _ => {
                     rp(
                         &client,
@@ -397,12 +399,10 @@ async fn h_start(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
         vec![bc("📖 Help", "cb:help"), bc("ℹ️ About", "cb:about")],
         vec![bu("⭐ GitHub", "https://github.com/ankit-chaubey/layer")],
     ]);
-    let (plain, ents) = parse_html(&text);
     let _ = client
         .send_message_to_peer_ex(
             peer,
-            &InputMessage::text(plain)
-                .entities(ents)
+            &InputMessage::html(&text)
                 .reply_markup(kb)
                 .reply_to(Some(reply_to)),
         )
@@ -423,6 +423,7 @@ async fn h_help(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
         <b>Math &amp; Random</b>\n\
         /calc /roll /flip /random /password /uuid\n\n\
         <b>Fun</b>\n/fact /joke\n\n\
+        <b>Formatting demos</b>\n/fmt_md /fmt_html\n\n\
         <b>Inline:</b> <code>@bot &lt;text&gt;</code> in any chat",
     )
     .await;
@@ -446,12 +447,10 @@ async fn h_ping(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
         bc("🔁 Ping again", "cb:ping"),
         bc("🕐 Time", "cb:time"),
     ]]);
-    let (plain, ents) = parse_html(&text);
     let _ = client
         .send_message_to_peer_ex(
             peer,
-            &InputMessage::text(plain)
-                .entities(ents)
+            &InputMessage::html(&text)
                 .reply_markup(kb)
                 .reply_to(Some(reply_to)),
         )
@@ -498,12 +497,10 @@ async fn h_time(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
         now.timestamp(),
     );
     let kb = kb(vec![vec![bc("🔁 Refresh", "cb:time")]]);
-    let (plain, ents) = parse_html(&text);
     let _ = client
         .send_message_to_peer_ex(
             peer,
-            &InputMessage::text(plain)
-                .entities(ents)
+            &InputMessage::html(&text)
                 .reply_markup(kb)
                 .reply_to(Some(reply_to)),
         )
@@ -518,12 +515,10 @@ async fn h_stats(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
         tl::LAYER,
     );
     let kb = kb(vec![vec![bc("🔁 Refresh", "cb:stats")]]);
-    let (plain, ents) = parse_html(&text);
     let _ = client
         .send_message_to_peer_ex(
             peer,
-            &InputMessage::text(plain)
-                .entities(ents)
+            &InputMessage::html(&text)
                 .reply_markup(kb)
                 .reply_to(Some(reply_to)),
         )
@@ -539,12 +534,10 @@ async fn h_layer(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
         bu("⭐ GitHub", "https://github.com/ankit-chaubey/layer"),
         bc("📡 Version", "cb:layer"),
     ]]);
-    let (plain, ents) = parse_html(&text);
     let _ = client
         .send_message_to_peer_ex(
             peer,
-            &InputMessage::text(plain)
-                .entities(ents)
+            &InputMessage::html(&text)
                 .reply_markup(kb)
                 .reply_to(Some(reply_to)),
         )
@@ -563,12 +556,10 @@ async fn h_about(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
         vec![bu("⭐ GitHub", "https://github.com/ankit-chaubey/layer")],
         vec![bc("📊 Stats", "cb:stats"), bc("📡 Layer", "cb:layer")],
     ]);
-    let (plain, ents) = parse_html(&text);
     let _ = client
         .send_message_to_peer_ex(
             peer,
-            &InputMessage::text(plain)
-                .entities(ents)
+            &InputMessage::html(&text)
                 .reply_markup(kb)
                 .reply_to(Some(reply_to)),
         )
@@ -769,6 +760,41 @@ async fn h_password(client: &Client, peer: tl::enums::Peer, reply_to: i32, arg: 
     .await;
 }
 
+async fn h_fmt_md(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
+    // InputMessage::markdown() parses the markdown inline, no manual entity wiring needed.
+    let _ = client
+        .send_message_to_peer_ex(
+            peer,
+            &InputMessage::markdown(
+                "**Markdown example**\n\n\
+                *bold* · _italic_ · ~~strike~~ · ||spoiler||\n\
+                `inline code`\n\
+                ```rust\nfn hello() { println!(\"hi\"); }\n```\n\
+                [layer repo](https://github.com/ankit-chaubey/layer)",
+            )
+            .reply_to(Some(reply_to)),
+        )
+        .await;
+}
+
+async fn h_fmt_html(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
+    // InputMessage::html() parses the HTML inline, no manual entity wiring needed.
+    let _ = client
+        .send_message_to_peer_ex(
+            peer,
+            &InputMessage::html(
+                "<b>HTML example</b>\n\n\
+                <b>bold</b> · <i>italic</i> · <u>underline</u> · \
+                <s>strike</s> · <tg-spoiler>spoiler</tg-spoiler>\n\
+                <code>inline code</code>\n\
+                <pre><code class=\"language-rust\">fn hello() { println!(\"hi\"); }</code></pre>\n\
+                <a href=\"https://github.com/ankit-chaubey/layer\">layer repo</a>",
+            )
+            .reply_to(Some(reply_to)),
+        )
+        .await;
+}
+
 async fn rp(client: &Client, peer: tl::enums::Peer, reply_to: i32, text: &str) {
     let _ = client
         .send_message_to_peer_ex(peer, &InputMessage::text(text).reply_to(Some(reply_to)))
@@ -776,14 +802,8 @@ async fn rp(client: &Client, peer: tl::enums::Peer, reply_to: i32, text: &str) {
 }
 
 async fn rh(client: &Client, peer: tl::enums::Peer, reply_to: i32, html: &str) {
-    let (plain, ents) = parse_html(html);
     let _ = client
-        .send_message_to_peer_ex(
-            peer,
-            &InputMessage::text(plain)
-                .entities(ents)
-                .reply_to(Some(reply_to)),
-        )
+        .send_message_to_peer_ex(peer, &InputMessage::html(html).reply_to(Some(reply_to)))
         .await;
 }
 

@@ -253,9 +253,19 @@ impl PeerCache {
 /// ```rust,no_run
 /// use layer_client::InputMessage;
 ///
-/// let msg = InputMessage::text("Hello, *world*!")
-/// .silent(true)
-/// .reply_to(Some(42));
+/// // plain text
+/// let msg = InputMessage::text("Hello!");
+///
+/// // markdown
+/// let msg = InputMessage::markdown("**bold** and _italic_");
+///
+/// // HTML
+/// let msg = InputMessage::html("<b>bold</b> and <i>italic</i>");
+///
+/// // with options
+/// let msg = InputMessage::markdown("**Hello**")
+///     .silent(true)
+///     .reply_to(Some(42));
 /// ```
 #[derive(Clone, Default)]
 pub struct InputMessage {
@@ -282,6 +292,46 @@ impl InputMessage {
     pub fn text(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
+            ..Default::default()
+        }
+    }
+
+    /// Create a message by parsing Telegram-flavoured markdown.
+    ///
+    /// The markdown is stripped and the resulting plain text + entities are
+    /// set on the message. Supports `**bold**`, `_italic_`, `` `code` ``,
+    /// `[text](url)`, `||spoiler||`, `~~strike~~`, `![text](tg://emoji?id=...)`,
+    /// and backslash escapes.
+    ///
+    /// ```rust,no_run
+    /// use layer_client::InputMessage;
+    ///
+    /// let msg = InputMessage::markdown("**Hello** _world_!");
+    /// ```
+    pub fn markdown(text: impl AsRef<str>) -> Self {
+        let (plain, ents) = crate::parsers::parse_markdown(text.as_ref());
+        Self {
+            text: plain,
+            entities: if ents.is_empty() { None } else { Some(ents) },
+            ..Default::default()
+        }
+    }
+
+    /// Create a message by parsing Telegram-compatible HTML.
+    ///
+    /// Supports `<b>`, `<i>`, `<u>`, `<s>`, `<code>`, `<pre>`,
+    /// `<tg-spoiler>`, `<a href="...">`, `<tg-emoji emoji-id="...">`.
+    ///
+    /// ```rust,no_run
+    /// use layer_client::InputMessage;
+    ///
+    /// let msg = InputMessage::html("<b>Hello</b> <i>world</i>!");
+    /// ```
+    pub fn html(text: impl AsRef<str>) -> Self {
+        let (plain, ents) = crate::parsers::parse_html(text.as_ref());
+        Self {
+            text: plain,
+            entities: if ents.is_empty() { None } else { Some(ents) },
             ..Default::default()
         }
     }

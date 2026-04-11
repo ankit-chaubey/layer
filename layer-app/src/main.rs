@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use chrono::Utc;
-use layer_client::{Client, InputMessage, SignInError, parsers::parse_html, update::Update};
+use layer_client::{Client, InputMessage, SignInError, update::Update};
 use layer_tl_types::{self as tl, Cursor, Deserializable};
 
 const API_ID: i32 = 0;
@@ -436,14 +436,8 @@ async fn rp(client: &Client, peer: tl::enums::Peer, reply_to: i32, text: &str) {
 }
 
 async fn rh(client: &Client, peer: tl::enums::Peer, reply_to: i32, html: &str) {
-    let (plain, ents) = parse_html(html);
     let _ = client
-        .send_message_to_peer_ex(
-            peer,
-            &InputMessage::text(plain)
-                .entities(ents)
-                .reply_to(Some(reply_to)),
-        )
+        .send_message_to_peer_ex(peer, &InputMessage::html(html).reply_to(Some(reply_to)))
         .await;
 }
 
