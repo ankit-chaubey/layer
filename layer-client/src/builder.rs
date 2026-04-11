@@ -11,6 +11,10 @@
 //!     .api_hash("abc123")
 //!     .session("my.session")
 //!     .catch_up(true)
+//!     .device_model("MyApp on Linux")
+//!     .system_version("Ubuntu 24.04")
+//!     .app_version("0.1.0")
+//!     .lang_code("en")
 //!     .connect().await?;
 //! Ok(())
 //! }
@@ -53,6 +57,12 @@ pub struct ClientBuilder {
     transport: TransportKind,
     session_backend: Arc<dyn SessionBackend>,
     catch_up: bool,
+    device_model: String,
+    system_version: String,
+    app_version: String,
+    system_lang_code: String,
+    lang_pack: String,
+    lang_code: String,
 }
 
 impl Default for ClientBuilder {
@@ -69,6 +79,12 @@ impl Default for ClientBuilder {
             transport: TransportKind::Abridged,
             session_backend: Arc::new(BinaryFileBackend::new("layer.session")),
             catch_up: false,
+            device_model: "Linux".to_string(),
+            system_version: "1.0".to_string(),
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            system_lang_code: "en".to_string(),
+            lang_pack: String::new(),
+            lang_code: "en".to_string(),
         }
     }
 }
@@ -177,6 +193,21 @@ impl ClientBuilder {
         self
     }
 
+    /// Set an MTProxy from a `https://t.me/proxy?...` or `tg://proxy?...` link.
+    ///
+    /// Empty string is a no-op; proxy stays unset.
+    /// Transport is selected from the secret prefix automatically.
+    pub fn proxy_link(mut self, url: &str) -> Self {
+        if url.is_empty() {
+            return self;
+        }
+        if let Some(cfg) = crate::proxy::parse_proxy_link(url) {
+            self.transport = cfg.transport.clone();
+            self.mtproxy = Some(cfg);
+        }
+        self
+    }
+
     /// Allow IPv6 DC addresses (default: `false`).
     pub fn allow_ipv6(mut self, allow: bool) -> Self {
         self.allow_ipv6 = allow;
@@ -202,6 +233,46 @@ impl ClientBuilder {
         self
     }
 
+    // InitConnection identity
+
+    /// Set the device model string sent in `InitConnection` (default: `"Linux"`).
+    ///
+    /// This shows up in Telegram's active sessions list as the device name.
+    pub fn device_model(mut self, model: impl Into<String>) -> Self {
+        self.device_model = model.into();
+        self
+    }
+
+    /// Set the system/OS version string sent in `InitConnection` (default: `"1.0"`).
+    pub fn system_version(mut self, version: impl Into<String>) -> Self {
+        self.system_version = version.into();
+        self
+    }
+
+    /// Set the app version string sent in `InitConnection` (default: crate version from `CARGO_PKG_VERSION`).
+    pub fn app_version(mut self, version: impl Into<String>) -> Self {
+        self.app_version = version.into();
+        self
+    }
+
+    /// Set the system language code sent in `InitConnection` (default: `"en"`).
+    pub fn system_lang_code(mut self, code: impl Into<String>) -> Self {
+        self.system_lang_code = code.into();
+        self
+    }
+
+    /// Set the language pack name sent in `InitConnection` (default: `""`).
+    pub fn lang_pack(mut self, pack: impl Into<String>) -> Self {
+        self.lang_pack = pack.into();
+        self
+    }
+
+    /// Set the language code sent in `InitConnection` (default: `"en"`).
+    pub fn lang_code(mut self, code: impl Into<String>) -> Self {
+        self.lang_code = code.into();
+        self
+    }
+
     // Terminal
 
     /// Build the [`Config`] without connecting.
@@ -224,6 +295,12 @@ impl ClientBuilder {
             transport: self.transport,
             session_backend: self.session_backend,
             catch_up: self.catch_up,
+            device_model: self.device_model,
+            system_version: self.system_version,
+            app_version: self.app_version,
+            system_lang_code: self.system_lang_code,
+            lang_pack: self.lang_pack,
+            lang_code: self.lang_code,
         })
     }
 

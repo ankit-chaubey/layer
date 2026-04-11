@@ -530,6 +530,18 @@ pub struct Config {
     /// Default: `false`.
     pub catch_up: bool,
     pub restart_policy: Arc<dyn ConnectionRestartPolicy>,
+    /// Device model reported in `InitConnection` (default: `"Linux"`).
+    pub device_model: String,
+    /// System/OS version reported in `InitConnection` (default: `"1.0"`).
+    pub system_version: String,
+    /// App version reported in `InitConnection` (default: crate version).
+    pub app_version: String,
+    /// System language code reported in `InitConnection` (default: `"en"`).
+    pub system_lang_code: String,
+    /// Language pack name reported in `InitConnection` (default: `""`).
+    pub lang_pack: String,
+    /// Language code reported in `InitConnection` (default: `"en"`).
+    pub lang_code: String,
 }
 
 impl Config {
@@ -661,6 +673,12 @@ impl Default for Config {
             )),
             catch_up: false,
             restart_policy: Arc::new(NeverRestart),
+            device_model: "Linux".to_string(),
+            system_version: "1.0".to_string(),
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            system_lang_code: "en".to_string(),
+            lang_pack: String::new(),
+            lang_code: "en".to_string(),
         }
     }
 }
@@ -791,6 +809,12 @@ struct ClientInner {
     pub possible_gap: Mutex<pts::PossibleGapBuffer>,
     api_id: i32,
     api_hash: String,
+    device_model: String,
+    system_version: String,
+    app_version: String,
+    system_lang_code: String,
+    lang_pack: String,
+    lang_code: String,
     retry_policy: Arc<dyn RetryPolicy>,
     socks5: Option<crate::socks5::Socks5Config>,
     mtproxy: Option<crate::proxy::MtProxyConfig>,
@@ -990,6 +1014,12 @@ impl Client {
             possible_gap: Mutex::new(pts::PossibleGapBuffer::new()),
             api_id: config.api_id,
             api_hash: config.api_hash,
+            device_model: config.device_model,
+            system_version: config.system_version,
+            app_version: config.app_version,
+            system_lang_code: config.system_lang_code,
+            lang_pack: config.lang_pack,
+            lang_code: config.lang_code,
             retry_policy: config.retry_policy,
             socks5: config.socks5,
             mtproxy: config.mtproxy,
@@ -5249,12 +5279,12 @@ impl Client {
             layer: tl::LAYER,
             query: InitConnection {
                 api_id: self.inner.api_id,
-                device_model: "Linux".to_string(),
-                system_version: "1.0".to_string(),
-                app_version: env!("CARGO_PKG_VERSION").to_string(),
-                system_lang_code: "en".to_string(),
-                lang_pack: "".to_string(),
-                lang_code: "en".to_string(),
+                device_model: self.inner.device_model.clone(),
+                system_version: self.inner.system_version.clone(),
+                app_version: self.inner.app_version.clone(),
+                system_lang_code: self.inner.system_lang_code.clone(),
+                lang_pack: self.inner.lang_pack.clone(),
+                lang_code: self.inner.lang_code.clone(),
                 proxy: None,
                 params: None,
                 query: GetConfig {},

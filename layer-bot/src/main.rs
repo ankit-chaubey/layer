@@ -9,7 +9,7 @@ use chrono::Utc;
 use rand::{Rng, thread_rng};
 use sha2::{Digest, Sha256};
 
-use layer_client::{Client, Config, InputMessage, parsers::parse_html, update::Update};
+use layer_client::{Client, InputMessage, parsers::parse_html, update::Update};
 use layer_tl_types as tl;
 
 const API_ID: i32 = 0;
@@ -20,6 +20,14 @@ const BOT_TOKEN: &str = "";
 // Supports all secret types: plain (hex), dd (padded), ee (fake-TLS).
 // Example: "https://t.me/proxy?server=HOST&port=PORT&secret=SECRET"
 const PROXY: &str = "";
+
+// These values are sent to Telegram in InitConnection and appear
+// in the active sessions list. Customize them for your bot.
+const DEVICE_MODEL: &str = "Server";
+const SYSTEM_VERSION: &str = "Linux";
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const LANG_CODE: &str = "en";
+const SYSTEM_LANG_CODE: &str = "en";
 
 static MSG_COUNT: AtomicU64 = AtomicU64::new(0);
 static START_TS: AtomicU64 = AtomicU64::new(0);
@@ -52,12 +60,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("🔌 Connecting…");
-    let (client, _shutdown) = Client::connect(Config {
-        api_id: API_ID,
-        api_hash: API_HASH.to_string(),
-        ..Config::default().proxy_link(PROXY)
-    })
-    .await?;
+    let (client, _shutdown) = Client::builder()
+        .api_id(API_ID)
+        .api_hash(API_HASH)
+        .device_model(DEVICE_MODEL)
+        .system_version(SYSTEM_VERSION)
+        .app_version(APP_VERSION)
+        .lang_code(LANG_CODE)
+        .system_lang_code(SYSTEM_LANG_CODE)
+        .proxy_link(PROXY)
+        .connect()
+        .await?;
 
     if !client.is_authorized().await? {
         println!("🤖 Signing in…");

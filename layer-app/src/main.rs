@@ -3,15 +3,21 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use chrono::Utc;
-use layer_client::{
-    Client, Config, InputMessage, SignInError, parsers::parse_html, update::Update,
-};
+use layer_client::{Client, InputMessage, SignInError, parsers::parse_html, update::Update};
 use layer_tl_types::{self as tl, Cursor, Deserializable};
 
 const API_ID: i32 = 0;
 const API_HASH: &str = "";
 const PHONE: &str = "";
 const BOT_TOKEN: &str = "";
+
+// These values are sent to Telegram in InitConnection and appear
+// in the active sessions list. Customize them for your app.
+const DEVICE_MODEL: &str = "Desktop";
+const SYSTEM_VERSION: &str = "Linux";
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const LANG_CODE: &str = "en";
+const SYSTEM_LANG_CODE: &str = "en";
 
 #[tokio::main]
 async fn main() {
@@ -33,12 +39,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
     println!("🔌 Connecting…");
-    let (client, _shutdown) = Client::connect(Config {
-        api_id: API_ID,
-        api_hash: API_HASH.to_string(),
-        ..Default::default()
-    })
-    .await?;
+    let (client, _shutdown) = Client::builder()
+        .api_id(API_ID)
+        .api_hash(API_HASH)
+        .device_model(DEVICE_MODEL)
+        .system_version(SYSTEM_VERSION)
+        .app_version(APP_VERSION)
+        .lang_code(LANG_CODE)
+        .system_lang_code(SYSTEM_LANG_CODE)
+        .connect()
+        .await?;
 
     if !client.is_authorized().await? {
         do_login(&client).await?;
