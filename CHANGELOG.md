@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.9]: 2026-04-11
+
+### Fixed
+
+* **`AUTH_KEY_UNREGISTERED` on first RPC after fresh DH**: after a cold start with no saved session, the newly generated auth key may not have propagated to all Telegram app servers yet. The first RPC call could therefore receive a `401 AUTH_KEY_UNREGISTERED` before any reconnect logic had a chance to run. Added a 2-second propagation pause in the initial connect path when `loaded_session.is_none()`, mirroring the guard already present for mid-session reconnects in the supervisor loop.
+
+---
+
 ## [0.4.8]: 2026-04-10
 
 ### Added

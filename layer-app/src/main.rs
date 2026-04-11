@@ -100,40 +100,45 @@ async fn dispatch(upd: Update, client: &Client, my_id: i64) {
         Update::NewMessage(msg) => {
             let text = msg.text().unwrap_or("").trim().to_string();
             let out = msg.outgoing();
-            if out && !text.starts_with('.') {
-                return;
-            }
             let Some(peer) = msg.peer_id() else { return };
-            if is_self_peer(peer, my_id) && !text.starts_with('.') {
-                return;
-            }
-
-            let sender_uid = uid_from_peer(msg.sender_id());
+            let sender_peer = msg.sender_id().cloned();
             let msg_id = msg.id();
             let peer = peer.clone();
+
+            // For display: extract a numeric id from the sender peer.
+            let sender_display_id = uid_from_peer(sender_peer.as_ref());
 
             println!(
                 "{}  [msg={}{}] {}",
                 if out { "📤" } else { "📨" },
                 msg_id,
-                sender_uid
+                sender_display_id
                     .map(|id| format!(" from={id}"))
                     .unwrap_or_default(),
                 &text[..text.floor_char_boundary(100)]
             );
 
+            // Only route dot-commands.
             if !text.starts_with('.') {
                 return;
             }
 
-            if let Some(uid) = sender_uid {
-                if uid != my_id {
-                    cache_sender(client, uid, msg_id, &peer).await;
-                }
+            // Commands must come from self only.
+            // `out` covers normal chats and channel posts.
+            // `sender_peer == User(my_id)` covers Saved Messages where Telegram
+            // does not always set the outgoing flag on the update.
+            let from_self = out
+                || matches!(&sender_peer,
+                    Some(tl::enums::Peer::User(u)) if u.user_id == my_id);
+            if !from_self {
+                return;
             }
 
+            // Build the correct InputPeer for replies before routing.
+            let input_peer = resolve_reply_peer(client, &peer, msg_id, my_id).await;
+
             let (cmd, arg) = split_cmd(&text);
-            route(client, &cmd, &arg, peer, msg_id, my_id, sender_uid).await;
+            route(client, &cmd, &arg, peer, input_peer, msg_id, sender_peer).await;
         }
         Update::MessageEdited(msg) => {
             println!("✏️  [msg={}] {}", msg.id(), msg.text().unwrap_or(""))
@@ -144,32 +149,80 @@ async fn dispatch(upd: Update, client: &Client, my_id: i64) {
     }
 }
 
+/// Build the [`tl::enums::InputPeer`] for sending replies.
+///
+/// 1. Saved Messages (`peer == my_id`) -> `InputPeerSelf`
+/// 2. Cache hit -> `InputPeerUser` / `InputPeerChannel` with access-hash
+/// 3. Cache miss -> `InputPeerUserFromMessage` / `InputPeerChannelFromMessage`
+///    (server resolves the access-hash from the message context)
+/// 4. Basic group (`Peer::Chat`) -> `InputPeerChat` (no access-hash needed)
+async fn resolve_reply_peer(
+    client: &Client,
+    peer: &tl::enums::Peer,
+    msg_id: i32,
+    my_id: i64,
+) -> tl::enums::InputPeer {
+    // Saved Messages: PeerSelf needs no access-hash.
+    if let tl::enums::Peer::User(u) = peer {
+        if u.user_id == my_id {
+            return tl::enums::InputPeer::PeerSelf;
+        }
+    }
+
+    // Cache hit: use the stored access-hash directly.
+    if let Ok(ip) = client.resolve_to_input_peer(peer).await {
+        return ip;
+    }
+
+    // Cache miss: use *FromMessage so the server resolves the hash.
+    match peer {
+        tl::enums::Peer::User(u) => {
+            tl::enums::InputPeer::UserFromMessage(Box::new(tl::types::InputPeerUserFromMessage {
+                peer: tl::enums::InputPeer::Empty,
+                msg_id,
+                user_id: u.user_id,
+            }))
+        }
+        tl::enums::Peer::Chat(c) => {
+            // Basic groups never need an access-hash.
+            tl::enums::InputPeer::Chat(tl::types::InputPeerChat { chat_id: c.chat_id })
+        }
+        tl::enums::Peer::Channel(c) => tl::enums::InputPeer::ChannelFromMessage(Box::new(
+            tl::types::InputPeerChannelFromMessage {
+                peer: tl::enums::InputPeer::Empty,
+                msg_id,
+                channel_id: c.channel_id,
+            },
+        )),
+    }
+}
+
 async fn route(
     client: &Client,
     cmd: &str,
     arg: &str,
     peer: tl::enums::Peer,
+    ip: tl::enums::InputPeer,
     msg_id: i32,
-    _my_id: i64,
-    sender: Option<i64>,
+    sender_peer: Option<tl::enums::Peer>,
 ) {
     match cmd {
-        ".ping" => cmd_ping(client, peer, msg_id).await,
-        ".me" => cmd_me(client, peer, msg_id).await,
-        ".id" => cmd_id(client, peer.clone(), msg_id, sender, &peer).await,
+        ".ping" => cmd_ping(client, ip, msg_id).await,
+        ".me" => cmd_me(client, ip, msg_id).await,
+        ".id" => cmd_id(client, ip, msg_id, sender_peer.as_ref(), &peer).await,
         ".msgid" => {
             rh(
                 client,
-                peer,
+                ip,
                 msg_id,
                 &format!("📌 <b>Msg ID:</b> <code>{msg_id}</code>"),
             )
             .await
         }
-        ".dc" => cmd_dc(client, peer, msg_id).await,
-        ".layer" => cmd_layer(client, peer, msg_id).await,
-        ".time" => cmd_time(client, peer, msg_id).await,
-        ".whois" => cmd_whois(client, peer.clone(), msg_id, sender, &peer).await,
+        ".dc" => cmd_dc(client, ip, msg_id).await,
+        ".layer" => cmd_layer(client, ip, msg_id).await,
+        ".time" => cmd_time(client, ip, msg_id).await,
+        ".whois" => cmd_whois(client, ip, msg_id, sender_peer.as_ref(), &peer).await,
         ".read" => {
             let _ = client.mark_as_read(peer).await;
         }
@@ -187,16 +240,16 @@ async fn route(
                 .send_chat_action(peer, tl::enums::SendMessageAction::SendMessageTypingAction)
                 .await;
         }
-        ".dialogs" => cmd_dialogs(client, peer, msg_id).await,
-        ".echo" => rp(client, peer, msg_id, arg).await,
-        ".upper" => rp(client, peer, msg_id, &arg.to_uppercase()).await,
-        ".lower" => rp(client, peer, msg_id, &arg.to_lowercase()).await,
+        ".dialogs" => cmd_dialogs(client, ip, msg_id).await,
+        ".echo" => rp(client, ip, msg_id, arg).await,
+        ".upper" => rp(client, ip, msg_id, &arg.to_uppercase()).await,
+        ".lower" => rp(client, ip, msg_id, &arg.to_lowercase()).await,
         ".rev" => {
             let r: String = arg.chars().rev().collect();
-            rp(client, peer, msg_id, &r).await;
+            rp(client, ip, msg_id, &r).await;
         }
-        ".count" => cmd_count(client, peer, msg_id, arg).await,
-        ".calc" => cmd_calc(client, peer, msg_id, arg).await,
+        ".count" => cmd_count(client, ip, msg_id, arg).await,
+        ".calc" => cmd_calc(client, ip, msg_id, arg).await,
         ".edit" => {
             if !arg.is_empty() {
                 let _ = client.edit_message(peer, msg_id, arg).await;
@@ -207,36 +260,12 @@ async fn route(
                 let _ = client.forward_messages(arg, &[msg_id], peer).await;
             }
         }
-        ".help" => cmd_help(client, peer, msg_id).await,
+        ".help" => cmd_help(client, ip, msg_id).await,
         _ => {}
     }
 }
 
-async fn cache_sender(client: &Client, user_id: i64, msg_id: i32, chat_peer: &tl::enums::Peer) {
-    let ctx = match chat_peer {
-        tl::enums::Peer::Chat(c) => {
-            tl::enums::InputPeer::Chat(tl::types::InputPeerChat { chat_id: c.chat_id })
-        }
-        _ => tl::enums::InputPeer::Empty,
-    };
-    let req = tl::functions::users::GetUsers {
-        id: vec![tl::enums::InputUser::FromMessage(
-            tl::types::InputUserFromMessage {
-                peer: ctx,
-                msg_id,
-                user_id,
-            },
-        )],
-    };
-    if let Ok(body) = client.rpc_call_raw_pub(&req).await {
-        let mut cur = Cursor::from_slice(&body);
-        if let Ok(users) = Vec::<tl::enums::User>::deserialize(&mut cur) {
-            client.cache_users_slice_pub(&users).await;
-        }
-    }
-}
-
-async fn cmd_ping(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
+async fn cmd_ping(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
     let t = Instant::now();
     let ok = client
         .invoke(&tl::functions::Ping {
@@ -247,7 +276,7 @@ async fn cmd_ping(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     let rtt = t.elapsed().as_millis();
     rh(
         client,
-        peer,
+        ip,
         reply_to,
         &if ok {
             format!("🏓 pong | <b>{rtt}ms</b>")
@@ -258,28 +287,30 @@ async fn cmd_ping(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     .await;
 }
 
-async fn cmd_me(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
+async fn cmd_me(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
     match client.get_me().await {
-        Ok(me) => rh(client, peer, reply_to, &format!(
+        Ok(me) => rh(client, ip, reply_to, &format!(
             "👤 <b>Me</b>\n\n<b>Name:</b> {}\n<b>Username:</b> {}\n<b>ID:</b> <code>{}</code>\n<b>Phone:</b> <code>{}</code>\n<b>Premium:</b> {} <b>Bot:</b> {}",
             esc(&full_name(&me)),
             me.username.as_deref().map(|u| format!("@{u}")).unwrap_or_else(|| "none".into()),
             me.id, me.phone.as_deref().unwrap_or("hidden"),
             boo(me.premium), boo(me.bot),
         )).await,
-        Err(e) => rp(client, peer, reply_to, &format!("❌ {e}")).await,
+        Err(e) => rp(client, ip, reply_to, &format!("❌ {e}")).await,
     }
 }
 
 async fn cmd_id(
     client: &Client,
-    peer: tl::enums::Peer,
+    ip: tl::enums::InputPeer,
     reply_to: i32,
-    sender: Option<i64>,
+    sender_peer: Option<&tl::enums::Peer>,
     chat_peer: &tl::enums::Peer,
 ) {
-    let s = match sender {
-        Some(id) => format!("<code>{id}</code>"),
+    let s = match sender_peer {
+        Some(tl::enums::Peer::User(u)) => format!("<code>{}</code> (user)", u.user_id),
+        Some(tl::enums::Peer::Channel(c)) => format!("<code>{}</code> (channel)", c.channel_id),
+        Some(tl::enums::Peer::Chat(c)) => format!("<code>{}</code> (group)", c.chat_id),
         None => "unknown".into(),
     };
     let c = match chat_peer {
@@ -287,31 +318,31 @@ async fn cmd_id(
         tl::enums::Peer::Chat(c) => format!("<code>{}</code> (group)", c.chat_id),
         tl::enums::Peer::Channel(c) => format!("<code>{}</code> (channel)", c.channel_id),
     };
-    rh(client, peer, reply_to, &format!(
+    rh(client, ip, reply_to, &format!(
         "🪪 <b>IDs</b>\n\n<b>Sender:</b> {s}\n<b>Chat:</b> {c}\n<b>Msg:</b> <code>{reply_to}</code>"
     )).await;
 }
 
-async fn cmd_dc(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
+async fn cmd_dc(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
     match client.get_me().await {
-        Ok(me) => rh(client, peer, reply_to, &format!(
+        Ok(me) => rh(client, ip, reply_to, &format!(
             "🌐 <b>Connection</b>\n\n<b>Layer:</b> <code>{}</code>\n<b>User ID:</b> <code>{}</code>\n<b>Bot:</b> {}",
             tl::LAYER, me.id, boo(me.bot)
         )).await,
-        Err(e) => rp(client, peer, reply_to, &format!("❌ {e}")).await,
+        Err(e) => rp(client, ip, reply_to, &format!("❌ {e}")).await,
     }
 }
 
-async fn cmd_layer(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
-    rh(client, peer, reply_to, &format!(
-        "📡 <b>layer</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.4.6</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
+async fn cmd_layer(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
+    rh(client, ip, reply_to, &format!(
+        "📡 <b>layer</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.4.9</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
         tl::LAYER
     )).await;
 }
 
-async fn cmd_time(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
+async fn cmd_time(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
     let now = Utc::now();
-    rh(client, peer, reply_to, &format!(
+    rh(client, ip, reply_to, &format!(
         "🕐 <b>Time</b>\n\n<b>Date:</b> {}\n<b>UTC:</b> <code>{}</code>\n<b>Unix:</b> <code>{}</code>",
         now.format("%A, %B %d %Y"), now.format("%H:%M:%S"), now.timestamp(),
     )).await;
@@ -319,15 +350,36 @@ async fn cmd_time(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
 
 async fn cmd_whois(
     client: &Client,
-    peer: tl::enums::Peer,
+    ip: tl::enums::InputPeer,
     reply_to: i32,
-    sender: Option<i64>,
+    sender_peer: Option<&tl::enums::Peer>,
     chat_peer: &tl::enums::Peer,
 ) {
-    let Some(uid) = sender else {
-        rp(client, peer, reply_to, "❓ Unknown sender.").await;
+    // Anonymous channel post: from_id is Peer::Channel (the channel itself).
+    if let Some(tl::enums::Peer::Channel(c)) = sender_peer {
+        rh(
+            client,
+            ip,
+            reply_to,
+            &format!(
+                "📢 <b>Channel Post</b>\n\n<b>Channel ID:</b> <code>{}</code>",
+                c.channel_id,
+            ),
+        )
+        .await;
+        return;
+    }
+
+    // Extract user_id; None means truly anonymous (no from_id at all).
+    let Some(tl::enums::Peer::User(sender_user)) = sender_peer else {
+        rp(client, ip, reply_to, "❓ Unknown sender.").await;
         return;
     };
+    let uid = sender_user.user_id;
+
+    // Build the lookup context: for basic groups pass the chat InputPeer so
+    // Telegram can resolve the user; for DMs/channels an empty peer suffices
+    // because user_id alone identifies the user in that context.
     let ctx = match chat_peer {
         tl::enums::Peer::Chat(c) => {
             tl::enums::InputPeer::Chat(tl::types::InputPeerChat { chat_id: c.chat_id })
@@ -356,20 +408,20 @@ async fn cmd_whois(
                         .as_deref()
                         .map(|s| format!("@{s}"))
                         .unwrap_or_else(|| "none".into());
-                    rh(client, peer, reply_to, &format!(
+                    rh(client, ip, reply_to, &format!(
                         "👤 <b>User Info</b>\n\n<b>Name:</b> {}\n<b>Username:</b> {uname}\n<b>ID:</b> <code>{}</code>\n<b>Bot:</b> {} <b>Verified:</b> {} <b>Premium:</b> {}",
                         esc(&format!("{f} {l}").trim().to_string()), u.id, boo(u.bot), boo(u.verified), boo(u.premium),
                     )).await;
                 } else {
-                    rp(client, peer, reply_to, "❓ User not found.").await;
+                    rp(client, ip, reply_to, "❓ User not found.").await;
                 }
             }
         }
-        Err(e) => rp(client, peer, reply_to, &format!("❌ {e}")).await,
+        Err(e) => rp(client, ip, reply_to, &format!("❌ {e}")).await,
     }
 }
 
-async fn cmd_dialogs(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
+async fn cmd_dialogs(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
     match client.get_dialogs(10).await {
         Ok(dialogs) => {
             let mut lines = vec!["📋 <b>Recent Dialogs</b>\n".to_string()];
@@ -382,37 +434,37 @@ async fn cmd_dialogs(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
                 };
                 lines.push(format!("{}. {}{}", i + 1, esc(&d.title()), badge));
             }
-            rh(client, peer, reply_to, &lines.join("\n")).await;
+            rh(client, ip, reply_to, &lines.join("\n")).await;
         }
-        Err(e) => rp(client, peer, reply_to, &format!("❌ {e}")).await,
+        Err(e) => rp(client, ip, reply_to, &format!("❌ {e}")).await,
     }
 }
 
-async fn cmd_count(client: &Client, peer: tl::enums::Peer, reply_to: i32, arg: &str) {
+async fn cmd_count(client: &Client, ip: tl::enums::InputPeer, reply_to: i32, arg: &str) {
     if arg.is_empty() {
-        rp(client, peer, reply_to, "Usage: .count <text>").await;
+        rp(client, ip, reply_to, "Usage: .count <text>").await;
         return;
     }
-    rh(client, peer, reply_to, &format!(
+    rh(client, ip, reply_to, &format!(
         "📊 <b>Stats</b>\n\n<b>Chars:</b> <code>{}</code>\n<b>Bytes:</b> <code>{}</code>\n<b>Words:</b> <code>{}</code>\n<b>Lines:</b> <code>{}</code>",
         arg.chars().count(), arg.len(), arg.split_whitespace().count(), arg.lines().count(),
     )).await;
 }
 
-async fn cmd_calc(client: &Client, peer: tl::enums::Peer, reply_to: i32, arg: &str) {
+async fn cmd_calc(client: &Client, ip: tl::enums::InputPeer, reply_to: i32, arg: &str) {
     if arg.is_empty() {
-        rp(client, peer, reply_to, "Usage: .calc <expr>").await;
+        rp(client, ip, reply_to, "Usage: .calc <expr>").await;
         return;
     }
     let text = match eval(arg.trim()) {
         Ok(v) => format!("🧮 <code>{}</code> = <b>{v}</b>", esc(arg)),
         Err(e) => format!("❌ {e}"),
     };
-    rh(client, peer, reply_to, &text).await;
+    rh(client, ip, reply_to, &text).await;
 }
 
-async fn cmd_help(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
-    rh(client, peer, reply_to,
+async fn cmd_help(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
+    rh(client, ip, reply_to,
         "📖 <b>layer-app Commands</b>\n\n\
         <b>Info</b>\n\
         <code>.ping</code>: latency  <code>.me</code>: self info\n\
@@ -429,25 +481,23 @@ async fn cmd_help(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     ).await;
 }
 
-async fn rp(client: &Client, peer: tl::enums::Peer, reply_to: i32, text: &str) {
+async fn rp(client: &Client, ip: tl::enums::InputPeer, reply_to: i32, text: &str) {
     let _ = client
-        .send_message_to_peer_ex(peer, &InputMessage::text(text).reply_to(Some(reply_to)))
+        .send_message_with_input_peer(ip, &InputMessage::text(text).reply_to(Some(reply_to)))
         .await;
 }
 
-async fn rh(client: &Client, peer: tl::enums::Peer, reply_to: i32, html: &str) {
+async fn rh(client: &Client, ip: tl::enums::InputPeer, reply_to: i32, html: &str) {
     let _ = client
-        .send_message_to_peer_ex(peer, &InputMessage::html(html).reply_to(Some(reply_to)))
+        .send_message_with_input_peer(ip, &InputMessage::html(html).reply_to(Some(reply_to)))
         .await;
 }
 
-fn is_self_peer(peer: &tl::enums::Peer, my_id: i64) -> bool {
-    matches!(peer, tl::enums::Peer::User(u) if u.user_id == my_id)
-}
 fn uid_from_peer(peer: Option<&tl::enums::Peer>) -> Option<i64> {
     match peer? {
         tl::enums::Peer::User(u) => Some(u.user_id),
-        _ => None,
+        tl::enums::Peer::Channel(c) => Some(c.channel_id),
+        tl::enums::Peer::Chat(c) => Some(c.chat_id),
     }
 }
 fn split_cmd(text: &str) -> (String, String) {

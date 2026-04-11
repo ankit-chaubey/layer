@@ -1,5 +1,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc(html_root_url = "https://docs.rs/layer-client/0.4.6")]
+#![doc(html_root_url = "https://docs.rs/layer-client/0.4.9")]
 //! # layer-client
 //!
 //! Async Telegram client built on MTProto.
@@ -1210,12 +1210,35 @@ impl Client {
                     .send((new_read, new_fk, new_ak, new_sid));
                 tokio::task::yield_now().await;
 
-                // Brief pause so the new key propagates to all of Telegram's
-                // app servers before we send getDifference (same reason
-                // does a yield after fresh DH before any RPCs).
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-                client.init_connection().await?;
+                // Retry init_connection on AUTH_KEY_UNREGISTERED (401): the new
+                // key may not have propagated to all of Telegram's app servers
+                // yet.  Exponential backoff (500 ms → 1 s → 2 s → 4 s → 8 s)
+                // gives the cluster time to replicate without a blind sleep.
+                // Any other error is propagated immediately.
+                {
+                    let mut attempt = 0u32;
+                    const MAX_ATTEMPTS: u32 = 5;
+                    loop {
+                        match client.init_connection().await {
+                            Ok(()) => break,
+                            Err(InvocationError::Rpc(ref r))
+                                if r.code == 401 && attempt < MAX_ATTEMPTS =>
+                            {
+                                let delay =
+                                    std::time::Duration::from_millis(500 * (1u64 << attempt));
+                                tracing::warn!(
+                                    "[layer] init_connection AUTH_KEY_UNREGISTERED \
+                                     (attempt {}/{MAX_ATTEMPTS}): key not yet propagated, \
+                                     retrying in {delay:?}",
+                                    attempt + 1,
+                                );
+                                tokio::time::sleep(delay).await;
+                                attempt += 1;
+                            }
+                            Err(e) => return Err(e),
+                        }
+                    }
+                }
                 client
                     .inner
                     .dh_in_progress
@@ -1238,10 +1261,9 @@ impl Client {
         // know the key yet and returning AUTH_KEY_UNREGISTERED (401).
         // The same guard already exists in the supervisor after mid-session
         // reconnects; this covers the initial connect path.
-        if loaded_session.is_none() {
-            tracing::debug!("[layer] Fresh DH startup: waiting 2 s for key propagation \u{2026}");
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        }
+        // No sleep needed here: init_connection above already confirmed the key
+        // is live on the server (it returned Ok).  The retry loop inside
+        // init_connection handled any 401s from key-propagation lag.
 
         // Restore peer access-hash cache from session
         if let Some(ref s) = loaded_session
@@ -1955,13 +1977,8 @@ impl Client {
                     }
                 };
                 if result.is_ok() {
-                    // After fresh DH, wait 2 s for key propagation before getDifference.
-                    if c.inner
-                        .dh_in_progress
-                        .load(std::sync::atomic::Ordering::SeqCst)
-                    {
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    }
+                    // init_connection confirmed the key is live —
+                    // no pre-getDifference sleep needed.
                     let missed = match c.get_difference().await {
                         Ok(updates) => updates,
                         Err(ref e)
@@ -3420,36 +3437,41 @@ impl Client {
                         // Without this, a FLOOD_WAIT from Telegram during init
                         // would immediately re-trigger another reconnect attempt,
                         // which would itself hit FLOOD_WAIT: a ban spiral.
-                        let result = loop {
-                            match c.init_connection().await {
-                                Ok(()) => break Ok(()),
-                                Err(InvocationError::Rpc(ref r))
-                                    if r.flood_wait_seconds().is_some() =>
-                                {
-                                    let secs = r.flood_wait_seconds().unwrap();
-                                    tracing::warn!(
-                                        "[layer] init_connection FLOOD_WAIT_{secs}:                                          waiting before retry"
-                                    );
-                                    sleep(Duration::from_secs(secs + 1)).await;
-                                    // loop and retry init_connection
+                        let result = {
+                            let mut attempt = 0u32;
+                            const MAX_ATTEMPTS: u32 = 5;
+                            loop {
+                                match c.init_connection().await {
+                                    Ok(()) => break Ok(()),
+                                    Err(InvocationError::Rpc(ref r))
+                                        if r.flood_wait_seconds().is_some() =>
+                                    {
+                                        let secs = r.flood_wait_seconds().unwrap();
+                                        tracing::warn!(
+                                            "[layer] init_connection FLOOD_WAIT_{secs}: \
+                                             waiting before retry"
+                                        );
+                                        sleep(Duration::from_secs(secs + 1)).await;
+                                    }
+                                    Err(InvocationError::Rpc(ref r))
+                                        if r.code == 401 && attempt < MAX_ATTEMPTS =>
+                                    {
+                                        let delay = Duration::from_millis(500 * (1u64 << attempt));
+                                        tracing::warn!(
+                                            "[layer] init_connection AUTH_KEY_UNREGISTERED \
+                                             (attempt {}/{MAX_ATTEMPTS}): retrying in {delay:?}",
+                                            attempt + 1,
+                                        );
+                                        sleep(delay).await;
+                                        attempt += 1;
+                                    }
+                                    Err(e) => break Err(e),
                                 }
-                                Err(e) => break Err(e),
                             }
                         };
                         if result.is_ok() {
-                            // Replay any updates missed during the outage.
-                            // After fresh DH the new key may not have propagated to
-                            // all of Telegram's app servers yet, so getDifference can
-                            // return AUTH_KEY_UNREGISTERED (401).  A 2 s pause lets the
-                            // key replicate before we send any RPCs (same reason
-                            // yields after fresh DH).  Without this, post-reconnect RPC
-                            // calls silently fail and the bot stops responding.
-                            if c.inner
-                                .dh_in_progress
-                                .load(std::sync::atomic::Ordering::SeqCst)
-                            {
-                                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                            }
+                            // init_connection confirmed the key is live —
+                            // no pre-getDifference sleep needed.
                             let missed = match c.get_difference().await {
                                 Ok(updates) => updates,
                                 Err(ref e)
@@ -3687,6 +3709,75 @@ impl Client {
         };
         let body = self.rpc_call_raw(&req).await?;
         Ok(self.extract_sent_message(&body, msg, &peer))
+    }
+
+    /// Send a message to a pre-built [`tl::enums::InputPeer`], skipping the
+    /// peer-cache lookup. Use when the caller already has the [`InputPeer`],
+    /// e.g. `InputPeerUserFromMessage` for a DM with no cached access-hash.
+    pub async fn send_message_with_input_peer(
+        &self,
+        input_peer: tl::enums::InputPeer,
+        msg: &InputMessage,
+    ) -> Result<(), InvocationError> {
+        let schedule = if msg.schedule_once_online {
+            Some(0x7FFF_FFFEi32)
+        } else {
+            msg.schedule_date
+        };
+
+        if let Some(media) = &msg.media {
+            let req = tl::functions::messages::SendMedia {
+                silent: msg.silent,
+                background: msg.background,
+                clear_draft: msg.clear_draft,
+                noforwards: false,
+                update_stickersets_order: false,
+                invert_media: msg.invert_media,
+                allow_paid_floodskip: false,
+                peer: input_peer,
+                reply_to: msg.reply_header(),
+                media: media.clone(),
+                message: msg.text.clone(),
+                random_id: random_i64(),
+                reply_markup: msg.reply_markup.clone(),
+                entities: msg.entities.clone(),
+                schedule_date: schedule,
+                schedule_repeat_period: None,
+                send_as: None,
+                quick_reply_shortcut: None,
+                effect: None,
+                allow_paid_stars: None,
+                suggested_post: None,
+            };
+            self.rpc_call_raw_pub(&req).await?;
+            return Ok(());
+        }
+
+        let req = tl::functions::messages::SendMessage {
+            no_webpage: msg.no_webpage,
+            silent: msg.silent,
+            background: msg.background,
+            clear_draft: msg.clear_draft,
+            noforwards: false,
+            update_stickersets_order: false,
+            invert_media: msg.invert_media,
+            allow_paid_floodskip: false,
+            peer: input_peer,
+            reply_to: msg.reply_header(),
+            message: msg.text.clone(),
+            random_id: random_i64(),
+            reply_markup: msg.reply_markup.clone(),
+            entities: msg.entities.clone(),
+            schedule_date: schedule,
+            schedule_repeat_period: None,
+            send_as: None,
+            quick_reply_shortcut: None,
+            effect: None,
+            allow_paid_stars: None,
+            suggested_post: None,
+        };
+        self.rpc_call_raw(&req).await?;
+        Ok(())
     }
 
     /// Parse the Updates blob returned by SendMessage / SendMedia and extract the

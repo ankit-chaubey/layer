@@ -357,11 +357,20 @@ impl Client {
                 // pre_diff is covered by the server response; discard it.
                 // (Flight-time updates are force-dispatched, not buffered into possible_gap.)
             }
-            Err(_) => {
-                // Restore pre-existing items so the next gap_tick retry sees them.
+            Err(e) => {
                 let mut gap = self.inner.possible_gap.lock().await;
-                for u in pre_diff {
-                    gap.push_global(u);
+                if matches!(e, InvocationError::Rpc(r) if r.code == 401) {
+                    // 401: do not restore the gap buffer. push_global inserts a
+                    // fresh Instant::now() timestamp, making global_deadline_elapsed()
+                    // return true immediately on the next gap_tick cycle, which fires
+                    // get_difference() again and loops. Drop it; reconnect will
+                    // re-sync state via sync_pts_state / getDifference.
+                    drop(pre_diff);
+                } else {
+                    // Transient error: restore so the next gap_tick can retry.
+                    for u in pre_diff {
+                        gap.push_global(u);
+                    }
                 }
             }
         }
@@ -1042,11 +1051,22 @@ impl Client {
         let exceeded = self.inner.pts_state.lock().await.deadline_exceeded();
         if exceeded {
             tracing::info!("[layer] update deadline exceeded: fetching getDifference");
-            let updates = self.get_difference().await?;
-            for u in updates {
-                if self.inner.update_tx.try_send(u).is_err() {
-                    tracing::warn!("[layer] update channel full: dropping diff update");
+            match self.get_difference().await {
+                Ok(updates) => {
+                    for u in updates {
+                        if self.inner.update_tx.try_send(u).is_err() {
+                            tracing::warn!("[layer] update channel full: dropping diff update");
+                        }
+                    }
                 }
+                Err(e) if matches!(&e, InvocationError::Rpc(r) if r.code == 401) => {
+                    // 401: gap buffer already cleared inside get_difference().
+                    // gap_tick will not re-fire. Supervisor handles reconnect.
+                    tracing::warn!(
+                        "[layer] deadline getDifference AUTH_KEY_UNREGISTERED: session dead"
+                    );
+                }
+                Err(e) => return Err(e),
             }
         }
 
@@ -1075,6 +1095,14 @@ impl Client {
                                 tracing::warn!("[layer] update channel full: dropping gap update");
                             }
                         }
+                    }
+                    Err(e) if matches!(&e, InvocationError::Rpc(r) if r.code == 401) => {
+                        // 401: get_difference() cleared the gap buffer, so gap_tick
+                        // will not re-fire. Supervisor handles reconnect.
+                        tracing::warn!(
+                            "[layer] B3 global gap diff AUTH_KEY_UNREGISTERED: \
+                             session dead, gap buffer cleared"
+                        );
                     }
                     Err(e) => {
                         tracing::warn!("[layer] B3 global gap diff failed: {e}");
@@ -1143,13 +1171,35 @@ impl Client {
                         }
                     }
                     Err(e) => {
-                        tracing::warn!("[layer] B3 channel {channel_id} gap diff failed: {e}");
                         c.inner
                             .pts_state
                             .lock()
                             .await
                             .getting_diff_for
                             .remove(&channel_id);
+                        // Permanent errors (CHANNEL_INVALID etc.): updates are
+                        // unrecoverable, drop them. Transient errors: restore
+                        // the buffer so the next B3 cycle can retry.
+                        let permanent = matches!(&e,
+                            InvocationError::Rpc(r)
+                                if r.code == 401
+                                    || r.name == "CHANNEL_INVALID"
+                                    || r.name == "CHANNEL_PRIVATE"
+                                    || r.name == "CHANNEL_NOT_MODIFIED"
+                        ) || matches!(&e, InvocationError::Deserialize(_));
+                        if permanent {
+                            tracing::warn!(
+                                "[layer] B3 channel {channel_id} gap diff failed (permanent): {e}"
+                            );
+                        } else {
+                            tracing::warn!(
+                                "[layer] B3 channel {channel_id} gap diff failed (transient): {e}"
+                            );
+                            let mut gap = c.inner.possible_gap.lock().await;
+                            for u in buffered {
+                                gap.push_channel(channel_id, u);
+                            }
+                        }
                     }
                 }
             });

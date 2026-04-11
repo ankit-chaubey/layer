@@ -1,5 +1,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc(html_root_url = "https://docs.rs/layer-tl-types/0.4.6")]
+#![doc(html_root_url = "https://docs.rs/layer-tl-types/0.4.9")]
 //! Generated Telegram API types, functions and enums.
 //!
 //! This crate is **auto-generated** from the TL schema files in `tl/`.

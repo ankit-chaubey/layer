@@ -37,7 +37,7 @@ Most users only need `layer-client`.
 
 ```toml
 [dependencies]
-layer-client = "0.4.8"
+layer-client = "0.4.9"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -46,10 +46,10 @@ Get your `api_id` and `api_hash` from [my.telegram.org](https://my.telegram.org)
 Optional features:
 
 ```toml
-layer-client = { version = "0.4.8", features = ["sqlite-session"] }  # SQLite session
-layer-client = { version = "0.4.8", features = ["libsql-session"] }  # libsql / Turso
-layer-client = { version = "0.4.8", features = ["html"] }            # HTML parser
-layer-client = { version = "0.4.8", features = ["html5ever"] }       # html5ever parser
+layer-client = { version = "0.4.9", features = ["sqlite-session"] }  # SQLite session
+layer-client = { version = "0.4.9", features = ["libsql-session"] }  # libsql / Turso
+layer-client = { version = "0.4.9", features = ["html"] }            # HTML parser
+layer-client = { version = "0.4.9", features = ["html5ever"] }       # html5ever parser
 ```
 
 `layer-client` re-exports `layer_tl_types` as `layer_client::tl`.
