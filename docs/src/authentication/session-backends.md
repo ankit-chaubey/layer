@@ -1,5 +1,12 @@
 # Session Backends
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 Layer ships five session backends out of the box. They all implement the `SessionBackend` trait and are **hot-swappable**: switch by changing one line.
 
 ---
@@ -114,7 +121,7 @@ Pass an **empty string** to start a fresh session with no stored data.
 Requires feature flag:
 
 ```toml
-layer-client = { version = "0.4.9", features = ["sqlite-session"] }
+layer-client = { version = "0.5.0", features = ["sqlite-session"] }
 ```
 
 ```rust
@@ -138,7 +145,7 @@ The file is created if it doesn't exist.
 Requires feature flag:
 
 ```toml
-layer-client = { version = "0.4.9", features = ["libsql-session"] }
+layer-client = { version = "0.5.0", features = ["libsql-session"] }
 ```
 
 ```rust

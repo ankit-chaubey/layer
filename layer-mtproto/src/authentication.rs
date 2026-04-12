@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 //! Sans-IO MTProto authorization key generation.
 //!
 //! # Flow
@@ -39,7 +57,7 @@ fn tl_serialize_bytes(v: &[u8]) -> Vec<u8> {
         out.extend_from_slice(v);
         let total = 1 + len;
         let pad = (4 - total % 4) % 4;
-        out.extend(std::iter::repeat(0u8).take(pad));
+        out.extend(std::iter::repeat_n(0u8, pad));
     } else {
         out.push(0xfe);
         out.push((len & 0xff) as u8);
@@ -48,7 +66,7 @@ fn tl_serialize_bytes(v: &[u8]) -> Vec<u8> {
         out.extend_from_slice(v);
         let total = 4 + len;
         let pad = (4 - total % 4) % 4;
-        out.extend(std::iter::repeat(0u8).take(pad));
+        out.extend(std::iter::repeat_n(0u8, pad));
     }
     out
 }
@@ -634,7 +652,7 @@ pub fn finish(
             // dh_gen_retry: compute auth_key_aux_hash = SHA1(auth_key)[0..8] as i64 LE.
             let aux_hash: [u8; 20] = {
                 let mut sha = Sha1::new();
-                sha.update(&auth_key.to_bytes());
+                sha.update(auth_key.to_bytes());
                 sha.finalize().into()
             };
             let retry_id = i64::from_le_bytes(aux_hash[..8].try_into().unwrap());

@@ -1,5 +1,12 @@
 # DC Migration
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 Telegram's infrastructure is split across multiple **Data Centers (DCs)**. When you connect to the wrong DC for your account, Telegram responds with a `PHONE_MIGRATE_X` or `USER_MIGRATE_X` error telling you which DC to use instead.
 
 `layer-client` handles DC migration **automatically and transparently**. You don't need to do anything.

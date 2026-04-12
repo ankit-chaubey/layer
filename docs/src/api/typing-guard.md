@@ -1,5 +1,12 @@
 # Typing Guard
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 `TypingGuard` is a RAII wrapper that keeps a "typing…" or "uploading…" indicator alive for the duration of an operation and **automatically cancels it when dropped**. You never need to call `SetTyping` with `CancelAction` by hand.
 
 The guard re-sends the action every **4 seconds** (Telegram drops indicators after ~5 s) until the guard is dropped or `.cancel()` is called.

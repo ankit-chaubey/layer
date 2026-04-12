@@ -1,5 +1,12 @@
 # Retry & Flood Wait
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 Telegram's rate limiting system sends `FLOOD_WAIT_X` errors when you call the API too frequently. `X` is the number of seconds you must wait before retrying.
 
 ## Default behaviour: AutoSleep

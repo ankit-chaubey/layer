@@ -1,5 +1,12 @@
 # Raw API Access
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 Every Telegram API method is available as a typed struct in `layer_tl_types::functions`. Use `client.invoke()` to call any of them directly with full compile-time type safety.
 
 ## Basic usage

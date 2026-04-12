@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 //! Telegram MTProto full auth key generation + encrypted API demo.
 //!
 //! # What this does
@@ -114,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  ✓ ResPQ: pq={:02x?}", pq.pq);
 
     // 3. Auth key: Step 2: req_DH_params
-    let (req2, state2) = auth::step2(state1, res_pq)?;
+    let (req2, state2) = auth::step2(state1, res_pq, 1)?;
     println!("[Step 2] Sending req_DH_params …");
     send_plain(&mut transport, &mut session, &req2)?;
 
@@ -132,7 +150,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dh_answer: layer_tl_types::enums::SetClientDhParamsAnswer = recv_plain(&mut transport)?;
 
     // 5. Derive auth key
-    let done = auth::finish(state3, dh_answer)?;
+    let done = match auth::finish(state3, dh_answer)? {
+        auth::FinishResult::Done(f) => f,
+        auth::FinishResult::Retry { .. } => {
+            return Err(Box::from("DH handshake needs retry"));
+        }
+    };
     println!("\n✓ Auth key derived!");
     println!("  time_offset = {}s", done.time_offset);
     println!("  first_salt  = {}", done.first_salt);

@@ -1,5 +1,12 @@
 # Two-Factor Authentication (2FA)
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 Telegram's 2FA uses **Secure Remote Password (SRP)**: a zero-knowledge proof. Your password is never sent to Telegram's servers; only a cryptographic proof is transmitted.
 
 ## How it works in layer

@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 //! Session persistence: saves auth key, salt, time offset, DC table,
 //! update sequence counters (pts/qts/seq/date/per-channel pts), and
 //! peer access-hash cache.
@@ -414,9 +432,7 @@ impl PersistedSession {
     /// `DcEntry` exist for the same `dc_id` (different `flags` bitmask).
     pub fn dc_for(&self, dc_id: i32, prefer_ipv6: bool) -> Option<&DcEntry> {
         let mut candidates = self.dcs.iter().filter(|d| d.dc_id == dc_id).peekable();
-        if candidates.peek().is_none() {
-            return None;
-        }
+        candidates.peek()?;
         // Collect so we can search twice
         let cands: Vec<&DcEntry> = self.dcs.iter().filter(|d| d.dc_id == dc_id).collect();
         // Preferred family first, fall back to whatever is available

@@ -1,5 +1,12 @@
 # Crate Architecture
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 `layer` is a workspace of focused, single-responsibility crates. Understanding the stack helps when you need to go below the high-level API.
 
 ## Dependency graph

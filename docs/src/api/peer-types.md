@@ -1,5 +1,12 @@
 # Peer Types & PeerRef
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 `layer-client` provides typed wrappers over the raw `tl::enums::User` and `tl::enums::Chat` types, plus `PeerRef`: a flexible peer argument accepted by every `Client` method.
 
 ---

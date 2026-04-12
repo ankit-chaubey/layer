@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.4.9]: 2026-04-11
+## [0.5.0]: 2026-04-11
 ### Fix
 
 * Fix `AUTH_KEY_UNREGISTERED (401)` occurring immediately after a fresh DH key exchange.

@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 //! RAII typing indicator guard.
 //!
 //! [`TypingGuard`] automatically cancels the "typing…" chat action when
@@ -54,10 +72,10 @@ impl TypingGuard {
     ///
     /// # Arguments
     /// * `topic_id`    : `Some(msg_id)` for a forum topic thread; `None` for
-    /// the main chat.
+    ///   the main chat.
     /// * `repeat_delay`: How often to re-send the action to keep it alive.
-    /// Telegram drops the indicator after ~5 s; ≤ 4 s is
-    /// recommended.
+    ///   Telegram drops the indicator after ~5 s; ≤ 4 s is
+    ///   recommended.
     pub async fn start_ex(
         client: &Client,
         peer: tl::enums::Peer,

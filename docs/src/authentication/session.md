@@ -1,5 +1,12 @@
 # Session Persistence
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 A session stores your auth key, DC address, and peer access-hash cache. Without it, you'd need to log in on every run.
 
 ## Binary file (default)
@@ -46,7 +53,7 @@ Login is required on every run since nothing persists.
 ## SQLite (robust, long-running servers)
 
 ```toml
-layer-client = { version = "0.4.9", features = ["sqlite-session"] }
+layer-client = { version = "0.5.0", features = ["sqlite-session"] }
 ```
 
 ```rust
@@ -59,7 +66,7 @@ SQLite is more resilient against crash-corruption than the binary format. Ideal 
 
 ---
 
-## String session: New in v0.4.9
+## String session: New in v0.5.0
 
 Encode the entire session as a portable base64 string. Store it in an env var, a DB column, or CI secrets:
 

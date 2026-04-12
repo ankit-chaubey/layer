@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 //! Update gap detection and recovery.
 //!
 //! Tracks `pts` / `qts` / `seq` / `date` plus per-channel pts, and
@@ -409,7 +427,26 @@ impl Client {
             let body = self.rpc_call_raw_pub(&req).await?;
             let body = crate::maybe_gz_decompress(body)?;
             let mut cur = Cursor::from_slice(&body);
-            let diff = tl::enums::updates::Difference::deserialize(&mut cur)?;
+            // tDesktop mirrors this: if the response body has an unknown constructor
+            // (e.g. a service frame misrouted here during a race), handler.done()
+            // returns false and the request is silently retired.  We do the same:
+            // log at debug level and return whatever updates accumulated so far.
+            let diff = match tl::enums::updates::Difference::deserialize(&mut cur) {
+                Ok(d) => d,
+                Err(e) => {
+                    let cid = if body.len() >= 4 {
+                        u32::from_le_bytes(body[..4].try_into().unwrap())
+                    } else {
+                        0
+                    };
+                    tracing::debug!(
+                        "[layer] getDifference: unrecognised response constructor \
+                         {cid:#010x}, dropping ({})",
+                        e
+                    );
+                    return Ok(all_updates);
+                }
+            };
 
             match diff {
                 tl::enums::updates::Difference::Empty(e) => {
@@ -672,7 +709,26 @@ impl Client {
             .rpc_call_raw_pub(&tl::functions::updates::GetState {})
             .await?;
         let mut cur = Cursor::from_slice(&body);
-        let tl::enums::updates::State::State(s) = tl::enums::updates::State::deserialize(&mut cur)?;
+        // tDesktop: if the response body has an unknown constructor (e.g. a
+        // misrouted service frame), handler.done() returns false → differenceFail()
+        // → log + retry timer.  We mirror that: treat an unrecognised constructor
+        // as a soft failure and return Ok(()) so the caller can retry later.
+        let s = match tl::enums::updates::State::deserialize(&mut cur) {
+            Ok(tl::enums::updates::State::State(s)) => s,
+            Err(e) => {
+                let cid = if body.len() >= 4 {
+                    u32::from_le_bytes(body[..4].try_into().unwrap())
+                } else {
+                    0
+                };
+                tracing::debug!(
+                    "[layer] GetState: unrecognised response constructor \
+                     {cid:#010x}, treating as soft failure and retrying ({})",
+                    e
+                );
+                return Ok(());
+            }
+        };
         let mut state = self.inner.pts_state.lock().await;
         state.pts = s.pts;
         state.qts = s.qts;
@@ -1066,7 +1122,16 @@ impl Client {
                         "[layer] deadline getDifference AUTH_KEY_UNREGISTERED: session dead"
                     );
                 }
-                Err(e) => return Err(e),
+                // tDesktop: differenceFail() just logs + sets a retry timer.
+                // It never propagates the error outward.  Mirror that here:
+                // Deserialize errors (unknown constructor, e.g. 0x00000004) are
+                // transient - the server sent a misrouted frame or a service packet.
+                // Propagating them causes the caller's loop to log noise every second.
+                // IO / RPC errors also stay local: the reader loop drives reconnects
+                // independently via the socket, not via check_update_deadline's return.
+                Err(e) => {
+                    tracing::warn!("[layer] deadline getDifference failed (non-fatal): {e}");
+                }
             }
         }
 
@@ -1104,9 +1169,10 @@ impl Client {
                              session dead, gap buffer cleared"
                         );
                     }
+                    // tDesktop differenceFail: log and let the retry timer handle it.
+                    // Never propagate - the reader drives reconnects via the socket.
                     Err(e) => {
-                        tracing::warn!("[layer] B3 global gap diff failed: {e}");
-                        return Err(e);
+                        tracing::warn!("[layer] B3 global gap diff failed (non-fatal): {e}");
                     }
                 }
             }

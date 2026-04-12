@@ -1,5 +1,23 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc(html_root_url = "https://docs.rs/layer-client/0.4.9")]
+#![doc(html_root_url = "https://docs.rs/layer-client/0.5.0")]
 //! # layer-client
 //!
 //! Async Telegram client built on MTProto.
@@ -9,7 +27,7 @@
 //! - Peer access-hash caching: API calls always carry correct access hashes
 //! - `FLOOD_WAIT` auto-retry with configurable policy
 //! - Typed async update stream: `NewMessage`, `MessageEdited`, `MessageDeleted`,
-//! `CallbackQuery`, `InlineQuery`, `InlineSend`, `Raw`
+//!   `CallbackQuery`, `InlineQuery`, `InlineSend`, `Raw`
 //! - Send / edit / delete / forward / pin messages
 //! - Search messages (per-chat and global)
 //! - Mark as read, delete dialogs, clear mentions
@@ -2103,7 +2121,14 @@ impl Client {
                 outcome = recv_frame_with_keepalive(&mut rh, &fk, self, &ak) => {
                     match outcome {
                         FrameOutcome::Frame(mut raw) => {
-                            let msg = match EncryptedSession::decrypt_frame(&ak, sid, &mut raw) {
+                            // Pass the current learned time_offset so the
+                            // time-window check uses corrected server time.
+                            // (The zero-offset decrypt_frame() static was
+                            // always wrong on a clock-drifted machine.)
+                            let time_offset = self.inner.writer.lock().await.enc.time_offset;
+                            let msg = match EncryptedSession::decrypt_frame_with_offset(
+                                &ak, sid, &mut raw, time_offset,
+                            ) {
                                 Ok(m)  => m,
                                 Err(e) => {
                                     // A decrypt failure (e.g. Crypto(InvalidBuffer) from a
@@ -2136,6 +2161,23 @@ impl Client {
                                     continue;
                                 }
                             };
+
+                            // tDesktop: badTime=true → self-heal clock via
+                            // requestsFixTimeSalt / correctUnixtimeWithBadLocal,
+                            // then continue per-handler processing.
+                            // Layer: correct time_offset from msg_id directly.
+                            // The MAC (SHA256) already verified authenticity, so
+                            // the server_time embedded in msg_id is trustworthy.
+                            if msg.bad_time {
+                                let mut w = self.inner.writer.lock().await;
+                                w.enc.correct_time_offset(msg.msg_id);
+                                tracing::debug!(
+                                    "[layer] bad_time: server msg_id={} outside ±300 s window; \
+                                     corrected time_offset to {} s",
+                                    msg.msg_id,
+                                    w.enc.time_offset
+                                );
+                            }
                             //  discards the frame-level salt entirely
                             // (it's not the "server salt" we should use: that only comes
                             // from new_session_created, bad_server_salt, or future_salts).
@@ -2151,6 +2193,44 @@ impl Client {
                         FrameOutcome::Error(e) => {
                             tracing::warn!("[layer] Reader: connection error: {e}");
                             drop(init_rx.take()); // discard any in-flight init
+
+                            // Mirror tDesktop SessionPrivate::onError: special handling
+                            // for known protocol-level transport error codes.
+                            if let InvocationError::Rpc(r) = &e {
+                                match r.code {
+                                    -429 => tracing::error!(
+                                        "[layer] transport: -429 flood code - \
+                                         Telegram is rate-limiting this connection"
+                                    ),
+                                    -444 => {
+                                        // tDesktop calls instance->badConfigurationError()
+                                        // which triggers help.getConfig to refresh DC
+                                        // options. We approximate this by resetting the
+                                        // home DC's address to the static fallback so the
+                                        // next reconnect re-derives its address cleanly.
+                                        tracing::error!(
+                                            "[layer] transport: -444 bad dc_id - \
+                                             DC options may be stale, resetting address \
+                                             to trigger config refresh on reconnect"
+                                        );
+                                        let home_dc_id =
+                                            *self.inner.home_dc_id.lock().await;
+                                        let fallback =
+                                            crate::dc_migration::fallback_dc_addr(home_dc_id)
+                                                .to_string();
+                                        let mut opts =
+                                            self.inner.dc_options.lock().await;
+                                        if let Some(entry) = opts.get_mut(&home_dc_id) {
+                                            tracing::warn!(
+                                                "[layer] -444: resetting DC{home_dc_id} \
+                                                 addr → {fallback}"
+                                            );
+                                            entry.addr = fallback;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
 
                             // Detect definitive auth-key rejection.  Only Telegram's
                             // explicit -404 transport error means the key is unknown.
@@ -2269,10 +2349,7 @@ impl Client {
                             // Only clear auth key on Telegram's explicit -404 rejection.
                             // EOF / ConnectionReset = network drop during init, NOT stale key.
                             // Reconnect with the same key; no fresh DH needed.
-                            let key_is_stale = match &e {
-                                InvocationError::Rpc(r) if r.code == -404 => true,
-                                _ => false,
-                            };
+                            let key_is_stale = matches!(&e, InvocationError::Rpc(r) if r.code == -404);
                             // Use compare_exchange so we don't stomp on another in-progress DH.
                             let dh_claimed = key_is_stale
                                 && self.inner.dh_in_progress
@@ -2527,6 +2604,65 @@ impl Client {
 
                     // Reactive refresh after bad_server_salt: reuses the extracted helper.
                     self.spawn_salt_fetch_if_needed();
+
+                    // tDesktop calls resendAll() here: every request that was
+                    // sent under the stale salt gets re-encrypted and replayed
+                    // immediately.  Layer previously only re-sent the single
+                    // bad_msg_id; this left all other in-flight requests stalled
+                    // until their callers timed out and retried.
+                    //
+                    // Collect remaining sent_bodies (resolved_id already handled
+                    // above), re-encrypt each under the new salt, and resend.
+                    let remaining: Vec<(i64, Vec<u8>)> = {
+                        let mut w = self.inner.writer.lock().await;
+                        let keys: Vec<i64> = w.sent_bodies.keys().copied().collect();
+                        keys.into_iter()
+                            .filter_map(|k| w.sent_bodies.remove(&k).map(|v| (k, v)))
+                            .collect()
+                    };
+
+                    for (old_id, body) in remaining {
+                        let (wire, new_id, fk) = {
+                            let mut w = self.inner.writer.lock().await;
+                            let (wire, new_id) = w.enc.pack_body_with_msg_id(&body, true);
+                            let fk = w.frame_kind.clone();
+                            // Re-insert so a second bad_server_salt can find it.
+                            w.sent_bodies.insert(new_id, body);
+                            (wire, new_id, fk)
+                        };
+                        let has_waiter = {
+                            let mut pending = self.inner.pending.lock().await;
+                            if let Some(tx) = pending.remove(&old_id) {
+                                pending.insert(new_id, tx);
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if has_waiter {
+                            if let Err(e) = send_frame_write(
+                                &mut *self.inner.write_half.lock().await,
+                                &wire,
+                                &fk,
+                            )
+                            .await
+                            {
+                                tracing::warn!(
+                                    "[layer] bad_server_salt resendAll: \
+                                     re-send {old_id}→{new_id} failed: {e}"
+                                );
+                                self.inner.writer.lock().await.sent_bodies.remove(&new_id);
+                            } else {
+                                tracing::debug!(
+                                    "[layer] bad_server_salt resendAll: \
+                                     re-sent {old_id}→{new_id}"
+                                );
+                            }
+                        } else {
+                            // No waiter: drop the body to avoid memory leak.
+                            self.inner.writer.lock().await.sent_bodies.remove(&new_id);
+                        }
+                    }
                 }
             }
             ID_PONG => {
@@ -2572,8 +2708,7 @@ impl Client {
 
                     // Parse ALL returned salts ( stores the full Vec).
                     // Each FutureSalt entry is 16 bytes starting at offset 24.
-                    let mut new_salts: Vec<FutureSalt> =
-                        Vec::with_capacity(count.clamp(0, 4096) as usize);
+                    let mut new_salts: Vec<FutureSalt> = Vec::with_capacity(count.clamp(0, 4096));
                     for i in 0..count {
                         let base = 24 + i * 16;
                         if base + 16 > body.len() {
@@ -2682,9 +2817,55 @@ impl Client {
                     _ => "unknown bad_msg code",
                 };
 
-                // codes 16/17/48 are retryable; 32/33 are non-fatal seq corrections; rest are fatal.
+                // codes 16/17/48 are retryable; 32/33 trigger session reset
+                // (tDesktop HandleResult::ResetSession); rest are fatal.
+                //
+                // MTProto spec: codes 32/33 indicate seq_no desync between client
+                // and server.  tDesktop responds with a full session reset: new
+                // session_id, clear in-flight state, reconnect.  We implement the
+                // same by shutting down the write half (→ EOF on reader → reconnect
+                // path → fresh EncryptedSession with a new session_id).
+
+                // --- Early-exit path for 32 / 33 (session reset) ---
+                if error_code == 32 || error_code == 33 {
+                    tracing::warn!(
+                        "[layer] bad_msg_notification: seq_no desync \
+                         (code={error_code}: {description}, bad_msg_id={bad_msg_id}); \
+                         performing session reset (new session_id + reconnect)"
+                    );
+                    // 1. Correct the counter so the *next* session starts right.
+                    self.inner
+                        .writer
+                        .lock()
+                        .await
+                        .enc
+                        .correct_seq_no(error_code);
+                    // 2. Clear the body cache - the resent bodies will be re-queued
+                    //    by the callers' retry loops after reconnect.
+                    self.inner.writer.lock().await.sent_bodies.clear();
+                    // 3. Drain all pending RPCs with a retriable I/O error so
+                    //    AutoSleep / the caller can replay them on the new session.
+                    {
+                        let mut pending = self.inner.pending.lock().await;
+                        for (_, tx) in pending.drain() {
+                            let _ = tx.send(Err(InvocationError::Io(std::io::Error::new(
+                                std::io::ErrorKind::ConnectionReset,
+                                format!(
+                                    "session reset: bad_msg_notification \
+                                         code={error_code} (seq_no desync)"
+                                ),
+                            ))));
+                        }
+                    }
+                    // 4. Close the write half → the reader's next recv_frame call
+                    //    gets EOF → FrameOutcome::Error → do_reconnect_loop →
+                    //    fresh EncryptedSession with a new random session_id.
+                    let _ = self.inner.write_half.lock().await.shutdown().await;
+                    return;
+                }
+
                 let retryable = matches!(error_code, 16 | 17 | 48);
-                let fatal = !retryable && !matches!(error_code, 32 | 33);
+                let fatal = !retryable;
 
                 if fatal {
                     tracing::error!(
@@ -2707,10 +2888,6 @@ impl Client {
                     // correct clock skew on codes 16/17.
                     if error_code == 16 || error_code == 17 {
                         w.enc.correct_time_offset(msg_id);
-                    }
-                    // correct seq_no on codes 32/33
-                    if error_code == 32 || error_code == 33 {
-                        w.enc.correct_seq_no(error_code);
                     }
 
                     if retryable {
@@ -3400,7 +3577,7 @@ impl Client {
     ///
     /// - `initial_delay_ms = RECONNECT_BASE_MS` for a fresh disconnect.
     /// - `initial_delay_ms = 0` when TCP already worked but init failed: we
-    /// want to retry init immediately rather than waiting another full backoff.
+    ///   want to retry init immediately rather than waiting another full backoff.
     ///
     /// Returns `None` if the shutdown token fires (caller should exit).
     async fn do_reconnect_loop(
@@ -5214,7 +5391,7 @@ impl Client {
     // Raw invoke
 
     /// Invoke any TL function directly, handling flood-wait retries.
-
+    ///
     /// Spawn a background `GetFutureSalts` if one is not already in flight.
     ///
     /// Called from `do_rpc_call` (proactive, pool size <= 1) and from the
@@ -5307,7 +5484,7 @@ impl Client {
     ///3. Send the frame while holding the writer lock.
     ///4. Release the writer lock immediately: the reader task now runs freely.
     ///5. Await the oneshot Receiver; the reader task will fulfill it when
-    /// the matching rpc_result frame arrives.
+    ///   the matching rpc_result frame arrives.
     async fn do_rpc_call<R: RemoteCall>(&self, req: &R) -> Result<Vec<u8>, InvocationError> {
         let (tx, rx) = oneshot::channel();
         let wire = {
@@ -6362,24 +6539,24 @@ impl ConnectionWriter {
                 .rev()
                 .find(|s| s.valid_since + SALT_USE_DELAY <= now)
                 .map(|s| s.salt);
-            if let Some(salt) = best {
-                if salt != self.enc.salt {
-                    tracing::debug!(
-                        "[layer] proactive salt cycle: {:#x} → {:#x}",
-                        self.enc.salt,
-                        salt
-                    );
-                    self.enc.salt = salt;
-                    // Drop all entries older than the newly active salt.
-                    self.salts.retain(|s| s.valid_since >= now - SALT_USE_DELAY);
-                    if self.salts.is_empty() {
-                        // Safety net: keep a sentinel so we never go saltless.
-                        self.salts.push(FutureSalt {
-                            valid_since: 0,
-                            valid_until: i32::MAX,
-                            salt,
-                        });
-                    }
+            if let Some(salt) = best
+                && salt != self.enc.salt
+            {
+                tracing::debug!(
+                    "[layer] proactive salt cycle: {:#x} → {:#x}",
+                    self.enc.salt,
+                    salt
+                );
+                self.enc.salt = salt;
+                // Drop all entries older than the newly active salt.
+                self.salts.retain(|s| s.valid_since >= now - SALT_USE_DELAY);
+                if self.salts.is_empty() {
+                    // Safety net: keep a sentinel so we never go saltless.
+                    self.salts.push(FutureSalt {
+                        valid_since: 0,
+                        valid_until: i32::MAX,
+                        salt,
+                    });
                 }
             }
         }
@@ -6643,11 +6820,12 @@ impl Connection {
                 hello_body.extend_from_slice(&extensions);
 
                 let hs_len = hello_body.len() as u32;
-                let mut handshake = Vec::new();
-                handshake.push(0x01);
-                handshake.push(((hs_len >> 16) & 0xff) as u8);
-                handshake.push(((hs_len >> 8) & 0xff) as u8);
-                handshake.push((hs_len & 0xff) as u8);
+                let mut handshake = vec![
+                    0x01,
+                    ((hs_len >> 16) & 0xff) as u8,
+                    ((hs_len >> 8) & 0xff) as u8,
+                    (hs_len & 0xff) as u8,
+                ];
                 handshake.extend_from_slice(&hello_body);
 
                 let rec_len = handshake.len() as u16;
@@ -6674,7 +6852,7 @@ impl Connection {
                 // Derive Obfuscated2 key from secret + HMAC
                 let mut h = sha2::Sha256::new();
                 h.update(secret.as_ref());
-                h.update(&hmac_result);
+                h.update(hmac_result);
                 let derived: [u8; 32] = h.finalize().into();
                 let iv = [0u8; 16];
                 let cipher =
@@ -7140,18 +7318,16 @@ async fn recv_frame_read(
             let mut len_buf = [0u8; 4];
             stream.read_exact(&mut len_buf).await?;
             let len_i32 = i32::from_le_bytes(len_buf);
+            // In MTProto Intermediate transport the ONLY special case is a
+            // negative length, which means the length field IS the (negative)
+            // transport error code (mirrors tDesktop's MTP::AbstractConnection
+            // handling).  Do NOT treat len <= 4 specially: that reads 4 extra
+            // bytes from the stream and permanently desynchronises the AES-CTR
+            // keystream, causing subsequent frames to decrypt as garbage and
+            // appear as constructor 0x00000004 (or similar).
             if len_i32 < 0 {
                 return Err(InvocationError::Rpc(RpcError::from_telegram(
                     len_i32,
-                    "transport error",
-                )));
-            }
-            if len_i32 <= 4 {
-                let mut code_buf = [0u8; 4];
-                stream.read_exact(&mut code_buf).await?;
-                let code = i32::from_le_bytes(code_buf);
-                return Err(InvocationError::Rpc(RpcError::from_telegram(
-                    code,
                     "transport error",
                 )));
             }
@@ -7350,7 +7526,7 @@ async fn recv_frame_plain<T: Deserializable>(
             let mut len_buf = [0u8; 4];
             stream.read_exact(&mut len_buf).await?;
             let total_len = u32::from_le_bytes(len_buf) as usize;
-            if total_len < 12 || total_len > (1 << 24) + 12 {
+            if !(12..=(1 << 24) + 12).contains(&total_len) {
                 return Err(InvocationError::Deserialize(format!(
                     "Full plaintext frame: implausible total_len {total_len}"
                 )));

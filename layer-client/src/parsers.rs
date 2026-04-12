@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 //! Text formatting parsers: HTML and Markdown ↔ Telegram [`MessageEntity`]
 //!
 //! # Markdown (Telegram-flavoured)
@@ -26,9 +44,9 @@
 //!
 //! # Feature gates
 //! * `html`     : enables `parse_html` / `generate_html` via the built-in hand-rolled
-//! parser (zero extra deps).
+//!   parser (zero extra deps).
 //! * `html5ever`: replaces `parse_html` with a spec-compliant html5ever tokenizer.
-//! `generate_html` is always the same hand-rolled generator.
+//!   `generate_html` is always the same hand-rolled generator.
 
 use layer_tl_types as tl;
 
@@ -140,22 +158,22 @@ pub fn parse_markdown(text: &str) -> (String, Vec<tl::enums::MessageEntity>) {
                     let inner_text: String = chars[text_start..j].iter().collect();
                     let url: String = chars[link_start..k].iter().collect();
                     const EMOJI_PFX: &str = "tg://emoji?id=";
-                    if let Some(stripped) = url.strip_prefix(EMOJI_PFX) {
-                        if let Ok(doc_id) = stripped.parse::<i64>() {
-                            let ent_off = utf16_off;
-                            for c in inner_text.chars() {
-                                push_char!(c);
-                            }
-                            ents.push(tl::enums::MessageEntity::CustomEmoji(
-                                tl::types::MessageEntityCustomEmoji {
-                                    offset: ent_off,
-                                    length: utf16_off - ent_off,
-                                    document_id: doc_id,
-                                },
-                            ));
-                            i = k + 1;
-                            continue;
+                    if let Some(stripped) = url.strip_prefix(EMOJI_PFX)
+                        && let Ok(doc_id) = stripped.parse::<i64>()
+                    {
+                        let ent_off = utf16_off;
+                        for c in inner_text.chars() {
+                            push_char!(c);
                         }
+                        ents.push(tl::enums::MessageEntity::CustomEmoji(
+                            tl::types::MessageEntityCustomEmoji {
+                                offset: ent_off,
+                                length: utf16_off - ent_off,
+                                document_id: doc_id,
+                            },
+                        ));
+                        i = k + 1;
+                        continue;
                     }
                 }
             }

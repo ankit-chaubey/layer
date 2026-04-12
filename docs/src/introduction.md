@@ -1,5 +1,12 @@
 # ⚡ layer
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/layer-banner-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="images/layer-banner-light.png">
@@ -83,7 +90,7 @@ Most Telegram libraries are thin wrappers around generated code or ports from Py
 
 ```toml
 [dependencies]
-layer-client = "0.4.9"
+layer-client = "0.5.0"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -94,7 +101,7 @@ Then head to [Installation](./installation.md) for credentials setup, or jump st
 
 ---
 
-## What's new in v0.4.9
+## What's new in v0.5.0
 
 #### Proxy & Transport
 - **MTProxy support**: connect via `t.me/proxy` / `tg://proxy` links or manual host/port/secret config

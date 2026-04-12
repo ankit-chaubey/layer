@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -274,7 +292,7 @@ async fn dispatch(upd: Update, client: Arc<Client>, me: Arc<tl::types::User>, bo
                     let _ = client
                         .answer_callback_query(
                             qid,
-                            Some(&format!("Layer {} · layer-client 0.4.9 🦀", tl::LAYER)),
+                            Some(&format!("Layer {} · layer-client 0.5.0 🦀", tl::LAYER)),
                             false,
                         )
                         .await;
@@ -402,7 +420,7 @@ async fn h_start(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     let _ = client
         .send_message_to_peer_ex(
             peer,
-            &InputMessage::html(&text)
+            &InputMessage::html(text)
                 .reply_markup(kb)
                 .reply_to(Some(reply_to)),
         )
@@ -527,7 +545,7 @@ async fn h_stats(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
 
 async fn h_layer(client: &Client, peer: tl::enums::Peer, reply_to: i32) {
     let text = format!(
-        "📡 <b>layer library</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.4.9</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
+        "📡 <b>layer library</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.5.0</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
         tl::LAYER
     );
     let kb = kb(vec![vec![
@@ -647,7 +665,7 @@ async fn h_unhex(client: &Client, peer: tl::enums::Peer, reply_to: i32, arg: &st
         return;
     }
     let s: String = arg.chars().filter(|c| !c.is_whitespace()).collect();
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         rp(client, peer, reply_to, "❌ Odd hex length.").await;
         return;
     }
@@ -713,7 +731,7 @@ async fn h_calc(client: &Client, peer: tl::enums::Peer, reply_to: i32, arg: &str
 }
 
 async fn h_roll(client: &Client, peer: tl::enums::Peer, reply_to: i32, arg: &str) {
-    let sides: u32 = arg.trim().parse().unwrap_or(6).max(2).min(1_000_000);
+    let sides: u32 = arg.trim().parse().unwrap_or(6).clamp(2, 1_000_000);
     let roll = thread_rng().gen_range(1..=sides);
     rh(
         client,

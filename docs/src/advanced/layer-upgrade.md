@@ -1,5 +1,12 @@
 # Upgrading the TL Layer
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 The Telegram API evolves continuously. Each new **layer** adds constructors, modifies existing types, and deprecates old ones. Upgrading `layer` is designed to be a one-file operation.
 
 ## How the system works
@@ -86,7 +93,7 @@ _ => {}
 
 ```bash
 # In Cargo.toml workspace section
-version = "0.4.9"
+version = "0.5.0"
 ```
 
 Then publish in dependency order (see [Publishing](../installation.md)).

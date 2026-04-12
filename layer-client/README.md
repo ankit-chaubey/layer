@@ -9,11 +9,17 @@ High-level async Telegram client for Rust.
 
 ---
 
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 ## Installation
 
 ```toml
 [dependencies]
-layer-client = "0.4.9"
+layer-client = "0.5.0"
 tokio        = { version = "1", features = ["full"] }
 ```
 
@@ -22,10 +28,10 @@ Get your `api_id` and `api_hash` from [my.telegram.org](https://my.telegram.org)
 ### Feature Flags
 
 ```toml
-layer-client = { version = "0.4.9", features = ["sqlite-session"] }  # SQLite session
-layer-client = { version = "0.4.9", features = ["libsql-session"] }  # libsql / Turso
-layer-client = { version = "0.4.9", features = ["html"] }            # HTML parser
-layer-client = { version = "0.4.9", features = ["html5ever"] }       # html5ever parser
+layer-client = { version = "0.5.0", features = ["sqlite-session"] }  # SQLite session
+layer-client = { version = "0.5.0", features = ["libsql-session"] }  # libsql / Turso
+layer-client = { version = "0.5.0", features = ["html"] }            # HTML parser
+layer-client = { version = "0.5.0", features = ["html5ever"] }       # html5ever parser
 ```
 
 `StringSessionBackend`, `InMemoryBackend`, and `BinaryFileBackend` are always available.

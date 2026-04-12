@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 use std::time::Instant;
@@ -163,10 +181,10 @@ async fn resolve_reply_peer(
     my_id: i64,
 ) -> tl::enums::InputPeer {
     // Saved Messages: PeerSelf needs no access-hash.
-    if let tl::enums::Peer::User(u) = peer {
-        if u.user_id == my_id {
-            return tl::enums::InputPeer::PeerSelf;
-        }
+    if let tl::enums::Peer::User(u) = peer
+        && u.user_id == my_id
+    {
+        return tl::enums::InputPeer::PeerSelf;
     }
 
     // Cache hit: use the stored access-hash directly.
@@ -335,7 +353,7 @@ async fn cmd_dc(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
 
 async fn cmd_layer(client: &Client, ip: tl::enums::InputPeer, reply_to: i32) {
     rh(client, ip, reply_to, &format!(
-        "📡 <b>layer</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.4.9</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
+        "📡 <b>layer</b>\n\n<b>MTProto Layer:</b> <code>{}</code>\n<b>Crate:</b> <code>layer-client 0.5.0</code>\n<b>Language:</b> Rust 🦀\nhttps://github.com/ankit-chaubey/layer",
         tl::LAYER
     )).await;
 }
@@ -410,7 +428,7 @@ async fn cmd_whois(
                         .unwrap_or_else(|| "none".into());
                     rh(client, ip, reply_to, &format!(
                         "👤 <b>User Info</b>\n\n<b>Name:</b> {}\n<b>Username:</b> {uname}\n<b>ID:</b> <code>{}</code>\n<b>Bot:</b> {} <b>Verified:</b> {} <b>Premium:</b> {}",
-                        esc(&format!("{f} {l}").trim().to_string()), u.id, boo(u.bot), boo(u.verified), boo(u.premium),
+                        esc(format!("{f} {l}").trim()), u.id, boo(u.bot), boo(u.verified), boo(u.premium),
                     )).await;
                 } else {
                     rp(client, ip, reply_to, "❓ User not found.").await;

@@ -1,12 +1,30 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 //! MTProto Intermediate and Full transport framing.
 //!
 //! Alongside the existing Abridged transport this module provides:
 //!
 //! * [`IntermediateTransport`]: each packet is `[4-byte LE length][payload]`.
-//! More compatible than Abridged with proxies that inspect the first byte.
+//!   More compatible than Abridged with proxies that inspect the first byte.
 //!
 //! * [`FullTransport`]: like Intermediate but additionally includes a running
-//! sequence number and a CRC-32 checksum for integrity verification.
+//!   sequence number and a CRC-32 checksum for integrity verification.
 
 use crate::InvocationError;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -77,7 +95,7 @@ impl IntermediateTransport {
 /// Extends Intermediate with:
 /// * 4-byte little-endian **sequence number** (auto-incremented per message).
 /// * 4-byte **CRC-32** at the end of each packet covering
-/// `[len][seq_no][payload]`.
+///   `[len][seq_no][payload]`.
 ///
 /// No init byte is sent; the full format is detected by the absence of
 /// `0xef` / `0xee` in the first byte.

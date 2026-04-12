@@ -1,5 +1,12 @@
 # Callback Queries
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 When a user taps an inline keyboard button, the bot receives `Update::CallbackQuery`. Always answer it: Telegram shows a loading spinner until you do.
 
 ---

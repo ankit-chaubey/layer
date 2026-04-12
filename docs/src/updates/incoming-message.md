@@ -1,5 +1,12 @@
 # IncomingMessage
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 `IncomingMessage` is the type of `Update::NewMessage` and `Update::MessageEdited`. It wraps a raw `tl::enums::Message` and provides typed accessors plus a full suite of **convenience action methods** that let you act on a message without passing the `Client` around explicitly (when the message was received from the update stream it already carries a client reference).
 
 ---

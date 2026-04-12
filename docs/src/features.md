@@ -1,6 +1,13 @@
 # Feature Flags
 
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 ## layer-client
 
 | Feature | Default | Description |
@@ -25,19 +32,19 @@ The following are **always available** without any feature flag:
 
 ```toml
 # SQLite session only
-layer-client = { version = "0.4.9", features = ["sqlite-session"] }
+layer-client = { version = "0.5.0", features = ["sqlite-session"] }
 
-# LibSQL / Turso session (new in 0.4.9)
-layer-client = { version = "0.4.9", features = ["libsql-session"] }
+# LibSQL / Turso session (new in 0.5.0)
+layer-client = { version = "0.5.0", features = ["libsql-session"] }
 
 # HTML parsing (minimal, no extra deps)
-layer-client = { version = "0.4.9", features = ["html"] }
+layer-client = { version = "0.5.0", features = ["html"] }
 
 # HTML parsing (spec-compliant, adds html5ever dep)
-layer-client = { version = "0.4.9", features = ["html5ever"] }
+layer-client = { version = "0.5.0", features = ["html5ever"] }
 
 # Multiple features at once
-layer-client = { version = "0.4.9", features = ["sqlite-session", "html"] }
+layer-client = { version = "0.5.0", features = ["sqlite-session", "html"] }
 ```
 
 ---
@@ -58,7 +65,7 @@ layer-client = { version = "0.4.9", features = ["sqlite-session", "html"] }
 ### Example: enable serde
 
 ```toml
-layer-tl-types = { version = "0.4.9", features = ["tl-api", "impl-serde"] }
+layer-tl-types = { version = "0.5.0", features = ["tl-api", "impl-serde"] }
 ```
 
 ```rust
@@ -68,7 +75,7 @@ let json = serde_json::to_string(&some_tl_type)?;
 ### Example: name_for_id (debugging)
 
 ```toml
-layer-tl-types = { version = "0.4.9", features = ["tl-api", "name-for-id"] }
+layer-tl-types = { version = "0.5.0", features = ["tl-api", "name-for-id"] }
 ```
 
 ```rust
@@ -82,7 +89,7 @@ if let Some(name) = name_for_id(0x74ae4240) {
 ### Example: minimal (no Debug, no conversions)
 
 ```toml
-layer-tl-types = { version = "0.4.9", default-features = false, features = ["tl-api"] }
+layer-tl-types = { version = "0.5.0", default-features = false, features = ["tl-api"] }
 ```
 
 Reduces compile time when you don't need convenience traits.
@@ -94,7 +101,7 @@ Reduces compile time when you don't need convenience traits.
 `StringSessionBackend` and `export_session_string()` are available in the default build: no feature flag required:
 
 ```toml
-layer-client = "0.4.9"   # already includes StringSessionBackend
+layer-client = "0.5.0"   # already includes StringSessionBackend
 ```
 
 ```rust

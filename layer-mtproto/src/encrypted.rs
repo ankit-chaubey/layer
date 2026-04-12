@@ -1,3 +1,21 @@
+// Copyright (c) Ankit Chaubey <ankitchaubey.dev@gmail.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// NOTE:
+// The "Layer" project is no longer maintained or supported.
+// Its original purpose for personal SDK/APK experimentation and learning
+// has been fulfilled.
+//
+// Please use Ferogram instead:
+// https://github.com/ankit-chaubey/ferogram
+// Ferogram will receive future updates and development, although progress
+// may be slower.
+//
+// Ferogram is an async Telegram MTProto client library written in Rust.
+// Its implementation follows the behaviour of the official Telegram clients,
+// particularly Telegram Desktop and TDLib, and aims to provide a clean and
+// modern async interface for building Telegram clients and tools.
+
 //! Encrypted MTProto 2.0 session (post auth-key).
 //!
 //! Once you have a `Finished` from [`crate::authentication`], construct an
@@ -55,6 +73,15 @@ pub struct DecryptedMessage {
     pub seq_no: i32,
     /// TL-serialized body of the inner message.
     pub body: Vec<u8>,
+    /// Set when the server's `msg_id` timestamp fell outside the ±300 s window
+    /// - the tDesktop equivalent of `badTime = true`.
+    ///
+    /// Instead of rejecting the frame (which causes a reconnect loop on a
+    /// clock-drifted machine), we return the frame with this flag set.  The
+    /// reader corrects `time_offset` from `msg_id` and routes the frame
+    /// normally - matching tDesktop's per-handler `requestsFixTimeSalt` /
+    /// `correctUnixtimeWithBadLocal` self-healing path.
+    pub bad_time: bool,
 }
 
 /// MTProto 2.0 encrypted session state.
@@ -320,16 +347,17 @@ impl EncryptedSession {
             return Err(DecryptError::SessionMismatch);
         }
 
-        // #3 reject if server time (upper 32 bits of msg_id) deviates > 300 s.
+        // #3 check if server time (upper 32 bits of msg_id) deviates > 300 s.
+        // tDesktop: sets badTime=true and continues; self-healing happens
+        // per-handler via requestsFixTimeSalt / correctUnixtimeWithBadLocal.
+        // Layer: same - set bad_time flag, caller corrects time_offset.
         let server_secs = (msg_id as u64 >> 32) as i64;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
         let corrected = now + self.time_offset as i64;
-        if (server_secs - corrected).abs() > MSG_ID_TIME_WINDOW_SECS {
-            return Err(DecryptError::MsgIdTimeWindow);
-        }
+        let bad_time = (server_secs - corrected).abs() > MSG_ID_TIME_WINDOW_SECS;
 
         // #2 rolling 500-entry dedup.
         {
@@ -354,6 +382,7 @@ impl EncryptedSession {
             msg_id,
             seq_no,
             body,
+            bad_time,
         })
     }
 
@@ -401,16 +430,14 @@ impl EncryptedSession {
         if sid != session_id {
             return Err(DecryptError::SessionMismatch);
         }
-        // Time-window check.
+        // Time-window check - flag only, not an error (see unpack() comment).
         let server_secs = (msg_id as u64 >> 32) as i64;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
         let corrected = now + time_offset as i64;
-        if (server_secs - corrected).abs() > MSG_ID_TIME_WINDOW_SECS {
-            return Err(DecryptError::MsgIdTimeWindow);
-        }
+        let bad_time = (server_secs - corrected).abs() > MSG_ID_TIME_WINDOW_SECS;
         if 32 + body_len > plaintext.len() {
             return Err(DecryptError::FrameTooShort);
         }
@@ -421,6 +448,7 @@ impl EncryptedSession {
             msg_id,
             seq_no,
             body,
+            bad_time,
         })
     }
 }

@@ -1,5 +1,12 @@
 # Configuration
 
+
+> [!NOTE]
+> This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.
+>
+> Instead, please use [ferogram](https://github.com/ankit-chaubey/ferogram), which will receive future development and updates. Development may proceed at a slower pace.
+
+
 `Config` is the struct passed to `Client::connect`. The recommended way to build it is via `Client::builder()`. All fields except `api_id` and `api_hash` have defaults.
 
 ```rust
