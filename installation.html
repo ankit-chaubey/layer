@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b121211c.js";
+            window.path_to_searchindex_js = "searchindex-9174ee05.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3a947583.js"></script>
+        <script src="toc-54444b6e.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,9 +182,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <h2 id="add-to-cargotoml"><a class="header" href="#add-to-cargotoml">Add to Cargo.toml</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.9"
+layer-client = "0.5.0"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p><code>layer-client</code> re-exports everything you need for both user clients and bots.</p>
@@ -225,11 +230,11 @@ let api_hash = "deadbeef..."; // ← never do this in a public repo
 <hr>
 <h2 id="optional-features"><a class="header" href="#optional-features">Optional features</a></h2>
 <h3 id="sqlite-session-storage"><a class="header" href="#sqlite-session-storage">SQLite session storage</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.9", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.5.0", features = ["sqlite-session"] }
 </code></pre>
 <p>Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.</p>
-<h3 id="libsql--turso-session-storage-new-in-v049"><a class="header" href="#libsql--turso-session-storage-new-in-v049">LibSQL / Turso session storage: New in v0.4.9</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.9", features = ["libsql-session"] }
+<h3 id="libsql--turso-session-storage-new-in-v050"><a class="header" href="#libsql--turso-session-storage-new-in-v050">LibSQL / Turso session storage: New in v0.5.0</a></h3>
+<pre><code class="language-toml">layer-client = { version = "0.5.0", features = ["libsql-session"] }
 </code></pre>
 <p>Backed by <a href="https://github.com/tursodatabase/libsql">libsql</a>: supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -245,7 +250,7 @@ let backend = LibSqlBackend::open_remote(
     "your-turso-auth-token",
 ).await?;
 <span class="boring">}</span></code></pre>
-<h3 id="string-session-portable-no-extra-deps-new-in-v049"><a class="header" href="#string-session-portable-no-extra-deps-new-in-v049">String session (portable, no extra deps): New in v0.4.9</a></h3>
+<h3 id="string-session-portable-no-extra-deps-new-in-v050"><a class="header" href="#string-session-portable-no-extra-deps-new-in-v050">String session (portable, no extra deps): New in v0.5.0</a></h3>
 <p>No feature flag needed. Encode a session as a base64 string and restore it anywhere:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -260,10 +265,10 @@ let (client, _shutdown) = Client::with_string_session(
 <p>See <a href="./authentication/session-backends.html">Session Backends</a> for the full guide.</p>
 <h3 id="html-entity-parsing"><a class="header" href="#html-entity-parsing">HTML entity parsing</a></h3>
 <pre><code class="language-toml"># Built-in hand-rolled HTML parser (no extra deps)
-layer-client = { version = "0.4.9", features = ["html"] }
+layer-client = { version = "0.5.0", features = ["html"] }
 
 # OR: spec-compliant html5ever tokenizer (overrides built-in)
-layer-client = { version = "0.4.9", features = ["html5ever"] }
+layer-client = { version = "0.5.0", features = ["html5ever"] }
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -278,7 +283,7 @@ layer-client = { version = "0.4.9", features = ["html5ever"] }
 </div>
 <h3 id="raw-type-system-features-layer-tl-types"><a class="header" href="#raw-type-system-features-layer-tl-types">Raw type system features (<code>layer-tl-types</code>)</a></h3>
 <p>If you use <code>layer-tl-types</code> directly for raw API access:</p>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.9", features = [
+<pre><code class="language-toml">layer-tl-types = { version = "0.5.0", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)

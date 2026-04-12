@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b121211c.js";
+            window.path_to_searchindex_js = "searchindex-9174ee05.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3a947583.js"></script>
+        <script src="toc-54444b6e.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,7 +179,14 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="-layer"><a class="header" href="#-layer">⚡ layer</a></h1>
+                        <h1 id="ferogram"><a class="header" href="#ferogram">ferogram</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="-layer"><a class="header" href="#-layer">⚡ layer</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/layer-banner-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="images/layer-banner-light.png">
@@ -282,7 +289,7 @@
 <hr>
 <h2 id="quick-install"><a class="header" href="#quick-install">Quick install</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.9"
+layer-client = "0.5.0"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p>Then head to <a href="#installation">Installation</a> for credentials setup, or jump straight to:</p>
@@ -291,7 +298,7 @@ tokio        = { version = "1", features = ["full"] }
 <li><a href="#quick-start-bot">Quick Start: Bot</a>: bot token login, commands, callbacks</li>
 </ul>
 <hr>
-<h2 id="whats-new-in-v049"><a class="header" href="#whats-new-in-v049">What’s new in v0.4.9</a></h2>
+<h2 id="whats-new-in-v050"><a class="header" href="#whats-new-in-v050">What’s new in v0.5.0</a></h2>
 <h4 id="proxy--transport"><a class="header" href="#proxy--transport">Proxy &amp; Transport</a></h4>
 <ul>
 <li><strong>MTProxy support</strong>: connect via <code>t.me/proxy</code> / <code>tg://proxy</code> links or manual host/port/secret config</li>
@@ -331,9 +338,14 @@ Use it at your own risk. Its future and stability are not yet guaranteed.</p>
 <p>Ensure your usage complies with <a href="https://core.telegram.org/api/terms">Telegram’s Terms of Service</a> and <a href="https://core.telegram.org/api/terms">API Terms of Service</a>. Misuse of the Telegram API, including spam, mass scraping, or automation of normal user accounts, may result in account limitations or permanent bans.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <h2 id="add-to-cargotoml"><a class="header" href="#add-to-cargotoml">Add to Cargo.toml</a></h2>
 <pre><code class="language-toml">[dependencies]
-layer-client = "0.4.9"
+layer-client = "0.5.0"
 tokio        = { version = "1", features = ["full"] }
 </code></pre>
 <p><code>layer-client</code> re-exports everything you need for both user clients and bots.</p>
@@ -374,11 +386,11 @@ let api_hash = "deadbeef..."; // ← never do this in a public repo
 <hr>
 <h2 id="optional-features"><a class="header" href="#optional-features">Optional features</a></h2>
 <h3 id="sqlite-session-storage"><a class="header" href="#sqlite-session-storage">SQLite session storage</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.9", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.5.0", features = ["sqlite-session"] }
 </code></pre>
 <p>Stores session data in a SQLite database instead of a binary file. More robust for long-running servers.</p>
-<h3 id="libsql--turso-session-storage-new-in-v049"><a class="header" href="#libsql--turso-session-storage-new-in-v049">LibSQL / Turso session storage: New in v0.4.9</a></h3>
-<pre><code class="language-toml">layer-client = { version = "0.4.9", features = ["libsql-session"] }
+<h3 id="libsql--turso-session-storage-new-in-v050"><a class="header" href="#libsql--turso-session-storage-new-in-v050">LibSQL / Turso session storage: New in v0.5.0</a></h3>
+<pre><code class="language-toml">layer-client = { version = "0.5.0", features = ["libsql-session"] }
 </code></pre>
 <p>Backed by <a href="https://github.com/tursodatabase/libsql">libsql</a>: supports local embedded databases and remote Turso cloud databases. Ideal for serverless or distributed deployments.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -394,7 +406,7 @@ let backend = LibSqlBackend::open_remote(
     "your-turso-auth-token",
 ).await?;
 <span class="boring">}</span></code></pre>
-<h3 id="string-session-portable-no-extra-deps-new-in-v049"><a class="header" href="#string-session-portable-no-extra-deps-new-in-v049">String session (portable, no extra deps): New in v0.4.9</a></h3>
+<h3 id="string-session-portable-no-extra-deps-new-in-v050"><a class="header" href="#string-session-portable-no-extra-deps-new-in-v050">String session (portable, no extra deps): New in v0.5.0</a></h3>
 <p>No feature flag needed. Encode a session as a base64 string and restore it anywhere:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -409,10 +421,10 @@ let (client, _shutdown) = Client::with_string_session(
 <p>See <a href="#session-backends">Session Backends</a> for the full guide.</p>
 <h3 id="html-entity-parsing"><a class="header" href="#html-entity-parsing">HTML entity parsing</a></h3>
 <pre><code class="language-toml"># Built-in hand-rolled HTML parser (no extra deps)
-layer-client = { version = "0.4.9", features = ["html"] }
+layer-client = { version = "0.5.0", features = ["html"] }
 
 # OR: spec-compliant html5ever tokenizer (overrides built-in)
-layer-client = { version = "0.4.9", features = ["html5ever"] }
+layer-client = { version = "0.5.0", features = ["html5ever"] }
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -427,7 +439,7 @@ layer-client = { version = "0.4.9", features = ["html5ever"] }
 </div>
 <h3 id="raw-type-system-features-layer-tl-types"><a class="header" href="#raw-type-system-features-layer-tl-types">Raw type system features (<code>layer-tl-types</code>)</a></h3>
 <p>If you use <code>layer-tl-types</code> directly for raw API access:</p>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.9", features = [
+<pre><code class="language-toml">layer-tl-types = { version = "0.5.0", features = [
     "tl-api",          # Telegram API types (required)
     "tl-mtproto",      # Low-level MTProto types
     "impl-debug",      # Debug trait on all types (default ON)
@@ -463,6 +475,11 @@ fn main() {
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quick-start-user-account"><a class="header" href="#quick-start-user-account">Quick Start: User Account</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>A complete working example: connect, log in, send a message to Saved Messages, and listen for incoming messages.</p>
 <pre class="playground"><code class="language-rust">use layer_client::{Client, Config, SignInError};
 use layer_client::update::Update;
@@ -569,6 +586,11 @@ fn read_line() -&gt; String {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quick-start-bot"><a class="header" href="#quick-start-bot">Quick Start: Bot</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>A production-ready bot skeleton with commands, callback queries, and inline mode: all handled concurrently.</p>
 <pre class="playground"><code class="language-rust">use layer_client::{Client, InputMessage, parsers::parse_markdown, update::Update};
 use layer_tl_types as tl;
@@ -748,6 +770,11 @@ fn make_article(id: &amp;str, title: &amp;str, text: &amp;str) -&gt; tl::enums::
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="user-login"><a class="header" href="#user-login">User Login</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>User login happens in three steps: request code → submit code → (optional) submit 2FA password.</p>
 <h2 id="step-1-request-login-code"><a class="header" href="#step-1-request-login-code">Step 1: Request login code</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -846,6 +873,11 @@ fn read_line() -&gt; String {
 <p>See <a href="#layer-mtproto">Crate Architecture</a> for more on the MTProto internals.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bot-login"><a class="header" href="#bot-login">Bot Login</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Bot login is simpler than user login: just a single call with a bot token.</p>
 <h2 id="getting-a-bot-token"><a class="header" href="#getting-a-bot-token">Getting a bot token</a></h2>
 <ol>
@@ -891,6 +923,11 @@ let bot_token     = std::env::var("BOT_TOKEN")?;
 <p>Or put them in a <code>.env</code> file and use the <code>dotenvy</code> crate.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="two-factor-authentication-2fa"><a class="header" href="#two-factor-authentication-2fa">Two-Factor Authentication (2FA)</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Telegram’s 2FA uses <strong>Secure Remote Password (SRP)</strong>: a zero-knowledge proof. Your password is never sent to Telegram’s servers; only a cryptographic proof is transmitted.</p>
 <h2 id="how-it-works-in-layer"><a class="header" href="#how-it-works-in-layer">How it works in layer</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -952,6 +989,11 @@ match client.check_password(token, &amp;pw).await {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="session-persistence"><a class="header" href="#session-persistence">Session Persistence</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>A session stores your auth key, DC address, and peer access-hash cache. Without it, you’d need to log in on every run.</p>
 <h2 id="binary-file-default"><a class="header" href="#binary-file-default">Binary file (default)</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -987,7 +1029,7 @@ let (client, _shutdown) = Client::builder()
 <p>Login is required on every run since nothing persists.</p>
 <hr>
 <h2 id="sqlite-robust-long-running-servers"><a class="header" href="#sqlite-robust-long-running-servers">SQLite (robust, long-running servers)</a></h2>
-<pre><code class="language-toml">layer-client = { version = "0.4.9", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.5.0", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -997,7 +1039,7 @@ let (client, _shutdown) = Client::builder()
 <span class="boring">}</span></code></pre>
 <p>SQLite is more resilient against crash-corruption than the binary format. Ideal for production bots.</p>
 <hr>
-<h2 id="string-session-new-in-v049"><a class="header" href="#string-session-new-in-v049">String session: New in v0.4.9</a></h2>
+<h2 id="string-session-new-in-v050"><a class="header" href="#string-session-new-in-v050">String session: New in v0.5.0</a></h2>
 <p>Encode the entire session as a portable base64 string. Store it in an env var, a DB column, or CI secrets:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1064,6 +1106,11 @@ let (client_b, _) = Client::connect(Config {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="session-backends"><a class="header" href="#session-backends">Session Backends</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Layer ships five session backends out of the box. They all implement the <code>SessionBackend</code> trait and are <strong>hot-swappable</strong>: switch by changing one line.</p>
 <hr>
 <h2 id="built-in-backends"><a class="header" href="#built-in-backends">Built-in backends</a></h2>
@@ -1163,7 +1210,7 @@ let backend = Arc::new(StringSessionBackend::new(session_string));
 <hr>
 <h2 id="sqlitebackend-local-database"><a class="header" href="#sqlitebackend-local-database"><code>SqliteBackend</code>: local database</a></h2>
 <p>Requires feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.9", features = ["sqlite-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.5.0", features = ["sqlite-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1181,7 +1228,7 @@ let (client, _shutdown) = Client::builder()
 <hr>
 <h2 id="libsqlbackend-libsql--turso"><a class="header" href="#libsqlbackend-libsql--turso"><code>LibSqlBackend</code>: libsql / Turso</a></h2>
 <p>Requires feature flag:</p>
-<pre><code class="language-toml">layer-client = { version = "0.4.9", features = ["libsql-session"] }
+<pre><code class="language-toml">layer-client = { version = "0.5.0", features = ["libsql-session"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1335,6 +1382,11 @@ if let Some(session) = backend.snapshot() {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="sending-messages"><a class="header" href="#sending-messages">Sending Messages</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <h2 id="basic-send"><a class="header" href="#basic-send">Basic send</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1427,6 +1479,11 @@ for msg in messages {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="receiving-updates"><a class="header" href="#receiving-updates">Receiving Updates</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <h2 id="the-update-stream"><a class="header" href="#the-update-stream">The update stream</a></h2>
 <p><code>stream_updates()</code> returns an async stream of typed <code>Update</code> events:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -1483,6 +1540,11 @@ while let Some(update) = updates.next().await {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="inline-keyboards--reply-markup"><a class="header" href="#inline-keyboards--reply-markup">Inline Keyboards &amp; Reply Markup</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>layer-client</code> ships with two high-level keyboard builders: <code>InlineKeyboard</code> and <code>ReplyKeyboard</code>: so you never have to construct raw TL types by hand.</p>
 <p>Both builders are in <code>layer_client::keyboard</code> and re-exported at the crate root:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -1810,6 +1872,11 @@ let msg = InputMessage::text("Keyboard removed.").reply_markup(remove);
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="media--files"><a class="header" href="#media--files">Media &amp; Files</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <hr>
 <h2 id="upload"><a class="header" href="#upload">Upload</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -2031,6 +2098,11 @@ msg.download_media("output.jpg").await?;
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="message-formatting"><a class="header" href="#message-formatting">Message Formatting</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Telegram supports rich text formatting through <strong>message entities</strong>: positional markers that indicate bold, italic, code, links, and more.</p>
 <h2 id="using-parse_markdown"><a class="header" href="#using-parse_markdown">Using parse_markdown</a></h2>
 <p>The easiest way is <code>parse_markdown</code>, which converts a Markdown-like syntax into a <code>(String, Vec&lt;MessageEntity&gt;)</code> tuple:</p>
@@ -2155,6 +2227,11 @@ let msg = InputMessage::text(text).entities(entities);
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="reactions"><a class="header" href="#reactions">Reactions</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Reactions are emoji responses attached to messages. They appear below messages with per-emoji counts.</p>
 <p><code>layer-client</code> provides the <a href="https://docs.rs/layer-client/latest/layer_client/reactions/struct.InputReactions.html"><code>InputReactions</code></a> builder. It converts from <code>&amp;str</code> and <code>String</code> automatically, so simple cases need no import.</p>
 <hr>
@@ -2289,6 +2366,11 @@ if let enums::messages::MessageReactionsList::MessageReactionsList(list) = resul
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="update-types"><a class="header" href="#update-types">Update Types</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>stream.next().await</code> yields <code>Option&lt;Update&gt;</code>. <code>Update</code> is <code>#[non_exhaustive]</code>: always include <code>_ =&gt; {}</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2411,6 +2493,11 @@ while let Some(raw) = stream.next_raw().await {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="incomingmessage"><a class="header" href="#incomingmessage">IncomingMessage</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>IncomingMessage</code> is the type of <code>Update::NewMessage</code> and <code>Update::MessageEdited</code>. It wraps a raw <code>tl::enums::Message</code> and provides typed accessors plus a full suite of <strong>convenience action methods</strong> that let you act on a message without passing the <code>Client</code> around explicitly (when the message was received from the update stream it already carries a client reference).</p>
 <hr>
 <h2 id="basic-accessors"><a class="header" href="#basic-accessors">Basic accessors</a></h2>
@@ -2614,6 +2701,11 @@ while let Some(update) = stream.next().await {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="callback-queries"><a class="header" href="#callback-queries">Callback Queries</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>When a user taps an inline keyboard button, the bot receives <code>Update::CallbackQuery</code>. Always answer it: Telegram shows a loading spinner until you do.</p>
 <hr>
 <h2 id="basic-handling"><a class="header" href="#basic-handling">Basic handling</a></h2>
@@ -2745,6 +2837,11 @@ client.answer_callback_query(cb.query_id, None, false).await?;  // silent
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="inline-mode"><a class="header" href="#inline-mode">Inline Mode</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Inline mode lets users type <code>@yourbot query</code> in any chat and receive results. Layer supports both sides: <strong>receiving queries</strong> (bot) and <strong>sending queries</strong> (user account).</p>
 <hr>
 <h2 id="receiving-inline-queries-bot-side"><a class="header" href="#receiving-inline-queries-bot-side">Receiving inline queries (bot side)</a></h2>
@@ -2878,6 +2975,11 @@ while let Some(result) = iter.next().await? {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="client-methods-full-reference"><a class="header" href="#client-methods-full-reference">Client Methods: Full Reference</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>All methods on <code>Client</code>. Every method is <code>async</code> and returns <code>Result&lt;T, InvocationError&gt;</code> unless noted.</p>
 <hr>
 <h2 id="connection--session"><a class="header" href="#connection--session">Connection &amp; Session</a></h2>
@@ -2896,7 +2998,7 @@ Opens a TCP connection to Telegram, performs the full 3-step DH key exchange, an
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge">sync</span>
-<span class="api-card-sig">Client::with_string_session(session: &amp;str, api_id: i32, api_hash: &amp;str) → Result&lt;(Client, ShutdownToken), InvocationError&gt; <span class="api-badge-new">New 0.4.9</span></span>
+<span class="api-card-sig">Client::with_string_session(session: &amp;str, api_id: i32, api_hash: &amp;str) → Result&lt;(Client, ShutdownToken), InvocationError&gt; <span class="api-badge-new">New 0.5.0</span></span>
 </div>
 
 <div class="api-card-body">
@@ -2932,7 +3034,7 @@ Writes the current session (auth key + DC info + peer cache) to the backend. Cal
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge api-badge-async">async</span>
-<span class="api-card-sig">client.export_session_string() → Result&lt;String, InvocationError&gt; <span class="api-badge-new">New 0.4.9</span></span>
+<span class="api-card-sig">client.export_session_string() → Result&lt;String, InvocationError&gt; <span class="api-badge-new">New 0.5.0</span></span>
 </div>
 
 <div class="api-card-body">
@@ -2971,7 +3073,7 @@ Immediately closes the TCP connection and stops the reader task without waiting 
 <div class="api-card">
 <div class="api-card-header">
 <span class="api-badge api-badge-async">async</span>
-<span class="api-card-sig">client.sync_update_state() <span class="api-badge-new">New 0.4.9</span></span>
+<span class="api-card-sig">client.sync_update_state() <span class="api-badge-new">New 0.5.0</span></span>
 </div>
 
 <div class="api-card-body">
@@ -3389,7 +3491,7 @@ Send a one-shot typing / uploading / recording indicator. Expires after ~5 secon
 <span class="api-card-sig">client.iter_participants(peer: Peer) → ParticipantIter</span>
 </div>
 
-<div class="api-card-body">Lazy async iterator that pages through all members, including beyond the 200-member limit. Fixed in v0.4.9 to paginate correctly for large channels.</div>
+<div class="api-card-body">Lazy async iterator that pages through all members, including beyond the 200-member limit. Fixed in v0.5.0 to paginate correctly for large channels.</div>
 
 </div>
 
@@ -3493,7 +3595,7 @@ Send a one-shot typing / uploading / recording indicator. Expires after ~5 secon
 <span class="api-card-sig">client.answer_inline_query(query_id: i64, results: Vec&lt;InputBotInlineResult&gt;, cache_time: i32, is_personal: bool, next_offset: Option&lt;&amp;str&gt;) → Result&lt;(), InvocationError&gt;</span>
 </div>
 
-<div class="api-card-body">Respond to an inline query with a list of results. <code>cache_time</code> in seconds. Empty result list now handled correctly (fixed in v0.4.9).</div>
+<div class="api-card-body">Respond to an inline query with a list of results. <code>cache_time</code> in seconds. Empty result list now handled correctly (fixed in v0.5.0).</div>
 
 </div>
 
@@ -3573,6 +3675,11 @@ let state = client.invoke(&amp;functions::updates::GetState {}).await?;</code></
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="inputmessage-builder"><a class="header" href="#inputmessage-builder">InputMessage Builder</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>InputMessage</code> is a fluent builder for composing rich messages with full control over every parameter.</p>
 <h2 id="import"><a class="header" href="#import">Import</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -3707,6 +3814,11 @@ client.send_message_to_peer_ex(channel_peer, &amp;msg).await?;
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="peer-types--peerref"><a class="header" href="#peer-types--peerref">Peer Types &amp; PeerRef</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>layer-client</code> provides typed wrappers over the raw <code>tl::enums::User</code> and <code>tl::enums::Chat</code> types, plus <code>PeerRef</code>: a flexible peer argument accepted by every <code>Client</code> method.</p>
 <hr>
 <h2 id="peerref-flexible-peer-argument"><a class="header" href="#peerref-flexible-peer-argument"><code>PeerRef</code>: flexible peer argument</a></h2>
@@ -3938,6 +4050,11 @@ if let Some(chat) = Chat::from_raw(raw_tl_chat) {
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="participants--members"><a class="header" href="#participants--members">Participants &amp; Members</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Methods for fetching, banning, kicking, promoting, and managing chat members. All methods accept <code>impl Into&lt;PeerRef&gt;</code> for the peer argument.</p>
 <hr>
 <h2 id="fetch-participants"><a class="header" href="#fetch-participants">Fetch participants</a></h2>
@@ -4236,6 +4353,11 @@ client.set_admin_rights(
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="admin--ban-rights"><a class="header" href="#admin--ban-rights">Admin &amp; Ban Rights</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>layer-client</code> provides two fluent builders for granular admin and ban rights: <code>AdminRightsBuilder</code> and <code>BannedRightsBuilder</code>: both in the <code>layer_client::participants</code> module.</p>
 <hr>
 <h2 id="bannedrightsbuilder-restrict-a-member"><a class="header" href="#bannedrightsbuilder-restrict-a-member"><code>BannedRightsBuilder</code>: restrict a member</a></h2>
@@ -4409,6 +4531,11 @@ if !perms.is_admin() &amp;&amp; !perms.is_banned() {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="dialogs--history-1"><a class="header" href="#dialogs--history-1">Dialogs &amp; History</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <hr>
 <h2 id="fetch-dialogs"><a class="header" href="#fetch-dialogs">Fetch dialogs</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -4540,6 +4667,11 @@ let hash = Client::parse_invite_hash("https://t.me/+AbCdEfG12345");
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="search-1"><a class="header" href="#search-1">Search</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>layer-client</code> provides two fluent search builders:</p>
 <ul>
 <li><strong><code>SearchBuilder</code></strong>: search within a single peer (<code>client.search()</code>)</li>
@@ -4791,6 +4923,11 @@ let results = client.search_global("layer rust", 10).await?;
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="typing-guard"><a class="header" href="#typing-guard">Typing Guard</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>TypingGuard</code> is a RAII wrapper that keeps a “typing…” or “uploading…” indicator alive for the duration of an operation and <strong>automatically cancels it when dropped</strong>. You never need to call <code>SetTyping</code> with <code>CancelAction</code> by hand.</p>
 <p>The guard re-sends the action every <strong>4 seconds</strong> (Telegram drops indicators after ~5 s) until the guard is dropped or <code>.cancel()</code> is called.</p>
 <hr>
@@ -4967,6 +5104,11 @@ async fn compute_answer() -&gt; String {
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="raw-api-access"><a class="header" href="#raw-api-access">Raw API Access</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Every Telegram API method is available as a typed struct in <code>layer_tl_types::functions</code>. Use <code>client.invoke()</code> to call any of them directly with full compile-time type safety.</p>
 <h2 id="basic-usage"><a class="header" href="#basic-usage">Basic usage</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -5144,6 +5286,11 @@ match client.invoke(&amp;req).await {
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="retry--flood-wait"><a class="header" href="#retry--flood-wait">Retry &amp; Flood Wait</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Telegram’s rate limiting system sends <code>FLOOD_WAIT_X</code> errors when you call the API too frequently. <code>X</code> is the number of seconds you must wait before retrying.</p>
 <h2 id="default-behaviour-autosleep"><a class="header" href="#default-behaviour-autosleep">Default behaviour: AutoSleep</a></h2>
 <p>By default, <code>layer-client</code> uses <code>AutoSleep</code>: it transparently sleeps for the required duration, then retries. Your code never sees the error.</p>
@@ -5253,6 +5400,11 @@ let (client, _shutdown) = Client::connect(Config {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="dc-migration"><a class="header" href="#dc-migration">DC Migration</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>Telegram’s infrastructure is split across multiple <strong>Data Centers (DCs)</strong>. When you connect to the wrong DC for your account, Telegram responds with a <code>PHONE_MIGRATE_X</code> or <code>USER_MIGRATE_X</code> error telling you which DC to use instead.</p>
 <p><code>layer-client</code> handles DC migration <strong>automatically and transparently</strong>. You don’t need to do anything.</p>
 <h2 id="how-it-works"><a class="header" href="#how-it-works">How it works</a></h2>
@@ -5297,6 +5449,11 @@ let (client, _shutdown) = Client::connect(Config {
 <p>When downloading media, Telegram may route large files through CDN DCs different from your account’s home DC. <code>layer-client</code> maintains a connection pool across DCs and handles this automatically via <code>invoke_on_dc</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="proxies"><a class="header" href="#proxies">Proxies</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>layer-client</code> supports two proxy types: SOCKS5 (generic TCP tunnel) and MTProxy (Telegram’s native obfuscated proxy protocol).</p>
 <h2 id="socks5"><a class="header" href="#socks5">SOCKS5</a></h2>
 <h3 id="without-authentication"><a class="header" href="#without-authentication">Without authentication</a></h3>
@@ -5390,6 +5547,11 @@ let (client, _shutdown) = Client::builder()
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="upgrading-the-tl-layer"><a class="header" href="#upgrading-the-tl-layer">Upgrading the TL Layer</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p>The Telegram API evolves continuously. Each new <strong>layer</strong> adds constructors, modifies existing types, and deprecates old ones. Upgrading <code>layer</code> is designed to be a one-file operation.</p>
 <h2 id="how-the-system-works"><a class="header" href="#how-the-system-works">How the system works</a></h2>
 <p><code>layer-tl-types</code> is fully <strong>auto-generated at build time</strong>:</p>
@@ -5454,7 +5616,7 @@ _ =&gt; {}
 <span class="boring">}</span></code></pre>
 <h2 id="step-4-bump-version-and-publish"><a class="header" href="#step-4-bump-version-and-publish">Step 4: Bump version and publish</a></h2>
 <pre><code class="language-bash"># In Cargo.toml workspace section
-version = "0.4.9"
+version = "0.5.0"
 </code></pre>
 <p>Then publish in dependency order (see <a href="#installation">Publishing</a>).</p>
 <h2 id="what-propagates-automatically"><a class="header" href="#what-propagates-automatically">What propagates automatically</a></h2>
@@ -5478,6 +5640,11 @@ version = "0.4.9"
 <p>This shows you exactly which constructors changed, helping you anticipate which <code>layer-client</code> files need updating.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>Config</code> is the struct passed to <code>Client::connect</code>. The recommended way to build it is via <code>Client::builder()</code>. All fields except <code>api_id</code> and <code>api_hash</code> have defaults.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -5627,6 +5794,11 @@ let (client, _shutdown) = Client::connect(config).await?;
 <p><code>build()</code> returns <code>Err(BuilderError::MissingApiId)</code> or <code>Err(BuilderError::MissingApiHash)</code> if those fields are missing, before touching the network.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="error-types"><a class="header" href="#error-types">Error Types</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <hr>
 <h2 id="invocationerror"><a class="header" href="#invocationerror"><code>InvocationError</code></a></h2>
 <p>Every <code>Client</code> method returns <code>Result&lt;T, InvocationError&gt;</code>.</p>
@@ -5784,6 +5956,11 @@ Client::builder().retry_policy(Arc::new(NoRetries))
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="crate-architecture"><a class="header" href="#crate-architecture">Crate Architecture</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <p><code>layer</code> is a workspace of focused, single-responsibility crates. Understanding the stack helps when you need to go below the high-level API.</p>
 <h2 id="dependency-graph"><a class="header" href="#dependency-graph">Dependency graph</a></h2>
 <pre><code>Your App
@@ -5924,6 +6101,11 @@ Client::builder().retry_policy(Arc::new(NoRetries))
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="feature-flags"><a class="header" href="#feature-flags">Feature Flags</a></h1>
+<blockquote class="blockquote-tag blockquote-tag-note">
+<p class="blockquote-tag-title"><svg viewbox="0 0 16 16" width="18" height="18"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p>
+<p>This project is no longer maintained or supported. Its original purpose for personal SDK/APK experimentation and learning has been fulfilled.</p>
+<p>Instead, please use <a href="https://github.com/ankit-chaubey/ferogram">ferogram</a>, which will receive future development and updates. Development may proceed at a slower pace.</p>
+</blockquote>
 <h2 id="layer-client-1"><a class="header" href="#layer-client-1">layer-client</a></h2>
 <div class="table-wrapper">
 <table>
@@ -5953,19 +6135,19 @@ Client::builder().retry_policy(Arc::new(NoRetries))
 <li><code>ClientBuilder</code>: fluent connection builder</li>
 </ul>
 <pre><code class="language-toml"># SQLite session only
-layer-client = { version = "0.4.9", features = ["sqlite-session"] }
+layer-client = { version = "0.5.0", features = ["sqlite-session"] }
 
-# LibSQL / Turso session (new in 0.4.9)
-layer-client = { version = "0.4.9", features = ["libsql-session"] }
+# LibSQL / Turso session (new in 0.5.0)
+layer-client = { version = "0.5.0", features = ["libsql-session"] }
 
 # HTML parsing (minimal, no extra deps)
-layer-client = { version = "0.4.9", features = ["html"] }
+layer-client = { version = "0.5.0", features = ["html"] }
 
 # HTML parsing (spec-compliant, adds html5ever dep)
-layer-client = { version = "0.4.9", features = ["html5ever"] }
+layer-client = { version = "0.5.0", features = ["html5ever"] }
 
 # Multiple features at once
-layer-client = { version = "0.4.9", features = ["sqlite-session", "html"] }
+layer-client = { version = "0.5.0", features = ["sqlite-session", "html"] }
 </code></pre>
 <hr>
 <h2 id="layer-tl-types-1"><a class="header" href="#layer-tl-types-1">layer-tl-types</a></h2>
@@ -5987,14 +6169,14 @@ layer-client = { version = "0.4.9", features = ["sqlite-session", "html"] }
 </table>
 </div>
 <h3 id="example-enable-serde"><a class="header" href="#example-enable-serde">Example: enable serde</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.9", features = ["tl-api", "impl-serde"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.5.0", features = ["tl-api", "impl-serde"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let json = serde_json::to_string(&amp;some_tl_type)?;
 <span class="boring">}</span></code></pre>
 <h3 id="example-name_for_id-debugging"><a class="header" href="#example-name_for_id-debugging">Example: name_for_id (debugging)</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.9", features = ["tl-api", "name-for-id"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.5.0", features = ["tl-api", "name-for-id"] }
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -6005,13 +6187,13 @@ if let Some(name) = name_for_id(0x74ae4240) {
 }
 <span class="boring">}</span></code></pre>
 <h3 id="example-minimal-no-debug-no-conversions"><a class="header" href="#example-minimal-no-debug-no-conversions">Example: minimal (no Debug, no conversions)</a></h3>
-<pre><code class="language-toml">layer-tl-types = { version = "0.4.9", default-features = false, features = ["tl-api"] }
+<pre><code class="language-toml">layer-tl-types = { version = "0.5.0", default-features = false, features = ["tl-api"] }
 </code></pre>
 <p>Reduces compile time when you don’t need convenience traits.</p>
 <hr>
 <h2 id="string-session-no-feature-flag-needed"><a class="header" href="#string-session-no-feature-flag-needed">String session: no feature flag needed</a></h2>
 <p><code>StringSessionBackend</code> and <code>export_session_string()</code> are available in the default build: no feature flag required:</p>
-<pre><code class="language-toml">layer-client = "0.4.9"   # already includes StringSessionBackend
+<pre><code class="language-toml">layer-client = "0.5.0"   # already includes StringSessionBackend
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
